@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Igreja ABA — Sistema de Culto</title>
+<!-- Favicons — compatível com todos os navegadores e celulares -->
+<link rel="icon" type="image/x-icon"  href="/static/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180"    href="/static/apple-touch-icon.png">
+<meta name="theme-color" content="#0A2463">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-logo">
+      <img src="/static/apple-touch-icon.png" alt="Logo Igreja ABA"
+           style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:block;">
+    </div>
+    <div>
+      <div class="brand-name">IGREJA ABA</div>
+      <div class="brand-sub">Um Lar Para Pertencer</div>
+    </div>
+  </div>
+
+  <div class="nav-section-label">MENU</div>
+  <ul class="nav-list">
+    <li><a class="nav-item active" data-tab="registro">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      Registro de Culto
+    </a></li>
+    <li><a class="nav-item" data-tab="checklist">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+      Checklist
+    </a></li>
+    <li><a class="nav-item" data-tab="visitantes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Visitantes
+    </a></li>
+    <li><a class="nav-item" data-tab="estoque">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+      Estoque
+    </a></li>
+    <li><a class="nav-item" data-tab="relatorios">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      Relatórios
+    </a></li>
+    <li><a class="nav-item" data-tab="resumo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      Resumo Geral
+    </a></li>
+    <li><a class="nav-item" data-tab="gc-finder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Conecta GC
+    </a></li>
+    <li><a class="nav-item" data-tab="usuarios" id="navUsuarios" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+      Usuários
+    </a></li>
+  </ul>
+
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <div class="user-avatar" id="userAvatar">A</div>
+      <div>
+        <div class="user-name" id="userName">—</div>
+        <div class="user-role" id="userRole">—</div>
+      </div>
+    </div>
+    <button class="btn-logout" onclick="logout()" title="Sair">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+    </button>
+  </div>
+</nav>
+
+<main class="main-content">
+  <header class="topbar">
+    <button class="menu-toggle" onclick="toggleSidebar()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <div class="topbar-title" id="topbarTitle">Registro de Culto</div>
+    <div class="topbar-date" id="topbarDate"></div>
+  </header>
+
+  <!-- ============ TAB: REGISTRO ============ -->
+  <div class="tab-content active" id="tab-registro">
+    <div class="page-header">
+      <h1 class="page-title">Registro de Culto</h1>
+      <p class="page-sub">Preencha os dados do culto de hoje</p>
+    </div>
+    <div class="form-card">
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Data &amp; Horário
+        </div>
+        <div class="grid-3">
+          <div class="field-group">
+            <label>Data</label>
+            <input type="date" class="field-input" id="data" onchange="atualizarDiaSemana()">
+          </div>
+          <div class="field-group">
+            <label>Dia da Semana</label>
+            <input type="text" class="field-input readonly" id="diaSemana" readonly placeholder="—">
+          </div>
+          <div class="field-group">
+            <label>Horário</label>
+            <input type="time" class="field-input" id="hora">
+          </div>
+        </div>
+        <div class="field-group" style="margin-top:16px">
+          <label>Período</label>
+          <div class="periodo-selector">
+            <button class="periodo-btn" data-periodo="Manhã" onclick="selecionarPeriodo(this)">🌅 Manhã</button>
+            <button class="periodo-btn" data-periodo="Tarde" onclick="selecionarPeriodo(this)">☀️ Tarde</button>
+            <button class="periodo-btn active" data-periodo="Noite" onclick="selecionarPeriodo(this)">🌙 Noite</button>
+          </div>
+        </div>
+        <div class="field-group" style="margin-top:16px">
+          <label>Tipo de Culto</label>
+          <select class="field-input" id="tipoCulto" onchange="toggleTipoCultoOutro()">
+            <option value="">— Selecione o tipo —</option>
+            <option value="Culto de Celebração">🎉 Culto de Celebração</option>
+            <option value="GCzão">🏠 GCzão</option>
+            <option value="Reunião de Líderes">👑 Reunião de Líderes</option>
+            <option value="Culto de Mulheres">💜 Culto de Mulheres</option>
+            <option value="Culto de Homens">💙 Culto de Homens</option>
+            <option value="Outro">✏️ Outro</option>
+          </select>
+          <input type="text" class="field-input" id="tipoCultoOutro" placeholder="Descreva o tipo de culto..."
+            style="margin-top:8px;display:none">
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Responsável
+        </div>
+        <div class="field-group">
+          <label>Nome do Responsável pelo Registro</label>
+          <input type="text" class="field-input" id="responsavel" placeholder="Nome completo">
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          Contagem de Pessoas
+        </div>
+        <div class="counters-grid">
+          <div class="counter-card">
+            <div class="counter-label">👥 Presentes</div>
+            <div class="counter-value" id="val-presentes">0</div>
+            <div class="counter-btns">
+              <button class="cbtn minus" onclick="ajustar('presentes',-10)">−10</button>
+              <button class="cbtn minus" onclick="ajustar('presentes',-5)">−5</button>
+              <button class="cbtn minus" onclick="ajustar('presentes',-1)">−1</button>
+              <button class="cbtn plus"  onclick="ajustar('presentes',+1)">+1</button>
+              <button class="cbtn plus"  onclick="ajustar('presentes',+5)">+5</button>
+              <button class="cbtn plus"  onclick="ajustar('presentes',+10)">+10</button>
+            </div>
+            <input type="number" class="counter-input" id="inp-presentes" value="0" min="0"
+                   oninput="setContador('presentes',this.value)">
+          </div>
+          <div class="counter-card">
+            <div class="counter-label">🙋 Visitantes</div>
+            <div class="counter-value" id="val-visitantes">0</div>
+            <div class="counter-btns">
+              <button class="cbtn minus" onclick="ajustar('visitantes',-10)">−10</button>
+              <button class="cbtn minus" onclick="ajustar('visitantes',-5)">−5</button>
+              <button class="cbtn minus" onclick="ajustar('visitantes',-1)">−1</button>
+              <button class="cbtn plus"  onclick="ajustar('visitantes',+1)">+1</button>
+              <button class="cbtn plus"  onclick="ajustar('visitantes',+5)">+5</button>
+              <button class="cbtn plus"  onclick="ajustar('visitantes',+10)">+10</button>
+            </div>
+            <input type="number" class="counter-input" id="inp-visitantes" value="0" min="0"
+                   oninput="setContador('visitantes',this.value)">
+          </div>
+          <div class="counter-card">
+            <div class="counter-label">🧒 Crianças</div>
+            <div class="counter-value" id="val-criancas">0</div>
+            <div class="counter-btns">
+              <button class="cbtn minus" onclick="ajustar('criancas',-10)">−10</button>
+              <button class="cbtn minus" onclick="ajustar('criancas',-5)">−5</button>
+              <button class="cbtn minus" onclick="ajustar('criancas',-1)">−1</button>
+              <button class="cbtn plus"  onclick="ajustar('criancas',+1)">+1</button>
+              <button class="cbtn plus"  onclick="ajustar('criancas',+5)">+5</button>
+              <button class="cbtn plus"  onclick="ajustar('criancas',+10)">+10</button>
+            </div>
+            <input type="number" class="counter-input" id="inp-criancas" value="0" min="0"
+                   oninput="setContador('criancas',this.value)">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Observações Gerais
+        </div>
+        <textarea class="field-textarea" id="observacoes" rows="4" placeholder="Registre observações importantes do culto..."></textarea>
+      </div>
+
+      <div class="form-section">
+        <button class="btn-primary-lg" onclick="salvarRegistro()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Salvar Registro
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: CHECKLIST ============ -->
+  <div class="tab-content" id="tab-checklist">
+    <div class="page-header">
+      <h1 class="page-title">Checklist de Culto</h1>
+      <p class="page-sub">Marque os itens conforme forem realizados</p>
+    </div>
+    <div class="checklist-selector">
+      <label style="font-weight:700;color:#0A2463;font-size:14px">Culto:</label>
+      <select class="field-input" id="selectCultoChecklist" onchange="carregarChecklist(this.value)" style="max-width:380px">
+        <option value="">— Selecione um culto —</option>
+      </select>
+    </div>
+    <div id="checklistContainer">
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:64px;height:64px;margin:0 auto 16px;display:block;opacity:.4"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <p>Selecione um culto para ver o checklist</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: VISITANTES ============ -->
+  <div class="tab-content" id="tab-visitantes">
+    <div class="page-header">
+      <h1 class="page-title">Visitantes</h1>
+      <p class="page-sub">Cadastro manual ou via QR Code</p>
+    </div>
+
+    <!-- QR Code -->
+    <div class="form-card" style="margin-bottom:24px">
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          QR Code do Culto — Auto Cadastro
+        </div>
+        <p style="font-size:13px;color:#4A6080;margin-bottom:14px">Gere um QR Code para o culto atual. O visitante escaneia com o celular e preenche os dados.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+          <select class="field-input" id="qr_culto_id" style="max-width:320px">
+            <option value="">— Selecione o culto —</option>
+          </select>
+          <button class="btn-secondary" onclick="gerarQRCode()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            Gerar QR Code
+          </button>
+        </div>
+        <div id="qrContainer" style="display:none;text-align:center">
+          <img id="qrImg" src="" alt="QR Code" style="max-width:220px;border-radius:12px;border:3px solid #EEF2F9;padding:8px">
+          <p id="qrUrl" style="font-size:12px;color:#4A6080;margin-top:10px;word-break:break-all"></p>
+          <button class="btn-sm blue" style="margin-top:8px" onclick="baixarQR()">⬇️ Baixar QR Code</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cadastro Manual -->
+    <div class="form-card" style="margin-bottom:24px">
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          Cadastro Manual de Visitante
+        </div>
+        <div class="grid-2">
+          <div class="field-group">
+            <label>Nome Completo *</label>
+            <input type="text" class="field-input" id="v_nome" placeholder="Nome do visitante">
+          </div>
+          <div class="field-group">
+            <label>Idade</label>
+            <input type="number" class="field-input" id="v_idade" placeholder="Ex: 30">
+          </div>
+          <div class="field-group">
+            <label>Telefone / WhatsApp *</label>
+            <input type="tel" class="field-input" id="v_telefone" placeholder="(51) 99999-9999">
+          </div>
+          <div class="field-group">
+            <label>Como conheceu a igreja</label>
+            <select class="field-input" id="v_como">
+              <option value="">Selecione...</option>
+              <option>Indicação de amigo / familiar</option>
+              <option>Redes sociais</option>
+              <option>Pesquisa no Google</option>
+              <option>Passei na frente</option>
+              <option>Evento ou ação social</option>
+              <option>Outro</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Rua e Número</label>
+            <input type="text" class="field-input" id="v_endereco" placeholder="Rua, número">
+          </div>
+          <div class="field-group">
+            <label>Bairro</label>
+            <input type="text" class="field-input" id="v_bairro" placeholder="Bairro">
+          </div>
+          <div class="field-group">
+            <label>Cidade</label>
+            <input type="text" class="field-input" id="v_cidade" placeholder="Cidade">
+          </div>
+          <div class="field-group">
+            <label>Culto do dia</label>
+            <select class="field-input" id="v_culto_id">
+              <option value="">— Sem culto vinculado —</option>
+            </select>
+          </div>
+          <div class="field-group" style="grid-column:1/-1">
+            <label>Pedido de Oração</label>
+            <textarea class="field-textarea" id="v_oracao" rows="2" placeholder="Pedidos de oração..."></textarea>
+          </div>
+          <div class="field-group" style="grid-column:1/-1">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="v_quer_visita" style="width:18px;height:18px;accent-color:#0A2463">
+              Deseja receber uma visita pastoral em casa
+            </label>
+          </div>
+          <div class="field-group">
+            <label>Data para visita</label>
+            <input type="date" class="field-input" id="v_data_visita">
+          </div>
+          <div class="field-group">
+            <label>Horário preferido</label>
+            <input type="time" class="field-input" id="v_hora_visita">
+          </div>
+          <div class="field-group" style="grid-column:1/-1">
+            <label>Observação</label>
+            <textarea class="field-textarea" id="v_observacao" rows="2" placeholder="Observação interna..."></textarea>
+          </div>
+        </div>
+        <button class="btn-primary-lg" onclick="salvarVisitante()" style="margin-top:8px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          Cadastrar Visitante
+        </button>
+      </div>
+    </div>
+
+    <!-- Lista -->
+    <div class="form-card">
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          Todos os Visitantes
+        </div>
+        <div id="listaVisitantes"><div class="loading-msg">Carregando...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: RELATÓRIOS ============ -->
+  <div class="tab-content" id="tab-relatorios">
+    <div class="page-header">
+      <h1 class="page-title">Relatórios</h1>
+      <p class="page-sub">Histórico completo com filtros e exportação Excel</p>
+    </div>
+    <div class="form-card">
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Filtros
+        </div>
+        <div class="grid-3">
+          <div class="field-group">
+            <label>Período do Dia</label>
+            <select class="field-input" id="f_periodo">
+              <option value="">Todos os períodos</option>
+              <option>Manhã</option><option>Tarde</option><option>Noite</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Data Início</label>
+            <input type="date" class="field-input" id="f_data_ini">
+          </div>
+          <div class="field-group">
+            <label>Data Fim</label>
+            <input type="date" class="field-input" id="f_data_fim">
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap">
+          <button class="btn-secondary" onclick="buscarRelatorio()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            Filtrar
+          </button>
+          <button class="btn-excel" onclick="exportarExcel()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Exportar Excel (com Checklist)
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="form-card" style="margin-top:20px">
+      <div class="form-section">
+        <div class="section-title">Histórico de Cultos</div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Data</th><th>Dia</th><th>Período</th><th>Horário</th>
+                <th>Responsável</th><th>Presentes</th><th>Visitantes</th><th>Crianças</th><th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="bodyRelatorio">
+              <tr><td colspan="9" style="text-align:center;padding:32px;color:#8ca0c0">Clique em Filtrar para carregar</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: RESUMO ============ -->
+  <div class="tab-content" id="tab-resumo">
+    <div class="page-header">
+      <h1 class="page-title">Resumo Geral</h1>
+      <p class="page-sub">Estatísticas consolidadas</p>
+    </div>
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card blue"><div class="stat-icon">🏛️</div><div class="stat-value" id="st_cultos">—</div><div class="stat-label">Total de Cultos</div></div>
+      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" id="st_presentes">—</div><div class="stat-label">Total de Presentes</div></div>
+      <div class="stat-card"><div class="stat-icon">🙋</div><div class="stat-value" id="st_visitantes">—</div><div class="stat-label">Total de Visitantes</div></div>
+      <div class="stat-card"><div class="stat-icon">🧒</div><div class="stat-value" id="st_criancas">—</div><div class="stat-label">Total de Crianças</div></div>
+      <div class="stat-card accent"><div class="stat-icon">📊</div><div class="stat-value" id="st_media_presentes">—</div><div class="stat-label">Média Presentes/Culto</div></div>
+      <div class="stat-card accent"><div class="stat-icon">📈</div><div class="stat-value" id="st_media_visitantes">—</div><div class="stat-label">Média Visitantes/Culto</div></div>
+      <div class="stat-card accent"><div class="stat-icon">👶</div><div class="stat-value" id="st_media_criancas">—</div><div class="stat-label">Média Crianças/Culto</div></div>
+    </div>
+    <div class="form-card" style="margin-top:24px">
+      <div class="form-section">
+        <div class="section-title">Por Período</div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Período</th><th>Qtd. Cultos</th><th>Total Presentes</th><th>Média Presentes</th></tr></thead>
+            <tbody id="bodyPeriodo"><tr><td colspan="4" style="text-align:center;padding:24px;color:#8ca0c0">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="form-card" style="margin-top:24px">
+      <div class="form-section">
+        <div class="section-title">Últimos Cultos</div>
+        <div id="ultimosCultos" class="loading-msg">Carregando...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: USUÁRIOS ============ -->
+  <div class="tab-content" id="tab-usuarios">
+    <div class="page-header">
+      <h1 class="page-title">Gerenciar Usuários</h1>
+      <p class="page-sub">Crie e gerencie quem pode acessar o sistema</p>
+    </div>
+    <div class="form-card" style="margin-bottom:24px">
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          Novo Usuário
+        </div>
+        <div class="grid-2">
+          <div class="field-group">
+            <label>Nome Completo *</label>
+            <input type="text" class="field-input" id="nu_nome" placeholder="Nome do membro">
+          </div>
+          <div class="field-group">
+            <label>E-mail *</label>
+            <input type="email" class="field-input" id="nu_email" placeholder="email@exemplo.com">
+          </div>
+          <div class="field-group">
+            <label>Senha *</label>
+            <input type="password" class="field-input" id="nu_senha" placeholder="Mínimo 6 caracteres">
+          </div>
+          <div class="field-group">
+            <label>Cargo</label>
+            <select class="field-input" id="nu_cargo">
+              <option value="voluntario">Voluntário</option>
+              <option value="lider">Líder</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn-primary-lg" onclick="criarUsuario()" style="margin-top:8px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          Criar Usuário
+        </button>
+      </div>
+    </div>
+    <div class="form-card">
+      <div class="form-section">
+        <div class="section-title">Usuários Cadastrados</div>
+        <div id="listaUsuarios" class="loading-msg">Carregando...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: ESTOQUE ============ -->
+  <div class="tab-content" id="tab-estoque">
+    <div class="page-header">
+      <h1 class="page-title">Controle de Estoque</h1>
+      <p class="page-sub">Gerencie os itens e recursos da Igreja ABA</p>
+    </div>
+
+    <!-- Alertas de estoque baixo -->
+    <div id="alertasEstoque"></div>
+
+    <!-- Adicionar novo item -->
+    <div class="form-card" style="margin-bottom:24px">
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Adicionar Novo Item
+        </div>
+        <div class="grid-2">
+          <div class="field-group">
+            <label>Nome do Item *</label>
+            <input type="text" class="field-input" id="est_nome" placeholder="Ex: Microfone sem fio, Cadeiras...">
+          </div>
+          <div class="field-group">
+            <label>Categoria</label>
+            <select class="field-input" id="est_categoria">
+              <option value="Geral">Geral</option>
+              <option value="Áudio e Vídeo">Áudio e Vídeo</option>
+              <option value="Mobiliário">Mobiliário</option>
+              <option value="Limpeza">Limpeza</option>
+              <option value="Material de Escritório">Material de Escritório</option>
+              <option value="Cantina">Cantina</option>
+              <option value="Santa Ceia">Santa Ceia</option>
+              <option value="Outro">Outro</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Quantidade Disponível</label>
+            <input type="number" class="field-input" id="est_qtd" value="0" min="0">
+          </div>
+          <div class="field-group">
+            <label>Quantidade Mínima (alerta)</label>
+            <input type="number" class="field-input" id="est_qtd_min" value="0" min="0">
+          </div>
+          <div class="field-group">
+            <label>Unidade de Medida</label>
+            <select class="field-input" id="est_unidade">
+              <option value="unidade">unidade(s)</option>
+              <option value="pacote">pacote(s)</option>
+              <option value="caixa">caixa(s)</option>
+              <option value="garrafa">garrafa(s)</option>
+              <option value="rolo">rolo(s)</option>
+              <option value="litro">litro(s)</option>
+              <option value="kg">kg</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Descrição (opcional)</label>
+            <input type="text" class="field-input" id="est_desc" placeholder="Detalhes adicionais...">
+          </div>
+        </div>
+        <button class="btn-primary-lg" onclick="criarItemEstoque()" style="margin-top:8px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          Adicionar ao Estoque
+        </button>
+      </div>
+    </div>
+
+    <!-- Lista de estoque -->
+    <div class="form-card">
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          Inventário
+          <span style="margin-left:auto;font-size:11px;color:#8ca0c0;font-weight:400;text-transform:none;letter-spacing:0">
+            🔒 = Item fixo (Santa Ceia)
+          </span>
+        </div>
+        <div id="listaEstoque"><div class="loading-msg">Carregando...</div></div>
+      </div>
+    </div>
+  </div>
+
+    <!-- ══════════════════════════════════════════════════
+       CONECTA GC — v5: coordenadas reais + rota lat/lng
+  ════════════════════════════════════════════════════ -->
+  <div class="tab-content" id="tab-gc-finder">
+
+    <!-- Cabeçalho -->
+    <div class="page-header" style="margin-bottom:24px">
+      <div>
+        <h1 class="page-title" style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:28px">🧭</span> Conecta GC
+        </h1>
+        <p class="page-sub">Identifique o Grupo de Crescimento mais próximo do visitante</p>
+      </div>
+    </div>
+
+    <!-- Busca -->
+    <div class="form-card" style="margin-bottom:20px">
+      <div class="form-section" style="padding-bottom:0">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Endereço do Visitante
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div style="flex:1;min-width:220px">
+            <input type="text" id="gcEnderecoInput" class="field-input"
+              placeholder="Ex: Rua 139, 84, Jardim Algarve, Alvorada"
+              onkeydown="if(event.key==='Enter') calcularGC()"
+              autocomplete="off" spellcheck="false">
+          </div>
+          <button onclick="calcularGC()" id="btnCalcularGC"
+            style="height:44px;padding:0 22px;background:linear-gradient(135deg,#1a56b0,#56B4D3);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;white-space:nowrap;transition:opacity .2s">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            Buscar GC Próximo
+          </button>
+        </div>
+        <div id="gcGeocodeStatus" style="margin-top:8px;font-size:12px;color:#56B4D3;display:none;line-height:1.4"></div>
+        <div id="gcErro" style="display:none;margin-top:10px;padding:12px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:10px;color:#ef4444;font-size:13px"></div>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="gcLoading" style="display:none;text-align:center;padding:48px 0">
+      <div class="spinner" style="width:36px;height:36px;border-width:4px;margin:0 auto 14px"></div>
+      <p id="gcLoadingMsg" style="color:var(--text-secondary);font-size:14px;margin:0">Localizando endereço...</p>
+    </div>
+
+    <!-- Estado vazio -->
+    <div id="gcEmpty" style="text-align:center;padding:56px 20px;color:var(--text-secondary)">
+      <div style="font-size:60px;margin-bottom:14px;line-height:1">🏘️</div>
+      <h3 style="font-size:17px;font-weight:700;margin:0 0 8px;color:var(--text-primary)">Nenhuma busca realizada</h3>
+      <p style="font-size:13px;max-width:360px;margin:0 auto;line-height:1.6">
+        Digite o endereço do visitante e clique em <strong>Buscar GC Próximo</strong><br>
+        para ver a lista ordenada por proximidade.
+      </p>
+    </div>
+
+    <!-- RESULTADO -->
+    <div id="gcResultado" style="display:none">
+
+      <!-- Destaque: GC selecionado (mais próximo ou escolhido manualmente) -->
+      <div id="gcDestaqueCard" style="margin-bottom:20px;border-radius:16px;border:2px solid;overflow:hidden;position:relative;transition:border-color .3s">
+        <div id="gcDestaqueBadge" style="position:absolute;top:0;right:0;padding:5px 16px;font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;border-bottom-left-radius:12px">
+          ✅ GC SELECIONADO
+        </div>
+        <div style="padding:20px 20px 20px 20px;padding-top:34px;display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+          <div id="gcDestaqueIcone" style="width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              <span id="gcDestaqueNome" style="font-size:20px;font-weight:800;color:var(--text-primary)"></span>
+              <span id="gcDestaqueSetor" style="padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px"></span>
+              <span id="gcDestaqueMaisProx" style="padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;background:gold;color:#000;display:none">⭐ Mais próximo</span>
+            </div>
+            <p id="gcDestaqueEndereco" style="font-size:12px;color:var(--text-secondary);margin:0 0 14px"></p>
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+              <div>
+                <span id="gcDestaqueDist" style="font-size:26px;font-weight:900"></span>
+                <span id="gcDestaqueTempoRota" style="font-size:13px;color:var(--text-secondary);margin-left:8px;display:none"></span>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <a id="gcDestaqueRota" href="#" target="_blank"
+                  style="padding:8px 16px;background:#1a56b0;color:#fff;border-radius:10px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+                  🗺️ Abrir no Maps
+                </a>
+                <button onclick="verRotaOSRM()"
+                  id="btnVerRota"
+                  style="padding:8px 16px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px">
+                  🛣️ Ver Rota
+                </button>
+                <button onclick="copiarRota()"
+                  style="padding:8px 16px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px">
+                  🔗 Copiar Link
+                </button>
+                <button onclick="enviarWhatsapp()"
+                  style="padding:8px 16px;background:#25D366;color:#fff;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+                  💬 Enviar Líder
+                </button>
+              </div>
+              <!-- Mini-mapa OSRM (oculto por padrão) -->
+              <div id="gcRotaMapa" style="display:none;margin-top:14px;border-radius:12px;overflow:hidden;background:#1a2440">
+                <div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+                  <span id="gcRotaInfo" style="font-size:12px;color:rgba(255,255,255,.7)">Carregando rota...</span>
+                  <button onclick="fecharRotaMapa()" style="background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-size:16px">✕</button>
+                </div>
+                <canvas id="gcRotaCanvas" width="560" height="240" style="width:100%;height:auto;display:block"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista completa clicável -->
+      <p style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text-secondary);margin:0 0 12px">
+        Clique em um GC para selecioná-lo como destino
+      </p>
+      <div id="gcLista" style="display:flex;flex-direction:column;gap:8px"></div>
+
+    </div><!-- /gcResultado -->
+  </div>
+
+</main>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="fecharModal()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="modalTitle">Info</h3>
+      <button class="modal-close" onclick="fecharModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════════
+   CONECTA GC v5 — JS
+   Correções:
+   - gcSetState gerencia os IDs corretos do HTML v5
+   - selecionarGC() atualiza o card de destaque via ID clicado
+   - copiarRota() e enviarWhatsapp() lêem o GC selecionado
+   - toggleTipoCultoOutro() para o novo campo "Outro"
+══════════════════════════════════════════════════════════ */
+
+const SETOR_CORES = {
+  "Verde":    { bg:"#22c55e", text:"#fff", light:"rgba(34,197,94,.15)"   },
+  "Laranja":  { bg:"#f97316", text:"#fff", light:"rgba(249,115,22,.15)"  },
+  "Amarelo":  { bg:"#eab308", text:"#000", light:"rgba(234,179,8,.15)"   },
+  "Vermelho": { bg:"#ef4444", text:"#fff", light:"rgba(239,68,68,.15)"   },
+  "Azul":     { bg:"#3b82f6", text:"#fff", light:"rgba(59,130,246,.15)"  },
+  "Roxo":     { bg:"#a855f7", text:"#fff", light:"rgba(168,85,247,.15)"  },
+};
+const SETOR_EMOJIS = {
+  "Verde":"🟢","Laranja":"🟠","Amarelo":"🟡",
+  "Vermelho":"🔴","Azul":"🔵","Roxo":"🟣",
+};
+
+let gcResultadoAtual = null;   // {ok, gcs:[...], visitante_lat, visitante_lng}
+let gcSelecionadoId  = null;   // id do GC atualmente no card de destaque
+
+/* ── Tipo de Culto: mostra/esconde campo "Outro" ─────── */
+function toggleTipoCultoOutro() {
+  const sel   = document.getElementById('tipoCulto');
+  const outro = document.getElementById('tipoCultoOutro');
+  if (!sel || !outro) return;
+  outro.style.display = sel.value === 'Outro' ? '' : 'none';
+  if (sel.value === 'Outro') outro.focus();
+}
+
+/* ── Estado da tela ─────────────────────────────────── */
+function gcSetState(state) {
+  const el = (id) => document.getElementById(id);
+  el('gcEmpty').style.display     = state === 'empty'   ? '' : 'none';
+  el('gcLoading').style.display   = state === 'loading' ? '' : 'none';
+  el('gcResultado').style.display = state === 'result'  ? '' : 'none';
+  if (state !== 'erro') el('gcErro').style.display = 'none';
+}
+
+function gcMostrarErro(msg) {
+  const el = document.getElementById('gcErro');
+  el.textContent = '❌ ' + msg;
+  el.style.display = '';
+}
+
+function fmtKm(v) {
+  return Number(v || 0).toFixed(2).replace('.', ',') + ' km';
+}
+
+function getGcSelecionado() {
+  if (!gcResultadoAtual?.gcs?.length) return null;
+  return gcResultadoAtual.gcs.find(g => g.id === gcSelecionadoId)
+      || gcResultadoAtual.gcs[0];
+}
+
+/* ── Busca principal ─────────────────────────────────── */
+async function calcularGC() {
+  const endEl = document.getElementById('gcEnderecoInput');
+  const endereco = endEl.value.trim();
+  if (!endereco) {
+    showToast('Digite o endereço do visitante.', 'warning');
+    endEl.focus();
+    return;
+  }
+
+  const btn = document.getElementById('btnCalcularGC');
+  btn.disabled = true;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;animation:spin 1s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Buscando...';
+
+  gcSetState('loading');
+  document.getElementById('gcGeocodeStatus').style.display = 'none';
+  document.getElementById('gcErro').style.display = 'none';
+
+  try {
+    /* ① Geocodificar o endereço */
+    document.getElementById('gcLoadingMsg').textContent = 'Localizando o endereço no mapa...';
+    const geoResp = await fetch('/api/gcs/geocode', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ endereco })
+    });
+    const geoData = await geoResp.json();
+    if (!geoResp.ok || !geoData.ok) {
+      throw new Error(geoData.erro || geoData.dica || 'Endereço não encontrado.');
+    }
+
+    /* Mostra o endereço geocodificado como confirmação */
+    const statusEl = document.getElementById('gcGeocodeStatus');
+    // Exibe só a parte relevante (até a 3ª vírgula)
+    const displayShort = geoData.display.split(',').slice(0, 3).join(',').trim();
+    statusEl.textContent = '📍 Localizado: ' + displayShort;
+    statusEl.style.display = '';
+
+    /* ② Calcular distâncias */
+    document.getElementById('gcLoadingMsg').textContent = 'Calculando distâncias para todos os GCs...';
+    const findResp = await fetch('/api/gcs/finder', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ lat: geoData.lat, lng: geoData.lng })
+    });
+    const findData = await findResp.json();
+    if (!findResp.ok || !findData.ok) {
+      throw new Error(findData.erro || 'Erro ao calcular proximidade.');
+    }
+
+    /* ③ Renderizar */
+    gcResultadoAtual = findData;
+    gcSelecionadoId  = findData.gcs?.[0]?.id ?? null;
+    renderGCResultado();
+    gcSetState('result');
+
+  } catch (err) {
+    gcSetState('empty');
+    gcMostrarErro(err.message || 'Erro inesperado.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg> Buscar GC Próximo`;
+  }
+}
+
+/* ── Seleciona um GC da lista ────────────────────────── */
+function selecionarGC(gcId) {
+  gcSelecionadoId = gcId;
+  // Fecha o mini-mapa de rota ao trocar de GC (a rota muda)
+  fecharRotaMapa();
+  const tempoEl = document.getElementById('gcDestaqueTempoRota');
+  if (tempoEl) tempoEl.style.display = 'none';
+  renderGCResultado();
+}
+
+/* ── Renderiza card de destaque + lista ─────────────── */
+function renderGCResultado() {
+  const data = gcResultadoAtual;
+  if (!data?.gcs?.length) return;
+
+  const gc = getGcSelecionado();
+  const cor = SETOR_CORES[gc.setor] || { bg:'#888', text:'#fff', light:'rgba(136,136,136,.15)' };
+  const isMaisProximo = gc.id === data.gcs[0].id;
+
+  /* ── Card de destaque ── */
+  const card = document.getElementById('gcDestaqueCard');
+  card.style.borderColor = cor.bg;
+  card.style.background  = `linear-gradient(135deg,${cor.light},transparent 70%)`;
+
+  const badge = document.getElementById('gcDestaqueBadge');
+  badge.style.background = cor.bg;
+  badge.style.color      = cor.text;
+
+  document.getElementById('gcDestaqueIcone').textContent   = SETOR_EMOJIS[gc.setor] || '📍';
+  document.getElementById('gcDestaqueIcone').style.background = cor.bg + '30';
+  document.getElementById('gcDestaqueNome').textContent    = gc.nome;
+  document.getElementById('gcDestaqueNome').style.color    = cor.bg;
+
+  const setorEl = document.getElementById('gcDestaqueSetor');
+  setorEl.textContent       = 'Setor ' + gc.setor;
+  setorEl.style.background  = cor.bg;
+  setorEl.style.color       = cor.text;
+
+  const proxEl = document.getElementById('gcDestaqueMaisProx');
+  proxEl.style.display = isMaisProximo ? '' : 'none';
+
+  document.getElementById('gcDestaqueEndereco').textContent =
+    `${gc.endereco}, ${gc.bairro}, ${gc.cidade}/${gc.estado}`;
+
+  const distEl = document.getElementById('gcDestaqueDist');
+  distEl.textContent  = fmtKm(gc.distancia_km);
+  distEl.style.color  = cor.bg;
+
+  document.getElementById('gcDestaqueRota').href = gc.rota_link;
+
+  /* ── Lista ── */
+  const lista = document.getElementById('gcLista');
+  lista.innerHTML = '';
+  data.gcs.forEach((g, idx) => {
+    const c = SETOR_CORES[g.setor] || { bg:'#888', text:'#fff', light:'rgba(136,136,136,.1)' };
+    const sel  = g.id === gcSelecionadoId;
+    const prox = idx === 0;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.onclick = () => selecionarGC(g.id);
+    btn.style.cssText = [
+      'width:100%;display:flex;align-items:center;gap:12px;padding:14px 16px;',
+      `border-radius:12px;border:2px solid ${sel ? c.bg : prox ? c.bg+'66' : 'var(--border)'};`,
+      `background:${sel ? c.light : 'var(--card-bg)'};`,
+      'transition:all .15s;cursor:pointer;text-align:left;',
+      sel ? `box-shadow:0 4px 16px ${c.bg}33;` : '',
+    ].join('');
+
+    btn.innerHTML = `
+      <div style="font-size:20px;width:32px;text-align:center;flex-shrink:0">${SETOR_EMOJIS[g.setor]||'📍'}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
+          <span style="font-weight:800;font-size:14px;color:var(--text-primary)">${g.nome}</span>
+          <span style="background:${c.bg};color:${c.text};padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700">Setor ${g.setor}</span>
+          ${prox ? `<span style="background:gold;color:#000;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700">⭐ Mais próximo</span>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary)">${g.endereco}, ${g.bairro}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:16px;font-weight:900;color:${c.bg}">${fmtKm(g.distancia_km)}</div>
+        <div style="font-size:10px;color:${sel?c.bg:'var(--text-secondary)'};font-weight:600;margin-top:4px">
+          ${sel ? '✓ Selecionado' : 'Selecionar'}
+        </div>
+      </div>`;
+    lista.appendChild(btn);
+  });
+}
+
+/* ── Ver rota OSRM (polilinha desenhada em canvas) ──── */
+async function verRotaOSRM() {
+  const gc = getGcSelecionado();
+  const data = gcResultadoAtual;
+  if (!gc || !data) return;
+
+  const mapaDiv  = document.getElementById('gcRotaMapa');
+  const infoEl   = document.getElementById('gcRotaInfo');
+  const canvas   = document.getElementById('gcRotaCanvas');
+  const btn      = document.getElementById('btnVerRota');
+
+  // Toggle: fecha se já aberto
+  if (mapaDiv.style.display !== 'none') {
+    mapaDiv.style.display = 'none';
+    btn.textContent = '🛣️ Ver Rota';
+    return;
+  }
+
+  mapaDiv.style.display = '';
+  infoEl.textContent = '⏳ Buscando rota...';
+  btn.textContent = '⏳ Carregando...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch('/api/gcs/rota-osrm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orig_lat: data.visitante_lat, orig_lng: data.visitante_lng,
+        dest_lat: gc.lat,             dest_lng: gc.lng,
+      })
+    });
+    const rd = await resp.json();
+
+    if (rd.ok && rd.coordinates && rd.coordinates.length > 1) {
+      // Atualiza info
+      const distKm   = (rd.distance_m / 1000).toFixed(1).replace('.', ',');
+      const durMin   = Math.round(rd.duration_s / 60);
+      infoEl.textContent = `📍 ${distKm} km · ⏱ ~${durMin} min de carro`;
+
+      // Atualiza badge de tempo no card
+      const tempoEl = document.getElementById('gcDestaqueTempoRota');
+      if (tempoEl) {
+        tempoEl.textContent = `~${durMin} min`;
+        tempoEl.style.display = '';
+      }
+
+      desenharRotaCanvas(canvas, rd.coordinates,
+        [data.visitante_lng, data.visitante_lat],
+        [gc.lng, gc.lat]);
+    } else {
+      infoEl.textContent = '⚠️ Rota não disponível. Use o botão "Abrir no Maps".';
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  } catch(e) {
+    infoEl.textContent = '⚠️ Erro ao buscar rota. Verifique sua conexão.';
+  } finally {
+    btn.textContent = '🛣️ Fechar Rota';
+    btn.disabled = false;
+  }
+}
+
+function fecharRotaMapa() {
+  document.getElementById('gcRotaMapa').style.display = 'none';
+  document.getElementById('btnVerRota').textContent = '🛣️ Ver Rota';
+}
+
+function desenharRotaCanvas(canvas, coords, origem, destino) {
+  /* coords = [[lng, lat], ...] */
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Fundo
+  ctx.fillStyle = '#1a2440';
+  ctx.fillRect(0, 0, W, H);
+
+  // Calcular bounding box
+  const lngs = coords.map(c => c[0]);
+  const lats = coords.map(c => c[1]);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const pad = 30;
+
+  function toXY(lng, lat) {
+    const x = pad + ((lng - minLng) / (maxLng - minLng || 1)) * (W - pad * 2);
+    // Latitude: y inverte (norte = topo)
+    const y = pad + ((maxLat - lat) / (maxLat - minLat || 1)) * (H - pad * 2);
+    return [x, y];
+  }
+
+  // Linha da rota
+  ctx.beginPath();
+  ctx.strokeStyle = '#56B4D3';
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.lineCap  = 'round';
+  coords.forEach(([lng, lat], i) => {
+    const [x, y] = toXY(lng, lat);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Marcador origem (verde)
+  const [ox, oy] = toXY(origem[0], origem[1]);
+  ctx.beginPath();
+  ctx.arc(ox, oy, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#22c55e';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Marcador destino (azul)
+  const [dx, dy] = toXY(destino[0], destino[1]);
+  ctx.beginPath();
+  ctx.arc(dx, dy, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#3b82f6';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Labels
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.fillText('Você', ox, oy - 12);
+  ctx.fillText('GC', dx, dy - 12);
+}
+
+/* ── Copiar rota ─────────────────────────────────────── */
+function copiarRota() {
+  const gc = getGcSelecionado();
+  if (!gc) return;
+  const txt = `📍 Rota para ${gc.nome} (Setor ${gc.setor})
+Endereço: ${gc.endereco}, ${gc.bairro}, ${gc.cidade}/${gc.estado}
+🗺️ ${gc.rota_link}`;
+  navigator.clipboard.writeText(txt)
+    .then(()  => showToast('Link copiado! Cole no WhatsApp do líder. 📋', 'success'))
+    .catch(()  => { prompt('Copie o link de rota:', gc.rota_link); });
+}
+
+/* ── Enviar no WhatsApp ──────────────────────────────── */
+function enviarWhatsapp() {
+  const gc = getGcSelecionado();
+  if (!gc) return;
+  const msg = `Olá lider! 👋 Um visitante foi direcionado para o *${gc.nome}* (Setor ${gc.setor}).
+📍 ${gc.endereco}, ${gc.bairro}, ${gc.cidade}/${gc.estado}
+🗺️ Rota: ${gc.rota_link}`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+</script>
+</body>
+</html>

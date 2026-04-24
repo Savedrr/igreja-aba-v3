@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Igreja ABA — Bem-vindo(a)!</title>
+<!-- Favicons — compatível com todos os navegadores e celulares -->
+<link rel="icon" type="image/x-icon"  href="/static/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180"    href="/static/apple-touch-icon.png">
+<meta name="theme-color" content="#0A2463"><link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--az1:#061A3A;--az2:#0A2463;--az3:#1B4FA8;--az4:#3E7CB1;--az5:#56B4D3;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Inter',sans-serif;background:var(--az1);min-height:100vh;color:#1A2744;}
+
+  .header{
+    background:linear-gradient(135deg,#061A3A,#0A2463);
+    padding:28px 20px 24px;text-align:center;
+  }
+  .header .logo-c{width:64px;height:64px;background:#000;border-radius:50%;
+    margin:0 auto 14px;display:flex;align-items:center;justify-content:center;}
+  .header .logo-c svg{width:38px;height:38px;}
+  .header h1{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:6px;color:#fff;}
+  .header p{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:var(--az5);margin-top:3px;}
+  .welcome-badge{display:inline-block;background:rgba(86,180,211,.15);
+    border:1px solid rgba(86,180,211,.3);color:var(--az5);
+    font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+    padding:5px 16px;border-radius:20px;margin-top:10px;}
+
+  .container{max-width:540px;margin:0 auto;padding:24px 16px 60px;}
+
+  .section-card{background:#fff;border-radius:16px;padding:22px 20px;
+    margin-bottom:16px;box-shadow:0 4px 20px rgba(0,0,0,.12);}
+  .sec-title{font-size:12px;font-weight:700;text-transform:uppercase;
+    letter-spacing:1.5px;color:var(--az2);margin-bottom:16px;
+    display:flex;align-items:center;gap:8px;}
+
+  .fgroup{margin-bottom:14px;}
+  .fgroup label{display:block;font-size:11px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.5px;color:#4A6080;margin-bottom:6px;}
+  .finput,.ftextarea,.fselect{
+    width:100%;padding:11px 13px;border:1.5px solid #D8E4F0;
+    border-radius:10px;font-family:'Inter',sans-serif;font-size:15px;
+    color:#1A2744;background:#fff;outline:none;transition:all .2s;
+    -webkit-appearance:none;
+  }
+  .finput:focus,.ftextarea:focus,.fselect:focus{
+    border-color:var(--az4);box-shadow:0 0 0 3px rgba(62,124,177,.12);}
+  .ftextarea{resize:vertical;min-height:80px;}
+  .fselect{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234A6080'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 12px center;background-size:16px;
+    padding-right:36px;}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+
+  .visita-toggle{display:none;}
+  .visita-toggle.show{display:block;margin-top:10px;animation:fadeIn .3s ease;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+
+  .check-row{display:flex;align-items:center;gap:10px;padding:2px 0;}
+  .check-row input[type=checkbox]{width:20px;height:20px;accent-color:var(--az3);cursor:pointer;flex-shrink:0;}
+  .check-row label{font-size:14px;color:#1A2744;cursor:pointer;}
+
+  .btn-submit{
+    width:100%;padding:16px;
+    background:linear-gradient(135deg,var(--az2),var(--az3));
+    color:#fff;border:none;border-radius:12px;
+    font-size:15px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+    cursor:pointer;transition:all .3s;margin-top:4px;
+  }
+  .btn-submit:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(10,36,99,.3);}
+  .btn-submit:active{transform:translateY(0);}
+  .btn-submit.loading{opacity:.7;pointer-events:none;}
+
+  .success-screen{display:none;text-align:center;padding:48px 20px;}
+  .success-screen.show{display:block;}
+  .success-icon{font-size:64px;margin-bottom:16px;}
+  .success-screen h2{font-family:'Bebas Neue',sans-serif;font-size:32px;
+    letter-spacing:4px;color:#fff;margin-bottom:8px;}
+  .success-screen p{color:rgba(255,255,255,.7);font-size:15px;line-height:1.6;}
+
+  .form-wrap{}
+  .form-wrap.hide{display:none;}
+
+  .obr-note{background:rgba(86,180,211,.1);border-left:3px solid var(--az5);
+    padding:10px 14px;border-radius:0 8px 8px 0;font-size:12px;
+    color:rgba(255,255,255,.65);margin-bottom:20px;}
+
+  .spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);
+    border-top-color:#fff;border-radius:50%;display:inline-block;
+    animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo-c">
+    <svg viewBox="0 0 100 100" fill="none">
+      <rect x="20" y="15" width="60" height="70" fill="white"/>
+      <rect x="35" y="38" width="30" height="30" fill="#0A2463"/>
+      <rect x="44" y="29" width="12" height="12" fill="#0A2463"/>
+      <rect x="45" y="44" width="10" height="18" fill="white"/>
+      <rect x="40" y="49" width="20" height="8" fill="white"/>
+    </svg>
+  </div>
+  <h1>IGREJA ABA</h1>
+  <p>Um Lar Para Pertencer</p>
+  <div class="welcome-badge">📋 Ficha de Visitante</div>
+</div>
+
+<div class="container">
+
+  <div id="formWrap" class="form-wrap">
+    <div class="obr-note">
+      Que alegria ter você aqui! Preencha os campos abaixo para nos conhecermos melhor. ✨
+    </div>
+
+    <!-- DADOS PESSOAIS -->
+    <div class="section-card">
+      <div class="sec-title">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px;height:16px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+        Dados Pessoais
+      </div>
+      <div class="fgroup">
+        <label>Nome Completo *</label>
+        <input type="text" class="finput" id="v_nome" placeholder="Seu nome completo" autocomplete="name">
+      </div>
+      <div class="grid2">
+        <div class="fgroup">
+          <label>Idade</label>
+          <input type="number" class="finput" id="v_idade" placeholder="Ex: 28" min="1" max="120">
+        </div>
+        <div class="fgroup">
+          <label>Telefone / WhatsApp *</label>
+          <input type="tel" class="finput" id="v_telefone" placeholder="(51) 99999-9999" autocomplete="tel">
+        </div>
+      </div>
+    </div>
+
+    <!-- ENDEREÇO -->
+    <div class="section-card">
+      <div class="sec-title">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px;height:16px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Endereço
+      </div>
+      <div class="fgroup">
+        <label>Rua e Número</label>
+        <input type="text" class="finput" id="v_endereco" placeholder="Rua das Flores, 123" autocomplete="street-address">
+      </div>
+      <div class="grid2">
+        <div class="fgroup">
+          <label>Bairro</label>
+          <input type="text" class="finput" id="v_bairro" placeholder="Seu bairro">
+        </div>
+        <div class="fgroup">
+          <label>Cidade</label>
+          <input type="text" class="finput" id="v_cidade" placeholder="Cidade" autocomplete="address-level2">
+        </div>
+      </div>
+    </div>
+
+    <!-- CONEXÃO COM A IGREJA -->
+    <div class="section-card">
+      <div class="sec-title">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px;height:16px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+        Conexão com a Igreja
+      </div>
+      <div class="fgroup">
+        <label>Como conheceu a Igreja ABA?</label>
+        <select class="fselect" id="v_como">
+          <option value="">Selecione...</option>
+          <option>Indicação de amigo / familiar</option>
+          <option>Redes sociais (Instagram, Facebook)</option>
+          <option>Pesquisa no Google</option>
+          <option>Passei na frente</option>
+          <option>Evento ou ação social</option>
+          <option>Outro</option>
+        </select>
+      </div>
+      <div class="fgroup">
+        <label>Pedidos de Oração</label>
+        <textarea class="ftextarea" id="v_oracao" placeholder="Compartilhe seus pedidos de oração conosco..."></textarea>
+      </div>
+    </div>
+
+    <!-- VISITA PASTORAL -->
+    <div class="section-card">
+      <div class="sec-title">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px;height:16px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Visita Pastoral
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="v_quer_visita" onchange="toggleVisita(this)">
+        <label for="v_quer_visita">Gostaria de receber uma visita da nossa equipe pastoral em casa</label>
+      </div>
+      <div id="visitaExtra" class="visita-toggle">
+        <div class="grid2" style="margin-top:12px">
+          <div class="fgroup">
+            <label>Melhor data para visita</label>
+            <input type="date" class="finput" id="v_data_visita">
+          </div>
+          <div class="fgroup">
+            <label>Horário preferido</label>
+            <input type="time" class="finput" id="v_hora_visita">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-submit" id="btnEnviar" onclick="enviarFormulario()">
+      Enviar Ficha 🙏
+    </button>
+  </div>
+
+  <div class="success-screen" id="successScreen">
+    <div class="success-icon">🙏</div>
+    <h2>OBRIGADO!</h2>
+    <p style="color:#fff;font-size:18px;font-weight:600;margin-bottom:12px">Que alegria ter você aqui!</p>
+    <p>Sua ficha foi enviada com sucesso.<br>
+    Nossa equipe entrará em contato em breve.<br><br>
+    <strong style="color:var(--az5)">Que Deus abençoe você e sua família! ❤️</strong></p>
+  </div>
+</div>
+
+<script>
+const CULTO_ID = "{{ culto_id }}";
+
+function toggleVisita(cb){
+  document.getElementById('visitaExtra').classList.toggle('show', cb.checked);
+}
+
+async function enviarFormulario(){
+  const nome     = document.getElementById('v_nome').value.trim();
+  const telefone = document.getElementById('v_telefone').value.trim();
+  if(!nome || !telefone){
+    alert('Por favor, preencha nome e telefone — são obrigatórios! 😊');
+    return;
+  }
+  const btn = document.getElementById('btnEnviar');
+  btn.innerHTML = '<span class="spinner"></span> Enviando...';
+  btn.classList.add('loading');
+
+  const payload = {
+    nome, telefone,
+    idade:        document.getElementById('v_idade').value,
+    endereco:     document.getElementById('v_endereco').value,
+    bairro:       document.getElementById('v_bairro').value,
+    cidade:       document.getElementById('v_cidade').value,
+    como_conheceu:document.getElementById('v_como').value,
+    pedido_oracao:document.getElementById('v_oracao').value,
+    quer_visita:  document.getElementById('v_quer_visita').checked,
+    data_visita:  document.getElementById('v_data_visita').value,
+    hora_visita:  document.getElementById('v_hora_visita').value,
+    origem:       'qrcode',
+    culto_id:     CULTO_ID ? parseInt(CULTO_ID) : null
+  };
+
+  try{
+    const r = await fetch('/api/visitantes', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if(r.ok && d.ok){
+      document.getElementById('formWrap').classList.add('hide');
+      document.getElementById('successScreen').classList.add('show');
+      window.scrollTo({top:0, behavior:'smooth'});
+    }else{
+      alert(d.erro || 'Erro ao enviar. Tente novamente.');
+      btn.innerHTML = 'Enviar Ficha 🙏';
+      btn.classList.remove('loading');
+    }
+  }catch(e){
+    alert('Erro de conexão. Verifique a internet e tente novamente.');
+    btn.innerHTML = 'Enviar Ficha 🙏';
+    btn.classList.remove('loading');
+  }
+}
+</script>
+</body>
+</html>

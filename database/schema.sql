@@ -1,0 +1,156 @@
+-- ============================================================
+--  IGREJA ABA — Banco de Dados v3
+--  Novidade: tabela estoque + itens Santa Ceia pré-cadastrados
+-- ============================================================
+PRAGMA foreign_keys = ON;
+
+-- ── Usuários ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS usuarios (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome       TEXT    NOT NULL,
+    email      TEXT    NOT NULL UNIQUE,
+    senha_hash TEXT    NOT NULL,
+    cargo      TEXT    DEFAULT 'voluntario',
+    ativo      INTEGER DEFAULT 1,
+    criado_em  TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+-- ── Cultos ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS cultos (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    data        TEXT    NOT NULL,
+    hora        TEXT    NOT NULL,
+    dia_semana  TEXT    NOT NULL,
+    periodo     TEXT    NOT NULL,
+    responsavel TEXT    NOT NULL,
+    presentes   INTEGER DEFAULT 0,
+    visitantes  INTEGER DEFAULT 0,
+    criancas    INTEGER DEFAULT 0,
+    observacoes TEXT    DEFAULT '',
+    usuario_id  INTEGER REFERENCES usuarios(id),
+    criado_em   TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+-- ── Visitantes ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS visitantes (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    culto_id      INTEGER REFERENCES cultos(id) ON DELETE SET NULL,
+    nome          TEXT    NOT NULL,
+    idade         TEXT    DEFAULT '',
+    telefone      TEXT    NOT NULL,
+    endereco      TEXT    DEFAULT '',
+    cidade        TEXT    DEFAULT '',
+    bairro        TEXT    DEFAULT '',
+    cep           TEXT    DEFAULT '',
+    como_conheceu TEXT    DEFAULT '',
+    pedido_oracao TEXT    DEFAULT '',
+    quer_visita   INTEGER DEFAULT 0,
+    data_visita   TEXT    DEFAULT '',
+    hora_visita   TEXT    DEFAULT '',
+    lat           REAL    DEFAULT NULL,
+    lng           REAL    DEFAULT NULL,
+    observacao    TEXT    DEFAULT '',
+    origem        TEXT    DEFAULT 'manual',
+    criado_em     TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+-- ── Checklists ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS checklists (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    culto_id       INTEGER REFERENCES cultos(id) ON DELETE CASCADE,
+    categoria      TEXT    NOT NULL,
+    item_key       TEXT    NOT NULL,
+    item_descricao TEXT    NOT NULL,
+    concluido      INTEGER DEFAULT 0,
+    responsavel    TEXT    DEFAULT '',
+    criado_em      TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS itens_checklist_padrao (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    categoria TEXT    NOT NULL,
+    ordem     INTEGER DEFAULT 0,
+    descricao TEXT    NOT NULL,
+    item_key  TEXT    NOT NULL UNIQUE
+);
+
+-- ── ESTOQUE (novo) ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS estoque (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome              TEXT    NOT NULL UNIQUE,           -- UNIQUE evita duplicatas
+    categoria         TEXT    DEFAULT 'Geral',
+    quantidade        INTEGER DEFAULT 0,
+    quantidade_minima INTEGER DEFAULT 0,
+    unidade           TEXT    DEFAULT 'unidade',
+    descricao         TEXT    DEFAULT '',
+    fixo              INTEGER DEFAULT 0,
+    criado_em         TEXT    DEFAULT (datetime('now','localtime')),
+    atualizado_em     TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+-- ── Dados iniciais: Admin ─────────────────────────────────────
+-- Senha: Admin@123
+INSERT OR IGNORE INTO usuarios (nome, email, senha_hash, cargo) VALUES
+('Administrador','admin@igrejaaba.com',
+ 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7','admin');
+
+-- ── Checklist padrão ─────────────────────────────────────────
+INSERT OR IGNORE INTO itens_checklist_padrao (categoria,ordem,descricao,item_key) VALUES
+('antes',1,'Verificar se tem copos no bebedouro','ant_copos'),
+('antes',2,'Equipe do estacionamento: usar coletes, distribuir cones e organizar mesas da cantina','ant_estac'),
+('antes',3,'Ligar os ar-condicionados em dias de calor','ant_ar'),
+('antes',4,'Estacionamento organizado','ant_estac2'),
+('antes',5,'Usar crachá','ant_cracha'),
+('antes',6,'Varrer a frente da igreja e a área da cantina','ant_varrer'),
+('mesa_entrada',1,'Envelopes de dízimos e oferta','mesa_envelopes'),
+('mesa_entrada',2,'Fichas "Quero ser membro de um GC"','mesa_fichas_gc'),
+('mesa_entrada',3,'Fichas "Preciso de oração"','mesa_fichas_oracao'),
+('mesa_entrada',4,'Organizar os vales presentes dos visitantes','mesa_vales'),
+('banheiro',1,'Verificar papel higiênico','ban_papel_hig'),
+('banheiro',2,'Verificar papel toalha','ban_papel_toalha'),
+('banheiro',3,'Verificar sabonete líquido','ban_sabonete'),
+('banheiro',4,'Verificar lixeiras','ban_lixeiras'),
+('durante',1,'Distribuir envelopes na oferta','dur_envelopes'),
+('durante',2,'Levar água ao ministrador','dur_agua'),
+('durante',3,'Atenção nas situações diversas','dur_atencao'),
+('durante',4,'Contagem de presentes, visitantes e crianças','dur_contagem'),
+('durante',5,'Entregar vale presente','dur_vale'),
+('final',1,'Retirar lixo','fin_lixo'),
+('final',2,'Organizar cadeiras','fin_cadeiras'),
+('final',3,'Desligar ar-condicionado','fin_ar'),
+('final',4,'Verificar se todas as luzes estão apagadas','fin_luzes'),
+('final',5,'Verificar as torneiras dos banheiros','fin_torneiras'),
+('final',6,'Fechar portas','fin_portas'),
+('final',7,'Acionar alarme','fin_alarme'),
+('final',8,'Recolher cones e placas','fin_cones');
+
+-- ── Estoque pré-cadastrado: Santa Ceia ───────────────────────
+INSERT OR IGNORE INTO estoque (nome, categoria, quantidade, quantidade_minima, unidade, descricao, fixo) VALUES
+('Cálices de Santa Ceia — Individuais', 'Santa Ceia', 0, 50, 'unidade',
+ 'Cálices descartáveis individuais usados na Santa Ceia', 1),
+('Pão da Santa Ceia', 'Santa Ceia', 0, 10, 'pacote',
+ 'Pão para a celebração da Santa Ceia', 1),
+('Suco de Uva da Santa Ceia', 'Santa Ceia', 0, 10, 'garrafa',
+ 'Suco de uva para a celebração da Santa Ceia', 1),
+('Bandeja de Santa Ceia', 'Santa Ceia', 0, 5, 'unidade',
+ 'Bandejas para distribuição dos cálices', 1);
+
+-- ── Views ─────────────────────────────────────────────────────
+CREATE VIEW IF NOT EXISTS v_resumo_geral AS
+SELECT
+    COUNT(*)                    AS total_cultos,
+    COALESCE(SUM(presentes),0)  AS total_presentes,
+    COALESCE(SUM(visitantes),0) AS total_visitantes,
+    COALESCE(SUM(criancas),0)   AS total_criancas,
+    ROUND(AVG(presentes),1)     AS media_presentes,
+    ROUND(AVG(visitantes),1)    AS media_visitantes,
+    ROUND(AVG(criancas),1)      AS media_criancas
+FROM cultos;
+
+CREATE VIEW IF NOT EXISTS v_cultos_detalhe AS
+SELECT c.id, c.data, c.hora, c.dia_semana, c.periodo, c.responsavel,
+       c.presentes, c.visitantes, c.criancas, c.observacoes, c.criado_em,
+       COUNT(v.id) AS qtd_visitantes_cadastrados
+FROM cultos c
+LEFT JOIN visitantes v ON v.culto_id = c.id
+GROUP BY c.id;
