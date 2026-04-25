@@ -686,7 +686,7 @@ GCS_PADRAO = [
         "endereco": "Rua Cento e Trinta e Nove, 84", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Verde",
         # Rua 139 (Cento e Trinta e Nove) no Jardim Algarve, Alvorada
-        "lat": -30.03461, "lng": -51.08598,
+        "lat": -30.0344258, "lng": -51.085992217,
     },
     # -- SETOR LARANJA -----------------------------------------
     {
@@ -694,7 +694,7 @@ GCS_PADRAO = [
         "endereco": "Rua Alameda, 97", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Laranja",
         # Rua Alameda, Jardim Algarve, Alvorada
-        "lat": -30.03461, "lng": -51.08598,
+        "lat": 30.028684, "lng": -51.08536317,
     },
     # -- SETOR AMARELO -----------------------------------------
     {
@@ -702,14 +702,14 @@ GCS_PADRAO = [
         "endereco": "Rua Beija-Flores, 371", "bairro": "Porto Verde",
         "cidade": "Alvorada", "estado": "RS", "setor": "Amarelo",
         # Rua Beija-Flores, Porto Verde, Alvorada
-        "lat": -30.03673, "lng": -51.07651,
+        "lat": -30.036417, "lng": -51.076434217,
     },
     {
         "id": 4, "nome": "GC Conectado",
         "endereco": "Av. Borges de Medeiros, 196", "bairro": "Intersul",
         "cidade": "Alvorada", "estado": "RS", "setor": "Amarelo",
         # Av. Borges de Medeiros próximo ao Intersul, Alvorada
-        "lat": -30.01994, "lng": -51.07218,
+        "lat": -30.0199558, "lng": -51.071986617,
     },
     # -- SETOR VERMELHO ----------------------------------------
     {
@@ -717,21 +717,21 @@ GCS_PADRAO = [
         "endereco": "Rua Trinta e Quatro, 318", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Vermelho",
         # Rua 34 (Trinta e Quatro), Jardim Algarve, Alvorada
-        "lat": -29.98710, "lng": -51.07650,
+         "lat": -30.03243, "lng": -51.08118117,
     },
     {
         "id": 6, "nome": "GC Manálovers",
         "endereco": "Rua Flaviano Morais Monroe, 556", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Vermelho",
         # Rua Flaviano Morais Monroe, Jardim Algarve, Alvorada
-        "lat": -30.03243, "lng": -51.08733,
+        "lat": -30.032484, "lng": -51.087263517,
     },
     {
         "id": 7, "nome": "GC Farol da Lagoa",
         "endereco": "Av. Borges de Medeiros, 196", "bairro": "Intersul",
         "cidade": "Alvorada", "estado": "RS", "setor": "Vermelho",
         # Mesmo endereço do GC Conectado (Intersul)
-        "lat": -30.01994, "lng": -51.07218,
+         "lat": -30.0199558, "lng": -51.071986617,
     },
     # -- SETOR AZUL --------------------------------------------
     {
@@ -739,14 +739,14 @@ GCS_PADRAO = [
         "endereco": "Rua Gonçalves de Magalhães, 806", "bairro": "Jardim Porto Alegre",
         "cidade": "Alvorada", "estado": "RS", "setor": "Azul",
         # Rua Gonçalves de Magalhães, Jardim Porto Alegre, Alvorada
-        "lat": -30.02423, "lng": -51.07704,
+        "lat": -30.0243709, "lng": -51.07704,
     },
     {
         "id": 11, "nome": "GC Corujas",
         "endereco": "Rua Corujas, 552", "bairro": "Porto Verde",
         "cidade": "Alvorada", "estado": "RS", "setor": "Azul",
         # Rua Corujas, Porto Verde, Alvorada
-        "lat": -30.04033, "lng": -51.07529,
+        "lat": -30.0404527, "lng": -51.075135517,
     },
     # -- SETOR ROXO --------------------------------------------
     {
@@ -754,14 +754,14 @@ GCS_PADRAO = [
         "endereco": "Rua Pedro Claudio Monassa, 380", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Roxo",
         # Rua Pedro Claudio Monassa, Jardim Algarve, Alvorada
-        "lat": -30.02929, "lng": -51.08135,
+        "lat": -30.0292309, "lng": -51.0813237,
     },
     {
         "id": 10, "nome": "GC Resgate da Cruz",
         "endereco": "Av. Elmira Pereira Silveira, 327", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Roxo",
         # Av. Elmira Pereira Silveira, Jardim Algarve, Alvorada
-        "lat": -30.03073, "lng": -51.0837,
+        "lat": -30.0309295, "lng": -51.083800717,
     },
 ]
 
