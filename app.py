@@ -107,13 +107,16 @@ class _PGConnWrapper:
 
     def executescript(self, script):
         # Divide em statements e executa um a um (usado no init_db)
-        import re as _re
         stmts = [s.strip() for s in script.split(";") if s.strip()]
         for s in stmts:
             try:
                 self._cur.execute(s)
-            except Exception:
-                pass  # ignora erros de "ja existe" no CREATE
+                self._conn.commit()
+            except Exception as _e:
+                self._conn.rollback()
+                # ignora erros de "ja existe" (tabelas/indices duplicados)
+                if "already exists" not in str(_e).lower() and                    "duplicate" not in str(_e).lower():
+                    logger.warning(f"executescript ignorou: {_e}")
 
     def fetchone(self):
         row = self._cur.fetchone()
@@ -230,7 +233,10 @@ def init_db():
 
 def ensure_db():
     """Garante que o banco existe antes de qualquer operação."""
-    if not os.path.exists(DB_PATH):
+    if USE_POSTGRES:
+        # PostgreSQL: sempre tenta criar as tabelas (IF NOT EXISTS protege)
+        init_db()
+    elif not os.path.exists(DB_PATH):
         logger.warning("Banco não encontrado — tentando inicializar agora...")
         init_db()
 
