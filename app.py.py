@@ -478,7 +478,7 @@ def criar_culto():
              presentes, visitantes, criancas, observacoes, session["usuario_id"])
         )
         if USE_POSTGRES:
-            culto_id = conn.execute("SELECT lastval()").fetchone()[0]
+            culto_id = list(conn.execute("SELECT lastval()").fetchone().values())[0]
         else:
             culto_id = cur.lastrowid
         itens = conn.execute(
@@ -617,7 +617,7 @@ def criar_visitante():
             )
         )
         if USE_POSTGRES:
-            vid = conn.execute("SELECT lastval()").fetchone()[0]
+            vid = list(conn.execute("SELECT lastval()").fetchone().values())[0]
         else:
             vid = cur.lastrowid
         conn.commit()
@@ -1098,7 +1098,7 @@ def criar_item_estoque():
                 )
             )
             if USE_POSTGRES:
-                iid = conn.execute("SELECT lastval()").fetchone()[0]
+                iid = list(conn.execute("SELECT lastval()").fetchone().values())[0]
             else:
                 iid = cur.lastrowid
             conn.commit()
