@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS estoque (
 -- ── Dados iniciais: Admin ─────────────────────────────────────
 -- Senha: Aba@2026
 INSERT OR IGNORE INTO usuarios (nome, email, senha_hash, cargo) VALUES
-('Adriel','admin@aba.com',
+('Adriel','adrieladm@aba.com',
  '9fb629f59f0305ba847aa0f1847c1a6813b5a7574538330e7883743f5637a86d','admin');
 
 -- ── Checklist padrão ─────────────────────────────────────────
@@ -127,13 +127,7 @@ INSERT OR IGNORE INTO itens_checklist_padrao (categoria,ordem,descricao,item_key
 -- ── Estoque pré-cadastrado: Santa Ceia ───────────────────────
 INSERT OR IGNORE INTO estoque (nome, categoria, quantidade, quantidade_minima, unidade, descricao, fixo) VALUES
 ('Cálices de Santa Ceia — Individuais', 'Santa Ceia', 0, 50, 'unidade',
- 'Cálices descartáveis individuais usados na Santa Ceia', 1),
-('Pão da Santa Ceia', 'Santa Ceia', 0, 10, 'pacote',
- 'Pão para a celebração da Santa Ceia', 1),
-('Suco de Uva da Santa Ceia', 'Santa Ceia', 0, 10, 'garrafa',
- 'Suco de uva para a celebração da Santa Ceia', 1),
-('Bandeja de Santa Ceia', 'Santa Ceia', 0, 5, 'unidade',
- 'Bandejas para distribuição dos cálices', 1);
+ 'Cálices descartáveis individuais usados na Santa Ceia', 1);
 
 -- ── Views ─────────────────────────────────────────────────────
 CREATE VIEW IF NOT EXISTS v_resumo_geral AS

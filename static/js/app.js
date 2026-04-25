@@ -64,7 +64,8 @@ function ativarTab(tab) {
     registro:"Registro de Culto", checklist:"Checklist",
     visitantes:"Visitantes",      estoque:"Estoque",
     relatorios:"Relatórios",      resumo:"Resumo Geral",
-    usuarios:"Usuários"
+    usuarios:"Usuários",
+    "conecta gc":"Conecta GC"
   };
   document.getElementById("topbarTitle").textContent = titles[tab] || tab;
   if(tab==="resumo")     carregarResumo();
