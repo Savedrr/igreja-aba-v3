@@ -195,8 +195,7 @@ def _get_schema_sql():
         # Remove pragmas SQLite
         lines = [l for l in sql.splitlines()
                  if not l.strip().upper().startswith("PRAGMA")]
-        sql = "
-".join(lines)
+        sql = "\n".join(lines)
     return sql
 
 
