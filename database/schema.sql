@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS estoque (
 -- ── Dados iniciais: Admin ─────────────────────────────────────
 -- Senha: Aba@2026
 INSERT OR IGNORE INTO usuarios (nome, email, senha_hash, cargo) VALUES
-('Adriel','adrieladm@aba.com',
+('Adriel','admin@aba.com',
  '9fb629f59f0305ba847aa0f1847c1a6813b5a7574538330e7883743f5637a86d','admin');
 
 -- ── Checklist padrão ─────────────────────────────────────────
