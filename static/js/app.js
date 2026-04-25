@@ -37,6 +37,10 @@ async function verificarAuth() {
     d.cargo==="admin"?"Administrador": d.cargo==="lider"?"Líder":"Voluntário";
   document.getElementById("userAvatar").textContent = d.nome.charAt(0).toUpperCase();
   document.getElementById("responsavel").value      = d.nome;
+  // Conecta GC visível para todos
+  const navGC = document.getElementById("navConectaGC");
+  if(navGC) navGC.style.display = "";
+
   if(d.cargo === "admin"){
     document.getElementById("navUsuarios").style.display = "";
     carregarUsuarios();
