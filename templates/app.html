@@ -1083,9 +1083,9 @@ Endereço: ${gc.endereco}, ${gc.bairro}, ${gc.cidade}/${gc.estado}
 function enviarWhatsapp() {
   const gc = getGcSelecionado();
   if (!gc) return;
-  const msg = `Olá lider! 👋 Um visitante foi direcionado para o *${gc.nome}* (Setor ${gc.setor}).
-📍 ${gc.endereco}, ${gc.bairro}, ${gc.cidade}/${gc.estado}
-🗺️ Rota: ${gc.rota_link}`;
+  const msg = `Olá lider! Um visitante foi direcionado para o *${gc.nome}* (Setor ${gc.setor}).
+ ${gc.endereco}, ${gc.bairro}, ${gc.cidade}/${gc.estado}
+Rota: ${gc.rota_link}`;
   window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
 }
 </script>
