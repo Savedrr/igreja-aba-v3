@@ -694,7 +694,7 @@ GCS_PADRAO = [
         "endereco": "Rua Alameda, 97", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Laranja",
         # Rua Alameda, Jardim Algarve, Alvorada
-        "lat": -30.0344258, "lng": -51.0859922,
+        "lat": -30.028684, "lng": -51.085363,
     },
     # -- SETOR AMARELO -----------------------------------------
     {
