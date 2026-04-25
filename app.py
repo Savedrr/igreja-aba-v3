@@ -683,10 +683,10 @@ GCS_PADRAO = [
     # -- SETOR VERDE -------------------------------------------
     {
         "id": 1, "nome": "GC Infinito e Amem",
-        "endereco": "Rua 139, 84", "bairro": "Jardim Algarve",
+        "endereco": "Rua Cento e Trinta e Nove, 84", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Verde",
         # Rua 139 (Cento e Trinta e Nove) no Jardim Algarve, Alvorada
-        "lat": -29.98530, "lng": -51.07580,
+        "lat": -30.0344258, "lng": -51.0859922,
     },
     # -- SETOR LARANJA -----------------------------------------
     {
@@ -694,7 +694,7 @@ GCS_PADRAO = [
         "endereco": "Rua Alameda, 97", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Laranja",
         # Rua Alameda, Jardim Algarve, Alvorada
-        "lat": -29.98470, "lng": -51.07510,
+        "lat": -30.0344258, "lng": -51.0859922,
     },
     # -- SETOR AMARELO -----------------------------------------
     {
@@ -702,36 +702,36 @@ GCS_PADRAO = [
         "endereco": "Rua Beija-Flores, 371", "bairro": "Porto Verde",
         "cidade": "Alvorada", "estado": "RS", "setor": "Amarelo",
         # Rua Beija-Flores, Porto Verde, Alvorada
-        "lat": -29.99050, "lng": -51.06820,
+        "lat": -30.036709, "lng": -51.076442,
     },
     {
         "id": 4, "nome": "GC Conectado",
         "endereco": "Av. Borges de Medeiros, 196", "bairro": "Intersul",
         "cidade": "Alvorada", "estado": "RS", "setor": "Amarelo",
         # Av. Borges de Medeiros próximo ao Intersul, Alvorada
-        "lat": -29.99580, "lng": -51.08150,
+        "lat": -30.0199558, "lng": -51.0719866,
     },
     # -- SETOR VERMELHO ----------------------------------------
     {
         "id": 5, "nome": "GC Palavra Viva",
-        "endereco": "Rua 34, 318", "bairro": "Jardim Algarve",
+        "endereco": "Rua Trinta e Quatro, 318", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Vermelho",
-        # Rua 34 (Trinta e Quatro), Jardim Algarve, Alvorada
-        "lat": -29.98710, "lng": -51.07650,
+        # Rua Trinta e Quatro, Jardim Algarve, Alvorada
+        "lat": -30.032484, "lng": -51.081181,
     },
     {
         "id": 6, "nome": "GC Manálovers",
         "endereco": "Rua Flaviano Morais Monroe, 556", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Vermelho",
         # Rua Flaviano Morais Monroe, Jardim Algarve, Alvorada
-        "lat": -29.98390, "lng": -51.07430,
+        "lat": -30.032484, "lng": -51.081181,
     },
     {
         "id": 7, "nome": "GC Farol da Lagoa",
         "endereco": "Av. Borges de Medeiros, 196", "bairro": "Intersul",
         "cidade": "Alvorada", "estado": "RS", "setor": "Vermelho",
         # Mesmo endereço do GC Conectado (Intersul)
-        "lat": -29.99580, "lng": -51.08150,
+        "lat": -30.0199558, "lng": -51.0719866,
     },
     # -- SETOR AZUL --------------------------------------------
     {
@@ -739,14 +739,14 @@ GCS_PADRAO = [
         "endereco": "Rua Gonçalves de Magalhães, 806", "bairro": "Jardim Porto Alegre",
         "cidade": "Alvorada", "estado": "RS", "setor": "Azul",
         # Rua Gonçalves de Magalhães, Jardim Porto Alegre, Alvorada
-        "lat": -30.00180, "lng": -51.07920,
+        "lat": -30.0243709, "lng": -51.0766738,
     },
     {
         "id": 11, "nome": "GC Corujas",
         "endereco": "Rua Corujas, 552", "bairro": "Porto Verde",
         "cidade": "Alvorada", "estado": "RS", "setor": "Azul",
         # Rua Corujas, Porto Verde, Alvorada
-        "lat": -29.99120, "lng": -51.06730,
+        "lat": -30.0404527, "lng": -51.0751355,
     },
     # -- SETOR ROXO --------------------------------------------
     {
@@ -754,14 +754,14 @@ GCS_PADRAO = [
         "endereco": "Rua Pedro Claudio Monassa, 380", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Roxo",
         # Rua Pedro Claudio Monassa, Jardim Algarve, Alvorada
-        "lat": -29.98610, "lng": -51.07720,
+        "lat": -30.0292309, "lng": -51.0813237,
     },
     {
         "id": 10, "nome": "GC Resgate da Cruz",
         "endereco": "Av. Elmira Pereira Silveira, 327", "bairro": "Jardim Algarve",
         "cidade": "Alvorada", "estado": "RS", "setor": "Roxo",
         # Av. Elmira Pereira Silveira, Jardim Algarve, Alvorada
-        "lat": -29.98550, "lng": -51.07810,
+        "lat": -30.0309295, "lng": -51.0838007,
     },
 ]
 
