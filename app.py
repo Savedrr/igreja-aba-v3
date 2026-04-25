@@ -83,16 +83,122 @@ def get_base_url():
     return f"{proto}://{host}"
 
 # --- DB -------------------------------------------------------
+class _PGConnWrapper:
+    """
+    Wrap psycopg2 connection para ter a mesma interface do sqlite3:
+    conn.execute(sql, params), conn.executemany(), conn.commit(),
+    iteracao sobre rows, row["col"], context manager (with).
+    """
+    def __init__(self, raw):
+        self._conn = raw
+        self._cur  = raw.cursor()
+
+    # Converte ? (sqlite) para %s (psycopg2) e executa
+    def execute(self, sql, params=()):
+        sql_pg = sql.replace("?", "%s")
+        # executescript nao existe em psycopg2 — ignorado aqui
+        self._cur.execute(sql_pg, params)
+        return self
+
+    def executemany(self, sql, seq):
+        sql_pg = sql.replace("?", "%s")
+        self._cur.executemany(sql_pg, seq)
+        return self
+
+    def executescript(self, script):
+        # Divide em statements e executa um a um (usado no init_db)
+        import re as _re
+        stmts = [s.strip() for s in script.split(";") if s.strip()]
+        for s in stmts:
+            try:
+                self._cur.execute(s)
+            except Exception:
+                pass  # ignora erros de "ja existe" no CREATE
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        if row is None:
+            return None
+        return dict(row) if hasattr(row, "keys") else row
+
+    def fetchall(self):
+        rows = self._cur.fetchall()
+        return [dict(r) if hasattr(r, "keys") else r for r in rows]
+
+    def lastrowid(self):
+        return self._cur.fetchone()["id"] if self._cur.rowcount else None
+
+    @property
+    def lastrowid_val(self):
+        self._cur.execute("SELECT lastval()")
+        return self._cur.fetchone()[0]
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._cur.close()
+        self._conn.close()
+
+    # context manager
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, *_):
+        if exc_type:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
+
+    # iteracao sobre cursor (for row in conn.execute(...))
+    def __iter__(self):
+        return iter(self.fetchall())
+
+
 def get_db():
     if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-        conn.autocommit = False
-        return conn
+        raw = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        raw.autocommit = False
+        return _PGConnWrapper(raw)
     conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     return conn
+
+def _get_schema_sql():
+    """Lê o schema e adapta para o banco em uso."""
+    with open(SQL_PATH, "r", encoding="utf-8") as f:
+        sql = f.read()
+    if USE_POSTGRES:
+        # Converte sintaxe SQLite → PostgreSQL
+        sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        sql = sql.replace("INTEGER PRIMARY KEY", "SERIAL PRIMARY KEY")
+        # INSERT OR IGNORE → INSERT ... ON CONFLICT DO NOTHING
+        import re as _re
+        sql = _re.sub(
+            r"INSERT OR IGNORE INTO (\w+)",
+            r"INSERT INTO \1",
+            sql
+        )
+        # Adiciona ON CONFLICT DO NOTHING no final de cada INSERT afetado
+        sql = _re.sub(
+            r"(INSERT INTO \w+ \([^)]+\) VALUES\s*\([^;]+\));",
+            r"\1 ON CONFLICT DO NOTHING;",
+            sql,
+            flags=_re.DOTALL
+        )
+        # Remove pragmas SQLite
+        lines = [l for l in sql.splitlines()
+                 if not l.strip().upper().startswith("PRAGMA")]
+        sql = "
+".join(lines)
+    return sql
+
 
 def init_db():
     """
@@ -103,8 +209,8 @@ def init_db():
         os.makedirs(DB_DIR, exist_ok=True)
         logger.info(f"Inicializando banco em: {DB_PATH}")
         with get_db() as conn:
-            with open(SQL_PATH, "r", encoding="utf-8") as f:
-                conn.executescript(f.read())
+            schema = _get_schema_sql()
+            conn.executescript(schema)
             conn.execute("""
                 DELETE FROM estoque WHERE id NOT IN (
                     SELECT MIN(id) FROM estoque GROUP BY nome
@@ -366,7 +472,10 @@ def criar_culto():
             (data_culto, hora_culto, dia_sem, periodo, responsavel,
              presentes, visitantes, criancas, observacoes, session["usuario_id"])
         )
-        culto_id = cur.lastrowid
+        if USE_POSTGRES:
+            culto_id = conn.execute("SELECT lastval()").fetchone()[0]
+        else:
+            culto_id = cur.lastrowid
         itens = conn.execute(
             "SELECT * FROM itens_checklist_padrao ORDER BY categoria,ordem"
         ).fetchall()
@@ -502,8 +611,11 @@ def criar_visitante():
                 d.get("origem",        "manual")
             )
         )
+        if USE_POSTGRES:
+            vid = conn.execute("SELECT lastval()").fetchone()[0]
+        else:
+            vid = cur.lastrowid
         conn.commit()
-        vid = cur.lastrowid
     return jsonify({"ok": True, "id": vid})
 
 @app.route("/api/visitantes", methods=["GET"])
@@ -980,8 +1092,11 @@ def criar_item_estoque():
                     d.get("descricao",        "")
                 )
             )
+            if USE_POSTGRES:
+                iid = conn.execute("SELECT lastval()").fetchone()[0]
+            else:
+                iid = cur.lastrowid
             conn.commit()
-            iid = cur.lastrowid
         return jsonify({"ok": True, "id": iid})
     except Exception as e:
         if "UNIQUE" in str(e):

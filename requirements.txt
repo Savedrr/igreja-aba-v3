@@ -5,4 +5,4 @@ qrcode[pil]==8.0
 Pillow==11.1.0
 gunicorn==23.0.0
 # PostgreSQL — descomente quando usar DATABASE_URL no Render:
-# psycopg2-binary==2.9.9
+psycopg2-binary==2.9.9

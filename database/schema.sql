@@ -89,10 +89,10 @@ CREATE TABLE IF NOT EXISTS estoque (
 );
 
 -- ── Dados iniciais: Admin ─────────────────────────────────────
--- Senha: Admin@123
+-- Senha: Aba@2026
 INSERT OR IGNORE INTO usuarios (nome, email, senha_hash, cargo) VALUES
-('Administrador','admin@igrejaaba.com',
- 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7','admin');
+('Adriel','adrieladm@aba.com',
+ '9fb629f59f0305ba847aa0f1847c1a6813b5a7574538330e7883743f5637a86d','admin');
 
 -- ── Checklist padrão ─────────────────────────────────────────
 INSERT OR IGNORE INTO itens_checklist_padrao (categoria,ordem,descricao,item_key) VALUES
