@@ -1018,10 +1018,14 @@ def geocode_endereco():
     candid    = []
 
     for query in queries:
+        # viewbox cobre toda a região metropolitana de Porto Alegre/Alvorada/Viamão
+        # bounded=1 força resultados DENTRO da caixa — evita Portugal, São Paulo, etc.
         url = ("https://nominatim.openstreetmap.org/search?"
                + urllib.parse.urlencode({
                    "q": query, "format": "json",
                    "limit": 5, "addressdetails": 1, "countrycodes": "br",
+                   "viewbox": "-51.3,-30.2,-50.8,-29.7",
+                   "bounded": "1",
                }))
         try:
             req = _ur.Request(url, headers={"User-Agent": "IgrejaABA/6.0 (contato@igrejaaba.com)"})

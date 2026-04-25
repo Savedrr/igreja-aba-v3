@@ -130,6 +130,18 @@ async function salvarRegistro(){
     if(r.ok&&d.ok){
       toast(`✅ ${d.dia_semana} — culto registrado!`,"success");
       S.cultoAtual = d.id;
+      // Reseta contadores e campos do formulário
+      S.presentes  = 0; S.visitantes = 0; S.criancas = 0;
+      ["presentes","visitantes","criancas"].forEach(k=>{
+        const v = document.getElementById("val-"+k);
+        const i = document.getElementById("inp-"+k);
+        if(v) v.textContent = "0";
+        if(i) i.value = "0";
+      });
+      const obsEl = document.getElementById("observacoes");
+      const respEl = document.getElementById("responsavel");
+      if(obsEl)  obsEl.value  = "";
+      if(respEl) respEl.value = "";
       carregarCultosParaSelects();
       setTimeout(()=>ativarTab("checklist"),1100);
     }else{ toast(d.erro||"Erro ao salvar.","error"); }
