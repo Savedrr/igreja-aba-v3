@@ -1524,3 +1524,32 @@ if __name__ == "__main__":
     print(f"  BASE_URL: {os.environ.get('BASE_URL','(automática)')}")
     print("="*55)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+
+# GERAR PDF
+
+from flask import render_template, make_response
+from weasyprint import HTML
+
+@app.route('/resumo-geral/pdf')
+def gerar_pdf_resumo():
+    # Aqui você busca os mesmos dados que aparecem na tela
+    dados = {
+        "total_cultos": 1,
+        "total_presentes": 106,
+        "total_visitantes": 5,
+        "total_criancas": 20,
+        "media_presentes": 106,
+        "media_visitantes": 5,
+        "media_criancas": 20
+    }
+
+    html = render_template("pdf_resumo_geral.html", dados=dados)
+
+    pdf = HTML(string=html).write_pdf()
+
+    response = make_response(pdf)
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = "attachment; filename=resumo_geral.pdf"
+
+    return response
+

@@ -346,3 +346,14 @@ select.field-input{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
 @media(max-width:580px){
   .estoque-itens { grid-template-columns: 1fr; }
 }
+
+/* ── CRIAR PDF ── */
+
+.btn-pdf {
+  background: #0A2463;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: bold;
+}
