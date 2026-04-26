@@ -251,11 +251,8 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
           QR Code do Culto — Auto Cadastro
         </div>
-        <p style="font-size:13px;color:#4A6080;margin-bottom:14px">Gere um QR Code para o culto atual. O visitante escaneia com o celular e preenche os dados.</p>
+        <p style="font-size:13px;color:#4A6080;margin-bottom:14px">QR Code permanente da igreja — sempre o mesmo link. O visitante escaneia e preenche os dados.</p>
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-          <select class="field-input" id="qr_culto_id" style="max-width:320px">
-            <option value="">— Selecione o culto —</option>
-          </select>
           <button class="btn-secondary" onclick="gerarQRCode()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
             Gerar QR Code
@@ -352,9 +349,18 @@
     <!-- Lista -->
     <div class="form-card">
       <div class="form-section">
-        <div class="section-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-          Todos os Visitantes
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <span style="display:flex;align-items:center;gap:6px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+            Todos os Visitantes
+          </span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-sm blue" onclick="filtrarVisitasVisita()" style="position:relative">
+              🏠 Quer Visita
+              <span id="badgeVisitas" style="display:none;position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center"></span>
+            </button>
+            <button class="btn-sm" onclick="mostrarTodosVisitantes()">👥 Todos</button>
+          </div>
         </div>
         <div id="listaVisitantes"><div class="loading-msg">Carregando...</div></div>
       </div>

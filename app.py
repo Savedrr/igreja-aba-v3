@@ -544,6 +544,28 @@ def deletar_culto(cid):
         conn.commit()
     return jsonify({"ok": True})
 
+@app.route("/api/qrcode-fixo", methods=["GET"])
+@login_required
+def gerar_qrcode_fixo():
+    """QR Code permanente — sempre aponta para /formulario sem culto_id fixo.
+    O formulário detecta o culto mais recente automaticamente."""
+    base = get_base_url()
+    url  = f"{base}/formulario"
+    qr   = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=8, border=4
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="#0A2463", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    b64 = base64.b64encode(buf.read()).decode()
+    return jsonify({"qrcode": f"data:image/png;base64,{b64}", "url": url})
+
+
 @app.route("/api/cultos/<int:cid>/qrcode", methods=["GET"])
 @login_required
 def gerar_qrcode(cid):
@@ -1075,6 +1097,108 @@ def geocode_endereco():
 # =============================================================
 #  ESTOQUE
 # =============================================================
+@app.route("/api/cultos/<int:cid>/pdf", methods=["GET"])
+@login_required
+def gerar_pdf_culto(cid):
+    """Gera PDF/HTML do resumo do culto para compartilhar."""
+    with get_db() as conn:
+        culto = conn.execute("SELECT * FROM cultos WHERE id=?", (cid,)).fetchone()
+        if not culto:
+            return jsonify({"erro": "Culto nao encontrado"}), 404
+        culto = dict(culto)
+        visitantes = [dict(v) for v in conn.execute(
+            "SELECT * FROM visitantes WHERE culto_id=? ORDER BY nome", (cid,)
+        ).fetchall()]
+        checklist = [dict(x) for x in conn.execute(
+            "SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id", (cid,)
+        ).fetchall()]
+
+    dia = fmt_data_br(culto["data"])
+    concluidos = sum(1 for x in checklist if x["concluido"])
+    total_chk  = len(checklist)
+    pct_chk    = round(concluidos / total_chk * 100) if total_chk else 0
+
+    cat_labels = {"antes":"Antes do Culto","mesa_entrada":"Mesa de Entrada",
+                  "banheiro":"Banheiros","durante":"Durante o Culto","final":"Final do Culto"}
+    chk_grupos = {}
+    for item in checklist:
+        cat = cat_labels.get(item["categoria"], item["categoria"])
+        chk_grupos.setdefault(cat, []).append(item)
+
+    vis_rows = "".join(f"<tr><td>{v['nome']}</td><td>{v.get('telefone','')}</td>"
+                       f"<td>{v.get('endereco','')}, {v.get('bairro','')}</td>"
+                       f"<td>{'Sim' if v.get('quer_visita') else 'Nao'}</td></tr>"
+                       for v in visitantes)
+
+    chk_rows = ""
+    for cat, items in chk_grupos.items():
+        chk_rows += f"<tr><td colspan='2' style='background:#EEF2F9;font-weight:700;color:#0A2463;padding:5px 8px'>{cat}</td></tr>"
+        for item in items:
+            ok = item["concluido"]
+            chk_rows += (f"<tr><td style='color:{'#166534' if ok else '#991b1b'}'>{item['item_descricao']}</td>"
+                         f"<td style='text-align:center;font-weight:700'>{'checkmark' if ok else 'x'}</td></tr>")
+    chk_rows = chk_rows.replace("checkmark","✓").replace(" x<","✗<")
+
+    tipo = culto.get("tipo_culto") or ""
+    obs_html = (f"<h2>Observacoes</h2><p style='color:#4A6080;margin-bottom:12px'>{culto['observacoes']}</p>"
+                if culto.get("observacoes") else "")
+    vis_html = (f"<h2>Visitantes ({len(visitantes)})</h2>"
+                f"<table><tr><th>Nome</th><th>Telefone</th><th>Endereco</th><th>Quer Visita?</th></tr>"
+                f"{vis_rows}</table>" if visitantes else
+                "<h2>Visitantes</h2><p style='color:#888;margin-bottom:12px'>Nenhum visitante cadastrado.</p>")
+
+    html = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Culto {dia} — Igreja ABA</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:20px;max-width:800px;margin:0 auto}}
+.hdr{{background:#0A2463;color:#fff;padding:16px 20px;border-radius:8px;margin-bottom:16px}}
+.hdr h1{{font-size:18px;margin-bottom:4px}}.hdr p{{font-size:11px;opacity:.85}}
+.cards{{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}}
+.card{{flex:1;min-width:70px;background:#EEF2F9;border-radius:8px;padding:10px;text-align:center}}
+.card .val{{font-size:22px;font-weight:900;color:#0A2463}}
+.card .lbl{{font-size:9px;color:#4A6080}}
+h2{{font-size:12px;font-weight:700;color:#0A2463;margin:12px 0 6px;border-bottom:2px solid #0A2463;padding-bottom:3px}}
+table{{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:10px}}
+th{{background:#0A2463;color:#fff;padding:5px 8px;text-align:left}}
+td{{padding:4px 8px;border-bottom:1px solid #e5e7eb}}
+.foot{{margin-top:14px;text-align:center;font-size:9px;color:#aaa}}
+.share-btn{{display:block;width:100%;margin:16px 0 8px;padding:12px;background:#25D366;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}}
+@media print{{.share-btn{{display:none}}}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>Igreja ABA — Resumo do Culto</h1>
+  <p>{dia} | {culto['dia_semana']} | {culto['periodo']} | {culto['hora']}{' | ' + tipo if tipo else ''}</p>
+  <p style="margin-top:4px">Responsavel: <strong>{culto['responsavel']}</strong></p>
+</div>
+<div class="cards">
+  <div class="card"><div class="val">{culto['presentes']}</div><div class="lbl">Presentes</div></div>
+  <div class="card"><div class="val">{culto['visitantes']}</div><div class="lbl">Visitantes</div></div>
+  <div class="card"><div class="val">{culto['criancas']}</div><div class="lbl">Criancas</div></div>
+  <div class="card"><div class="val">{len(visitantes)}</div><div class="lbl">Cadastrados</div></div>
+  <div class="card"><div class="val">{pct_chk}%</div><div class="lbl">Checklist</div></div>
+</div>
+{obs_html}
+{vis_html}
+<h2>Checklist ({concluidos}/{total_chk} — {pct_chk}%)</h2>
+<table><tr><th>Item</th><th>Status</th></tr>{chk_rows}</table>
+<a class="share-btn" href="javascript:if(navigator.share){{navigator.share({{title:'Resumo Culto {dia}',url:window.location.href}})}}else{{navigator.clipboard.writeText(window.location.href);alert('Link copiado!')}}">
+  Compartilhar no WhatsApp / Copiar Link
+</a>
+<div class="foot">Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')} — Igreja ABA</div>
+</body></html>"""
+
+    return html, 200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Frame-Options": "SAMEORIGIN"
+    }
+
+
 @app.route("/api/estoque", methods=["GET"])
 @login_required
 def listar_estoque():
@@ -1291,6 +1415,39 @@ def exportar_excel():
             cf.font = Font(bold=True, color="375623" if chk["concluido"] else "9C0006")
     for col, w in zip("ABCDEF", [14,10,22,18,48,12]):
         ws2.column_dimensions[col].width = w
+
+    # ── Aba Visitantes (ITEM 4) ──────────────────────────────────────
+    with get_db() as conn2:
+        todos_visitantes = [dict(r) for r in conn2.execute(
+            """SELECT v.*, c.data as culto_data, c.periodo as culto_periodo
+               FROM visitantes v LEFT JOIN cultos c ON c.id=v.culto_id
+               ORDER BY v.nome"""
+        ).fetchall()]
+
+    ws_vis = wb.create_sheet("Todos os Visitantes")
+    ws_vis.append(["IGREJA ABA – Todos os Visitantes"])
+    ws_vis["A1"].font = Font(bold=True, size=14, color="0A2463")
+    ws_vis.append([])
+    vis_cols = ["Nome","Telefone","Idade","Endereço","Bairro","Cidade",
+                "Como Conheceu","Pedido de Oração","Quer Visita?",
+                "Data Visita","Culto","Período","Observação","Cadastrado em"]
+    ws_vis.append(vis_cols)
+    for i in range(1, len(vis_cols)+1):
+        cell = ws_vis.cell(3, i)
+        cell.fill = hdr_fill; cell.font = hdr_font
+        cell.alignment = Alignment(horizontal="center"); cell.border = border
+    for v in todos_visitantes:
+        ws_vis.append([
+            v.get("nome",""), v.get("telefone",""), v.get("idade",""),
+            v.get("endereco",""), v.get("bairro",""), v.get("cidade",""),
+            v.get("como_conheceu",""), v.get("pedido_oracao",""),
+            "Sim ✓" if v.get("quer_visita") else "Não",
+            v.get("data_visita",""), fmt_data_br(v.get("culto_data","")) if v.get("culto_data") else "",
+            v.get("culto_periodo",""), v.get("observacao",""),
+            v.get("criado_em","")[:10] if v.get("criado_em") else ""
+        ])
+    for i, w in enumerate([28,18,8,30,18,16,22,35,12,14,14,12,30,14], 1):
+        ws_vis.column_dimensions[get_column_letter(i)].width = w
 
     santa_ceia_rows = [i for i in estoque_rows if i["categoria"] == "Santa Ceia"]
     outros_rows     = [i for i in estoque_rows if i["categoria"] != "Santa Ceia"]

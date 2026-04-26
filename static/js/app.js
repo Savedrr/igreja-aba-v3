@@ -54,9 +54,11 @@ async function logout(){
 
 // ── Navegação ─────────────────────────────────────────────────
 function ativarTab(tab) {
+  const tabMap = { "conecta gc": "gc-finder" };
+  const realTab = tabMap[tab] || tab;
   document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
-  const el  = document.getElementById("tab-"+tab);
+  const el  = document.getElementById("tab-"+realTab);
   const nav = document.querySelector(`[data-tab="${tab}"]`);
   if(el)  el.classList.add("active");
   if(nav) nav.classList.add("active");
@@ -181,6 +183,15 @@ async function carregarCultosParaSelects(){
   }
 }
 
+function filtrarVisitasVisita(){
+  const pendentes = _todosVisitantes.filter(v=>v.quer_visita);
+  _renderVisitantesList(pendentes);
+  toast(`${pendentes.length} visitante(s) aguardam visita.`,"info");
+}
+function mostrarTodosVisitantes(){
+  _renderVisitantesList(_todosVisitantes);
+}
+
 // ── CHECKLIST ─────────────────────────────────────────────────
 async function carregarChecklist(cultoId){
   const container = document.getElementById("checklistContainer");
@@ -255,9 +266,8 @@ async function marcarItem(itemId, concluido, wrap, catDiv){
 
 // ── QR CODE ───────────────────────────────────────────────────
 async function gerarQRCode(){
-  const cultoId = document.getElementById("qr_culto_id").value;
-  if(!cultoId) return toast("Selecione um culto primeiro.","error");
-  const r = await fetch(`/api/cultos/${cultoId}/qrcode`);
+  // QR Code fixo — sempre o mesmo link independente do culto
+  const r = await fetch("/api/qrcode-fixo");
   const d = await r.json();
   document.getElementById("qrImg").src = d.qrcode;
   document.getElementById("qrUrl").textContent = d.url;
@@ -304,12 +314,25 @@ async function salvarVisitante(){
     carregarVisitantes();
   }else{ toast(d.erro||"Erro ao cadastrar.","error"); }
 }
+let _todosVisitantes = [];
+
 async function carregarVisitantes(){
   const c = document.getElementById("listaVisitantes");
   if(!c) return;
   c.innerHTML="<div class='loading-msg'>Carregando...</div>";
   const r=await fetch("/api/visitantes");
   const list=await r.json();
+  _todosVisitantes = list;
+  // Atualiza badge de visitas pendentes
+  const pendentes = list.filter(v=>v.quer_visita).length;
+  const badge = document.getElementById("badgeVisitas");
+  if(badge){ badge.textContent=pendentes; badge.style.display=pendentes?"":"none"; }
+  _renderVisitantesList(list);
+}
+
+function _renderVisitantesList(list){
+  const c = document.getElementById("listaVisitantes");
+  if(!c) return;
   if(!list.length){ c.innerHTML="<div class='empty-state'><p>Nenhum visitante cadastrado ainda.</p></div>"; return; }
   c.innerHTML=list.map(v=>`
     <div class="visitante-card">
@@ -562,6 +585,7 @@ async function buscarRelatorio(){
       <td>
         <div style="display:flex;gap:5px">
           <button class="btn-sm blue" onclick="verDetalhes(${c.id})">Ver</button>
+          <button class="btn-sm blue" onclick="window.open('/api/cultos/${c.id}/pdf','_blank')" title="PDF">📄</button>
           <button class="btn-sm red"  onclick="deletarCulto(${c.id})">✕</button>
         </div>
       </td>
