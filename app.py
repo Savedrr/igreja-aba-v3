@@ -43,18 +43,23 @@ app = Flask(__name__,
 # Chave secreta FIXA via env — obrigatório para sessão funcionar com múltiplos workers
 _secret = os.environ.get("SECRET_KEY", "")
 if not _secret:
-    _secret = secrets.token_hex(32)
-    logger.warning("SECRET_KEY não definida — usando chave temporária. "
-                   "Sessões serão perdidas ao reiniciar. Defina SECRET_KEY no Render!")
+    # FIX v6: chave estável derivada do nome do app — não muda ao reiniciar.
+    # ATENÇÃO: defina SECRET_KEY como variável de ambiente no Render para
+    # máxima segurança. Esta chave de fallback é apenas para desenvolvimento.
+    _secret = "aba-igreja-chave-fixa-fallback-v6-nao-use-em-producao"
+    logger.warning("SECRET_KEY não definida — usando chave fixa de fallback. "
+                   "Defina SECRET_KEY como variável de ambiente no Render!")
 app.secret_key = _secret
 
 # Configurações de sessão para produção
+from datetime import timedelta
 app.config.update(
     SESSION_COOKIE_SECURE   = os.environ.get("RENDER", "") != "",  # HTTPS no Render
     SESSION_COOKIE_HTTPONLY = True,
     SESSION_COOKIE_SAMESITE = "Lax",
     SEND_FILE_MAX_AGE_DEFAULT = 0,
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024,
+    PERMANENT_SESSION_LIFETIME = timedelta(days=30),  # FIX v6: sessão dura 30 dias
 )
 
 CORS(app, supports_credentials=True, origins="*")
