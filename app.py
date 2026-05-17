@@ -1,357 +1,252 @@
-# -*- coding: utf-8 -*-
 """
-IGREJA ABA - Sistema de Registro de Culto v6
-Compativel com: Local, Render (PostgreSQL), Railway
-v6: PostgreSQL/SQLite dual-mode + fuzzy geocoding + OSRM routes
+IGREJA ABA — Backend v5
+Melhorias: Permissões granulares, NAREAL, Edição de cultos,
+           Busca de endereço fuzzy, PDF real, GC com líder,
+           Estoque corrigido, Dashboard analytics, Logs
 """
-
-from flask import Flask, request, jsonify, render_template, session, redirect, send_file
+from flask import Flask, request, jsonify, render_template, session, redirect, send_file, make_response
 from flask_cors import CORS
-import sqlite3, os, hashlib, secrets, io, qrcode, base64, urllib.parse, logging, math, re, unicodedata
-from datetime import datetime, date
+import sqlite3, os, hashlib, secrets, io, qrcode, base64, urllib.parse, logging, math, json, re
+from datetime import datetime, date, timedelta
+from functools import wraps
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from PIL import Image
 
-# --- PostgreSQL opcional (só importa se DATABASE_URL estiver definida) --------
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-USE_POSTGRES  = bool(DATABASE_URL)
-if USE_POSTGRES:
-    try:
-        import psycopg2
-        import psycopg2.extras
-        logger_tmp = logging.getLogger(__name__)
-        logger_tmp.info("PostgreSQL mode enabled via DATABASE_URL")
-    except ImportError:
-        USE_POSTGRES = False
-        logging.getLogger(__name__).warning(
-            "psycopg2 não instalado — usando SQLite mesmo com DATABASE_URL definida. "
-            "Adicione psycopg2-binary ao requirements.txt"
-        )
-
-# --- Logging --------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- App ------------------------------------------------------
-app = Flask(__name__,
-            static_folder="static",
-            static_url_path="/static",
+app = Flask(__name__, static_folder="static", static_url_path="/static",
             template_folder="templates")
 
-# Chave secreta FIXA via env — obrigatório para sessão funcionar com múltiplos workers
-_secret = os.environ.get("SECRET_KEY", "")
-if not _secret:
-    # FIX v6: chave estável derivada do nome do app — não muda ao reiniciar.
-    # ATENÇÃO: defina SECRET_KEY como variável de ambiente no Render para
-    # máxima segurança. Esta chave de fallback é apenas para desenvolvimento.
-    _secret = "aba-igreja-chave-fixa-fallback-v6-nao-use-em-producao"
-    logger.warning("SECRET_KEY não definida — usando chave fixa de fallback. "
-                   "Defina SECRET_KEY como variável de ambiente no Render!")
+_secret = os.environ.get("SECRET_KEY", "igreja-aba-key-2025-seguro")
 app.secret_key = _secret
-
-# Configurações de sessão para produção
-from datetime import timedelta
 app.config.update(
-    SESSION_COOKIE_SECURE   = os.environ.get("RENDER", "") != "",  # HTTPS no Render
+    SESSION_COOKIE_SECURE   = bool(os.environ.get("RENDER","")),
     SESSION_COOKIE_HTTPONLY = True,
     SESSION_COOKIE_SAMESITE = "Lax",
     SEND_FILE_MAX_AGE_DEFAULT = 0,
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024,
-    PERMANENT_SESSION_LIFETIME = timedelta(days=30),  # FIX v6: sessão dura 30 dias
+    MAX_CONTENT_LENGTH = 16*1024*1024,
 )
-
 CORS(app, supports_credentials=True, origins="*")
 
-# --- Caminhos -------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_DIR   = os.environ.get("DB_DIR","").strip() or os.path.join(BASE_DIR,"database")
+DB_PATH  = os.path.join(DB_DIR,"igreja_aba.db")
+SQL_PATH = os.path.join(BASE_DIR,"database","schema.sql")
 
-_db_dir = os.environ.get("DB_DIR", "").strip()
-if _db_dir:
-    DB_DIR = _db_dir
-else:
-    DB_DIR = os.path.join(BASE_DIR, "database")
+TIPOS_CULTO = ["Culto Regular","NAREAL","Evento","Reunião de Líderes","Culto de GC","Outro"]
 
-DB_PATH  = os.path.join(DB_DIR, "igreja_aba.db")
-SQL_PATH = os.path.join(BASE_DIR, "database", "schema.sql")
-
-logger.info(f"DB_PATH = {DB_PATH}")
-
-# --- BASE_URL para QR Codes -----------------------------------
-def get_base_url():
-    base = os.environ.get("BASE_URL", "").rstrip("/")
-    if base:
-        return base
-    proto = request.headers.get("X-Forwarded-Proto", request.scheme)
-    host  = request.headers.get("X-Forwarded-Host", request.host)
-    return f"{proto}://{host}"
-
-# --- DB -------------------------------------------------------
-class _PGConnWrapper:
-    """
-    Wrap psycopg2 connection para ter a mesma interface do sqlite3:
-    conn.execute(sql, params), conn.executemany(), conn.commit(),
-    iteracao sobre rows, row["col"], context manager (with).
-    """
-    def __init__(self, raw):
-        self._conn = raw
-        self._cur  = raw.cursor()
-
-    # Converte ? (sqlite) para %s (psycopg2) e executa
-    def execute(self, sql, params=()):
-        sql_pg = sql.replace("?", "%s")
-        # executescript nao existe em psycopg2 — ignorado aqui
-        self._cur.execute(sql_pg, params)
-        return self
-
-    def executemany(self, sql, seq):
-        sql_pg = sql.replace("?", "%s")
-        self._cur.executemany(sql_pg, seq)
-        return self
-
-    def executescript(self, script):
-        # Divide em statements e executa um a um (usado no init_db)
-        stmts = [s.strip() for s in script.split(";") if s.strip()]
-        for s in stmts:
-            try:
-                self._cur.execute(s)
-                self._conn.commit()
-            except Exception as _e:
-                self._conn.rollback()
-                # ignora erros de "ja existe" (tabelas/indices duplicados)
-                if "already exists" not in str(_e).lower() and                    "duplicate" not in str(_e).lower():
-                    logger.warning(f"executescript ignorou: {_e}")
-
-    def fetchone(self):
-        row = self._cur.fetchone()
-        if row is None:
-            return None
-        return dict(row) if hasattr(row, "keys") else row
-
-    def fetchall(self):
-        rows = self._cur.fetchall()
-        return [dict(r) if hasattr(r, "keys") else r for r in rows]
-
-    def lastrowid(self):
-        return self._cur.fetchone()["id"] if self._cur.rowcount else None
-
-    @property
-    def lastrowid_val(self):
-        self._cur.execute("SELECT lastval()")
-        return self._cur.fetchone()[0]
-
-    def commit(self):
-        self._conn.commit()
-
-    def rollback(self):
-        self._conn.rollback()
-
-    def close(self):
-        self._cur.close()
-        self._conn.close()
-
-    # context manager
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, *_):
-        if exc_type:
-            self.rollback()
-        else:
-            self.commit()
-        self.close()
-
-    # iteracao sobre cursor (for row in conn.execute(...))
-    def __iter__(self):
-        return iter(self.fetchall())
-
-
+# ── DB ────────────────────────────────────────────────────────
 def get_db():
-    if USE_POSTGRES:
-        raw = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-        raw.autocommit = False
-        return _PGConnWrapper(raw)
     conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
-def _get_schema_sql():
-    """Lê o schema e adapta para o banco em uso."""
-    with open(SQL_PATH, "r", encoding="utf-8") as f:
-        sql = f.read()
-    if USE_POSTGRES:
-        # Converte sintaxe SQLite → PostgreSQL
-        sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
-        sql = sql.replace("INTEGER PRIMARY KEY", "SERIAL PRIMARY KEY")
-        # INSERT OR IGNORE → INSERT ... ON CONFLICT DO NOTHING
-        import re as _re
-        sql = _re.sub(
-            r"INSERT OR IGNORE INTO (\w+)",
-            r"INSERT INTO \1",
-            sql
-        )
-        # Adiciona ON CONFLICT DO NOTHING no final de cada INSERT afetado
-        sql = _re.sub(
-            r"(INSERT INTO \w+ \([^)]+\) VALUES\s*\([^;]+\));",
-            r"\1 ON CONFLICT DO NOTHING;",
-            sql,
-            flags=_re.DOTALL
-        )
-        # Remove pragmas SQLite
-        lines = [l for l in sql.splitlines()
-                 if not l.strip().upper().startswith("PRAGMA")]
-        sql = "\n".join(lines)
-    return sql
-
-
 def init_db():
-    """
-    FIX v4: init_db robusto — não quebra o server se o disco do Render
-    ainda não estiver montado. O banco será criado na primeira requisição.
-    """
+    os.makedirs(DB_DIR, exist_ok=True)
+    with get_db() as conn:
+        with open(SQL_PATH,"r",encoding="utf-8") as f:
+            conn.executescript(f.read())
+        conn.execute("DELETE FROM estoque WHERE id NOT IN (SELECT MIN(id) FROM estoque GROUP BY nome)")
+        try:
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_estoque_nome ON estoque(nome)")
+        except: pass
+        conn.commit()
+    logger.info(f"DB: {DB_PATH}")
+
+def hs(s): return hashlib.sha256(s.encode()).hexdigest()
+
+# ── Helpers ───────────────────────────────────────────────────
+DIAS = {0:"Segunda-feira",1:"Terça-feira",2:"Quarta-feira",
+        3:"Quinta-feira",4:"Sexta-feira",5:"Sábado",6:"Domingo"}
+
+def dia_pt(s):
+    try: return DIAS[datetime.strptime(s,"%Y-%m-%d").weekday()]
+    except: return ""
+
+def br(s):
+    try: return datetime.strptime(s,"%Y-%m-%d").strftime("%d/%m/%Y")
+    except: return s or ""
+
+def get_base():
+    b = os.environ.get("BASE_URL","").rstrip("/")
+    if b: return b
+    proto = request.headers.get("X-Forwarded-Proto", request.scheme)
+    host  = request.headers.get("X-Forwarded-Host",  request.host)
+    return f"{proto}://{host}"
+
+def haversine(la1,lo1,la2,lo2):
+    R=6371; r=math.pi/180
+    d1=(la2-la1)*r; d2=(lo2-lo1)*r
+    a=math.sin(d1/2)**2+math.cos(la1*r)*math.cos(la2*r)*math.sin(d2/2)**2
+    return R*2*math.asin(math.sqrt(max(0,a)))
+
+def log_acao(acao, detalhes=""):
+    """Registra ação no log do sistema"""
     try:
-        os.makedirs(DB_DIR, exist_ok=True)
-        logger.info(f"Inicializando banco em: {DB_PATH}")
+        uid   = session.get("usuario_id")
+        unome = session.get("usuario_nome","?")
         with get_db() as conn:
-            schema = _get_schema_sql()
-            conn.executescript(schema)
-            conn.execute("""
-                DELETE FROM estoque WHERE id NOT IN (
-                    SELECT MIN(id) FROM estoque GROUP BY nome
-                )
-            """)
-            try:
-                conn.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_estoque_nome ON estoque(nome)"
-                )
-            except Exception:
-                pass
+            conn.execute(
+                "INSERT INTO logs_sistema(usuario_id,usuario_nome,acao,detalhes) VALUES(?,?,?,?)",
+                (uid, unome, acao, detalhes)
+            )
             conn.commit()
-        logger.info("Banco inicializado com sucesso!")
-        return True
-    except Exception as e:
-        logger.error(f"Erro ao inicializar banco: {e}")
-        return False
+    except: pass
 
-def ensure_db():
-    """Garante que o banco existe antes de qualquer operação."""
-    if USE_POSTGRES:
-        # PostgreSQL: sempre tenta criar as tabelas (IF NOT EXISTS protege)
-        init_db()
-    elif not os.path.exists(DB_PATH):
-        logger.warning("Banco não encontrado — tentando inicializar agora...")
-        init_db()
+# ── Geocode melhorado com Nominatim ──────────────────────────
+def geocode_smart(query: str, cidade_fallback="Alvorada"):
+    """
+    Busca fuzzy/inteligente de endereço usando Nominatim.
+    Tenta múltiplas estratégias para aumentar a chance de encontrar.
+    """
+    import urllib.request as ur, json as js, time
 
-def hash_senha(s):
-    return hashlib.sha256(s.encode()).hexdigest()
+    # Normaliza a query
+    q = query.strip()
+    if not q: return None, None, ""
 
-# --- Helpers de data ------------------------------------------
-DIAS_PT = {0:"Segunda-feira", 1:"Terça-feira", 2:"Quarta-feira",
-           3:"Quinta-feira",  4:"Sexta-feira", 5:"Sábado", 6:"Domingo"}
+    # Remove abreviações comuns e normaliza
+    q_norm = q
+    q_norm = re.sub(r'\bR\.\s*', 'Rua ', q_norm, flags=re.IGNORECASE)
+    q_norm = re.sub(r'\bAv\.\s*', 'Avenida ', q_norm, flags=re.IGNORECASE)
+    q_norm = re.sub(r'\bTv\.\s*', 'Travessa ', q_norm, flags=re.IGNORECASE)
 
-def dia_semana_pt(data_str):
-    try:
-        return DIAS_PT[datetime.strptime(data_str, "%Y-%m-%d").weekday()]
-    except:
-        return ""
+    # Estratégias de busca em ordem de precisão
+    strategies = [
+        f"{q_norm}, RS, Brasil",
+        f"{q_norm}, {cidade_fallback}, RS, Brasil",
+        f"{q}, {cidade_fallback}, Rio Grande do Sul, Brasil",
+        q_norm,
+    ]
 
-def fmt_data_br(s):
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").strftime("%d/%m/%Y")
-    except:
-        return s or ""
+    headers = {"User-Agent": "IgrejaABA/5.0 (contato@igrejaaba.com)"}
 
-# --- Auth decorator -------------------------------------------
+    for strategy in strategies:
+        url = ("https://nominatim.openstreetmap.org/search?"
+               f"q={urllib.parse.quote(strategy)}&format=json&limit=3"
+               "&addressdetails=1&accept-language=pt-BR")
+        try:
+            req = ur.Request(url, headers=headers)
+            with ur.urlopen(req, timeout=8) as resp:
+                data = js.loads(resp.read())
+            if data:
+                r = data[0]
+                addr = r.get("display_name","")
+                return float(r["lat"]), float(r["lon"]), addr
+        except Exception as e:
+            logger.warning(f"Geocode falhou ({strategy[:50]}): {e}")
+        time.sleep(0.5)
+
+    return None, None, ""
+
+# ── Auth decorators ───────────────────────────────────────────
 def login_required(f):
-    from functools import wraps
     @wraps(f)
-    def decorated(*args, **kwargs):
+    def dec(*a,**k):
         if "usuario_id" not in session:
-            return jsonify({"erro": "Não autenticado"}), 401
-        return f(*args, **kwargs)
-    return decorated
+            return jsonify({"erro":"Não autenticado"}),401
+        return f(*a,**k)
+    return dec
 
-# --- Tratamento global de erros -------------------------------
+def role_required(*roles):
+    """Exige que o usuário tenha um dos cargos especificados"""
+    def decorator(f):
+        @wraps(f)
+        def dec(*a,**k):
+            if "usuario_id" not in session:
+                return jsonify({"erro":"Não autenticado"}),401
+            cargo = session.get("usuario_cargo","voluntario")
+            if cargo not in roles:
+                log_acao(f"ACESSO NEGADO: {request.path}", f"cargo={cargo}")
+                return jsonify({"erro":"Sem permissão para esta ação"}),403
+            return f(*a,**k)
+        return dec
+    return decorator
+
+def can_edit():
+    """Líderes e admins podem editar"""
+    return session.get("usuario_cargo","voluntario") in ("lider","admin")
+
+def is_admin():
+    return session.get("usuario_cargo") == "admin"
+
+# ── Erros ─────────────────────────────────────────────────────
 @app.errorhandler(500)
-def erro_500(e):
-    logger.error(f"Erro 500: {e}")
-    return jsonify({"erro": "Erro interno do servidor", "detalhe": str(e)}), 500
-
+def e500(e): return jsonify({"erro":"Erro interno","d":str(e)}),500
 @app.errorhandler(404)
-def erro_404(e):
-    return jsonify({"erro": "Rota não encontrada"}), 404
+def e404(e): return jsonify({"erro":"Não encontrado"}),404
 
-# =============================================================
-#  PÁGINAS
-# =============================================================
+# ═══════════════════════════════════════════════════════════════
+# PÁGINAS
+# ═══════════════════════════════════════════════════════════════
 @app.route("/")
-def index():
-    return render_template("index.html")
+def index(): return render_template("index.html")
 
 @app.route("/app")
 def app_main():
-    if "usuario_id" not in session:
-        return redirect("/")
+    if "usuario_id" not in session: return redirect("/")
     return render_template("app.html")
 
 @app.route("/formulario")
-def formulario_visitante():
-    culto_id = request.args.get("culto_id", "")
-    return render_template("formulario.html", culto_id=culto_id)
+def formulario():
+    return render_template("formulario.html", culto_id=request.args.get("culto_id",""))
 
-# --- Health check ---------------------------------------------
 @app.route("/health")
 def health():
     try:
-        ensure_db()
-        with get_db() as conn:
-            conn.execute("SELECT 1").fetchone()
-        return jsonify({"status": "ok", "db": DB_PATH, "time": datetime.now().isoformat()})
+        with get_db() as conn: conn.execute("SELECT 1")
+        return jsonify({"status":"ok","time":datetime.now().isoformat()})
     except Exception as e:
-        return jsonify({"status": "error", "erro": str(e)}), 500
+        return jsonify({"status":"error","e":str(e)}),500
 
-# =============================================================
-#  AUTH — FIX v4: ensure_db() antes de qualquer query
-# =============================================================
+# ═══════════════════════════════════════════════════════════════
+# AUTH
+# ═══════════════════════════════════════════════════════════════
 @app.route("/api/login", methods=["POST"])
 def login():
     try:
-        ensure_db()  # ← FIX PRINCIPAL: garante banco antes do login
         d     = request.get_json(force=True) or {}
-        email = d.get("email", "").strip().lower()
-        senha = d.get("senha", "")
+        email = d.get("email","").strip().lower()
+        senha = d.get("senha","")
         if not email or not senha:
-            return jsonify({"erro": "E-mail e senha são obrigatórios"}), 400
+            return jsonify({"erro":"Preencha e-mail e senha"}),400
         with get_db() as conn:
             u = conn.execute(
-                "SELECT * FROM usuarios WHERE email=? AND ativo=1", (email,)
+                "SELECT * FROM usuarios WHERE email=? AND ativo=1",(email,)
             ).fetchone()
         if not u:
-            return jsonify({"erro": "Usuário não encontrado"}), 401
-        if u["senha_hash"] != hash_senha(senha):
-            return jsonify({"erro": "Senha incorreta"}), 401
+            return jsonify({"erro":"Usuário não encontrado ou inativo"}),401
+        if u["senha_hash"] != hs(senha):
+            return jsonify({"erro":"Senha incorreta"}),401
         session.permanent = True
         session["usuario_id"]    = u["id"]
         session["usuario_nome"]  = u["nome"]
         session["usuario_cargo"] = u["cargo"]
-        logger.info(f"Login: {email}")
-        return jsonify({"ok": True, "nome": u["nome"], "cargo": u["cargo"]})
+        # Atualiza último acesso
+        with get_db() as conn:
+            conn.execute("UPDATE usuarios SET ultimo_acesso=datetime('now','localtime') WHERE id=?",
+                         (u["id"],))
+            conn.commit()
+        log_acao("LOGIN", f"email={email}")
+        return jsonify({"ok":True,"nome":u["nome"],"cargo":u["cargo"]})
     except Exception as e:
-        logger.error(f"Erro no login: {e}")
-        return jsonify({"erro": f"Erro ao conectar ao banco: {str(e)}"}), 500
+        logger.error(f"Login error: {e}")
+        return jsonify({"erro":str(e)}),500
 
 @app.route("/api/logout", methods=["POST"])
 def logout():
+    log_acao("LOGOUT")
     session.clear()
-    return jsonify({"ok": True})
+    return jsonify({"ok":True})
 
 @app.route("/api/me")
 def me():
     if "usuario_id" not in session:
-        return jsonify({"autenticado": False})
+        return jsonify({"autenticado":False})
     return jsonify({
         "autenticado": True,
         "id":    session["usuario_id"],
@@ -359,1168 +254,966 @@ def me():
         "cargo": session["usuario_cargo"]
     })
 
-# =============================================================
-#  USUÁRIOS
-# =============================================================
+# ═══════════════════════════════════════════════════════════════
+# USUÁRIOS — apenas admin
+# ═══════════════════════════════════════════════════════════════
 @app.route("/api/usuarios", methods=["GET"])
 @login_required
 def listar_usuarios():
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id,nome,email,cargo,ativo,criado_em FROM usuarios ORDER BY nome"
+            "SELECT id,nome,email,cargo,ativo,criado_em,ultimo_acesso FROM usuarios ORDER BY nome"
         ).fetchall()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/usuarios", methods=["POST"])
-@login_required
+@role_required("admin")
 def criar_usuario():
-    if session.get("usuario_cargo") != "admin":
-        return jsonify({"erro": "Apenas administradores podem criar usuários"}), 403
     d     = request.get_json(force=True) or {}
-    nome  = d.get("nome", "").strip()
-    email = d.get("email", "").strip().lower()
-    senha = d.get("senha", "")
-    cargo = d.get("cargo", "voluntario")
+    nome  = d.get("nome","").strip()
+    email = d.get("email","").strip().lower()
+    senha = d.get("senha","")
+    cargo = d.get("cargo","voluntario")
+    conf  = d.get("confirmar_senha","")
     if not nome or not email or not senha:
-        return jsonify({"erro": "Nome, e-mail e senha são obrigatórios"}), 400
-    if len(senha) < 6:
-        return jsonify({"erro": "Senha mínima de 6 caracteres"}), 400
+        return jsonify({"erro":"Nome, e-mail e senha são obrigatórios"}),400
+    if len(senha) < 8:
+        return jsonify({"erro":"Senha deve ter no mínimo 8 caracteres"}),400
+    if senha != conf:
+        return jsonify({"erro":"As senhas não coincidem"}),400
+    if not re.search(r'[A-Z]', senha):
+        return jsonify({"erro":"Senha deve ter ao menos uma letra maiúscula"}),400
+    if not re.search(r'[0-9]', senha):
+        return jsonify({"erro":"Senha deve ter ao menos um número"}),400
+    if cargo not in ("voluntario","lider","admin"):
+        return jsonify({"erro":"Cargo inválido"}),400
     try:
         with get_db() as conn:
             conn.execute(
-                "INSERT INTO usuarios (nome,email,senha_hash,cargo) VALUES (?,?,?,?)",
-                (nome, email, hash_senha(senha), cargo)
+                "INSERT INTO usuarios(nome,email,senha_hash,cargo) VALUES(?,?,?,?)",
+                (nome, email, hs(senha), cargo)
             )
             conn.commit()
-        return jsonify({"ok": True})
+        log_acao("CRIAR_USUARIO", f"email={email} cargo={cargo}")
+        return jsonify({"ok":True})
     except Exception as e:
-        if "UNIQUE" in str(e):
-            return jsonify({"erro": "E-mail já cadastrado"}), 400
-        return jsonify({"erro": str(e)}), 500
+        return jsonify({"erro":"E-mail já cadastrado" if "UNIQUE" in str(e) else str(e)}),400
 
 @app.route("/api/usuarios/<int:uid>", methods=["PUT"])
 @login_required
 def editar_usuario(uid):
-    if session.get("usuario_cargo") != "admin" and session["usuario_id"] != uid:
-        return jsonify({"erro": "Sem permissão"}), 403
+    # Voluntário só pode mudar a própria senha
+    cargo_atual = session.get("usuario_cargo","voluntario")
+    meu_id = session["usuario_id"]
     d = request.get_json(force=True) or {}
+
+    if cargo_atual == "voluntario" and meu_id != uid:
+        return jsonify({"erro":"Sem permissão"}),403
+
     with get_db() as conn:
+        alvo = conn.execute("SELECT * FROM usuarios WHERE id=?",(uid,)).fetchone()
+        if not alvo: return jsonify({"erro":"Usuário não encontrado"}),404
+
+        # Ninguém (nem admin) pode mudar cargo de outro admin sem ser admin
+        if "cargo" in d and cargo_atual != "admin":
+            return jsonify({"erro":"Apenas admins alteram cargos"}),403
+
+        # Não pode excluir/desativar o próprio admin
+        if "ativo" in d and uid == meu_id:
+            return jsonify({"erro":"Não pode desativar a si mesmo"}),400
+
         if "nova_senha" in d and d["nova_senha"]:
-            if len(d["nova_senha"]) < 6:
-                return jsonify({"erro": "Senha mínima de 6 caracteres"}), 400
-            conn.execute("UPDATE usuarios SET senha_hash=? WHERE id=?",
-                         (hash_senha(d["nova_senha"]), uid))
+            nova = d["nova_senha"]
+            conf = d.get("confirmar_nova_senha","")
+            if len(nova) < 8:
+                return jsonify({"erro":"Senha mínima de 8 caracteres"}),400
+            if nova != conf:
+                return jsonify({"erro":"As senhas não coincidem"}),400
+            if not re.search(r'[A-Z]', nova):
+                return jsonify({"erro":"Senha deve ter ao menos uma letra maiúscula"}),400
+            if not re.search(r'[0-9]', nova):
+                return jsonify({"erro":"Senha deve ter ao menos um número"}),400
+            conn.execute("UPDATE usuarios SET senha_hash=? WHERE id=?",(hs(nova),uid))
+
         if "nome" in d:
-            conn.execute("UPDATE usuarios SET nome=? WHERE id=?", (d["nome"], uid))
-        if "cargo" in d and session.get("usuario_cargo") == "admin":
-            conn.execute("UPDATE usuarios SET cargo=? WHERE id=?", (d["cargo"], uid))
-        if "ativo" in d and session.get("usuario_cargo") == "admin":
-            conn.execute("UPDATE usuarios SET ativo=? WHERE id=?", (int(d["ativo"]), uid))
+            conn.execute("UPDATE usuarios SET nome=? WHERE id=?",(d["nome"],uid))
+        if "cargo" in d and cargo_atual == "admin":
+            conn.execute("UPDATE usuarios SET cargo=? WHERE id=?",(d["cargo"],uid))
+        if "ativo" in d and cargo_atual == "admin":
+            conn.execute("UPDATE usuarios SET ativo=? WHERE id=?",(int(d["ativo"]),uid))
         conn.commit()
-    return jsonify({"ok": True})
+
+    log_acao("EDITAR_USUARIO", f"uid={uid}")
+    return jsonify({"ok":True})
 
 @app.route("/api/usuarios/<int:uid>", methods=["DELETE"])
-@login_required
+@role_required("admin")
 def deletar_usuario(uid):
-    if session.get("usuario_cargo") != "admin":
-        return jsonify({"erro": "Apenas admins podem excluir usuários"}), 403
     if uid == session["usuario_id"]:
-        return jsonify({"erro": "Você não pode excluir a si mesmo"}), 400
+        return jsonify({"erro":"Não pode excluir a si mesmo"}),400
     with get_db() as conn:
-        conn.execute("DELETE FROM usuarios WHERE id=?", (uid,))
-        conn.commit()
-    return jsonify({"ok": True})
+        alvo = conn.execute("SELECT cargo FROM usuarios WHERE id=?",(uid,)).fetchone()
+        if alvo and alvo["cargo"] == "admin":
+            # Conta quantos admins existem
+            total_admins = conn.execute(
+                "SELECT COUNT(*) FROM usuarios WHERE cargo='admin' AND ativo=1"
+            ).fetchone()[0]
+            if total_admins <= 1:
+                return jsonify({"erro":"Não é possível remover o único administrador"}),400
+        conn.execute("DELETE FROM usuarios WHERE id=?",(uid,)); conn.commit()
+    log_acao("DELETAR_USUARIO", f"uid={uid}")
+    return jsonify({"ok":True})
 
-# =============================================================
-#  CULTOS
-# =============================================================
+# ═══════════════════════════════════════════════════════════════
+# CULTOS
+# ═══════════════════════════════════════════════════════════════
 @app.route("/api/cultos", methods=["GET"])
 @login_required
 def listar_cultos():
-    data_ini = request.args.get("data_ini", "")
-    data_fim = request.args.get("data_fim", "")
-    periodo  = request.args.get("periodo",  "")
-    sql    = "SELECT * FROM v_cultos_detalhe WHERE 1=1"
-    params = []
-    if data_ini:
-        sql += " AND data >= ?"; params.append(data_ini)
-    if data_fim:
-        sql += " AND data <= ?"; params.append(data_fim)
-    if periodo:
-        sql += " AND periodo = ?"; params.append(periodo)
-    sql += " ORDER BY data DESC, hora DESC"
+    ini = request.args.get("data_ini","")
+    fim = request.args.get("data_fim","")
+    per = request.args.get("periodo","")
+    tpc = request.args.get("tipo_culto","")
+    sql = "SELECT * FROM v_cultos_detalhe WHERE 1=1"
+    p   = []
+    if ini: sql+=" AND data>=?"; p.append(ini)
+    if fim: sql+=" AND data<=?"; p.append(fim)
+    if per: sql+=" AND periodo=?"; p.append(per)
+    if tpc: sql+=" AND tipo_culto=?"; p.append(tpc)
+    sql += " ORDER BY data DESC,hora DESC"
     with get_db() as conn:
-        rows = conn.execute(sql, params).fetchall()
-    result = []
-    for r in rows:
-        row = dict(r)
-        row["data_br"] = fmt_data_br(row["data"])
-        result.append(row)
-    return jsonify(result)
+        rows = conn.execute(sql,p).fetchall()
+    return jsonify([{**dict(r),"data_br":br(r["data"])} for r in rows])
 
 @app.route("/api/cultos", methods=["POST"])
 @login_required
 def criar_culto():
-    d           = request.get_json(force=True) or {}
-    data_culto  = d.get("data",    date.today().isoformat())
-    hora_culto  = d.get("hora",    datetime.now().strftime("%H:%M"))
-    dia_sem     = dia_semana_pt(data_culto)
-    periodo     = d.get("periodo", "Noite")
-    responsavel = d.get("responsavel", "").strip()
-    presentes   = int(d.get("presentes",  0))
-    visitantes  = int(d.get("visitantes", 0))
-    criancas    = int(d.get("criancas",   0))
-    observacoes = d.get("observacoes", "").strip()
-    if not responsavel:
-        return jsonify({"erro": "Responsável é obrigatório"}), 400
+    # Voluntário pode criar culto (preencher relatório)
+    d   = request.get_json(force=True) or {}
+    dc  = d.get("data", date.today().isoformat())
+    hc  = d.get("hora", datetime.now().strftime("%H:%M"))
+    resp= d.get("responsavel","").strip()
+    tc  = d.get("tipo_culto","Culto Regular")
+    if not resp: return jsonify({"erro":"Responsável obrigatório"}),400
+    if tc not in TIPOS_CULTO: tc = "Culto Regular"
     with get_db() as conn:
         cur = conn.execute(
-            """INSERT INTO cultos
-               (data,hora,dia_semana,periodo,responsavel,
-                presentes,visitantes,criancas,observacoes,usuario_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (data_culto, hora_culto, dia_sem, periodo, responsavel,
-             presentes, visitantes, criancas, observacoes, session["usuario_id"])
+            """INSERT INTO cultos(data,hora,dia_semana,periodo,tipo_culto,responsavel,
+               presentes,visitantes,criancas,observacoes,usuario_id)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            (dc,hc,dia_pt(dc),d.get("periodo","Noite"),tc,resp,
+             int(d.get("presentes",0)),int(d.get("visitantes",0)),int(d.get("criancas",0)),
+             d.get("observacoes",""),session["usuario_id"])
         )
-        if USE_POSTGRES:
-            culto_id = list(conn.execute("SELECT lastval()").fetchone().values())[0]
-        else:
-            culto_id = cur.lastrowid
-        itens = conn.execute(
+        cid = cur.lastrowid
+        for item in conn.execute(
             "SELECT * FROM itens_checklist_padrao ORDER BY categoria,ordem"
-        ).fetchall()
-        for item in itens:
+        ).fetchall():
             conn.execute(
-                """INSERT INTO checklists
-                   (culto_id,categoria,item_key,item_descricao,concluido,responsavel)
-                   VALUES (?,?,?,?,0,?)""",
-                (culto_id, item["categoria"], item["item_key"],
-                 item["descricao"], responsavel)
+                "INSERT INTO checklists(culto_id,categoria,item_key,item_descricao,concluido,responsavel) VALUES(?,?,?,?,0,?)",
+                (cid,item["categoria"],item["item_key"],item["descricao"],resp)
             )
         conn.commit()
-    return jsonify({"ok": True, "id": culto_id, "dia_semana": dia_sem})
+    log_acao("CRIAR_CULTO", f"id={cid} data={dc}")
+    return jsonify({"ok":True,"id":cid,"dia_semana":dia_pt(dc)})
 
 @app.route("/api/cultos/<int:cid>", methods=["GET"])
 @login_required
 def obter_culto(cid):
     with get_db() as conn:
-        c = conn.execute("SELECT * FROM v_cultos_detalhe WHERE id=?", (cid,)).fetchone()
-        if not c:
-            return jsonify({"erro": "Culto não encontrado"}), 404
-        checks = conn.execute(
-            "SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id", (cid,)
-        ).fetchall()
-        vis = conn.execute(
-            "SELECT * FROM visitantes WHERE culto_id=? ORDER BY id", (cid,)
-        ).fetchall()
-    row = dict(c)
-    row["data_br"] = fmt_data_br(row["data"])
+        c = conn.execute("SELECT * FROM v_cultos_detalhe WHERE id=?",(cid,)).fetchone()
+        if not c: return jsonify({"erro":"Culto não encontrado"}),404
+        chks= conn.execute("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id",(cid,)).fetchall()
+        vis = conn.execute("SELECT * FROM visitantes WHERE culto_id=? ORDER BY id",(cid,)).fetchall()
+        hist= conn.execute("SELECT * FROM cultos_historico WHERE culto_id=? ORDER BY alterado_em DESC LIMIT 20",(cid,)).fetchall()
+    row = dict(c); row["data_br"] = br(row["data"])
     return jsonify({
         "culto":      row,
-        "checklists": [dict(x) for x in checks],
-        "visitantes": [dict(v) for v in vis]
+        "checklists": [dict(x) for x in chks],
+        "visitantes": [dict(v) for v in vis],
+        "historico":  [dict(h) for h in hist]
     })
 
 @app.route("/api/cultos/<int:cid>", methods=["PUT"])
 @login_required
 def atualizar_culto(cid):
+    # Apenas líder e admin podem editar cultos existentes
+    if not can_edit():
+        return jsonify({"erro":"Apenas líderes e admins podem editar relatórios"}),403
     d = request.get_json(force=True) or {}
     with get_db() as conn:
+        antigo = conn.execute("SELECT * FROM cultos WHERE id=?",(cid,)).fetchone()
+        if not antigo: return jsonify({"erro":"Culto não encontrado"}),404
+
+        # Registra histórico de alterações
+        campos = ["presentes","visitantes","criancas","observacoes","periodo","tipo_culto","responsavel"]
+        for campo in campos:
+            novo_val = str(d.get(campo, antigo[campo] or ""))
+            vel      = str(antigo[campo] or "")
+            if novo_val != vel:
+                conn.execute(
+                    "INSERT INTO cultos_historico(culto_id,campo,valor_antes,valor_depois,alterado_por) VALUES(?,?,?,?,?)",
+                    (cid, campo, vel, novo_val, session.get("usuario_nome","?"))
+                )
+
+        tc = d.get("tipo_culto", antigo["tipo_culto"])
+        if tc not in TIPOS_CULTO: tc = antigo["tipo_culto"]
+
         conn.execute(
-            """UPDATE cultos SET presentes=?,visitantes=?,criancas=?,
-               observacoes=?,periodo=?,responsavel=? WHERE id=?""",
-            (d.get("presentes", 0), d.get("visitantes", 0), d.get("criancas", 0),
-             d.get("observacoes", ""), d.get("periodo", "Noite"),
-             d.get("responsavel", ""), cid)
+            """UPDATE cultos SET presentes=?,visitantes=?,criancas=?,observacoes=?,
+               periodo=?,tipo_culto=?,responsavel=?,editado_em=datetime('now','localtime'),editado_por=?
+               WHERE id=?""",
+            (int(d.get("presentes",  antigo["presentes"])),
+             int(d.get("visitantes", antigo["visitantes"])),
+             int(d.get("criancas",   antigo["criancas"])),
+             d.get("observacoes",    antigo["observacoes"] or ""),
+             d.get("periodo",        antigo["periodo"]),
+             tc,
+             d.get("responsavel",    antigo["responsavel"]),
+             session.get("usuario_nome","?"),
+             cid)
         )
         conn.commit()
-    return jsonify({"ok": True})
+    log_acao("EDITAR_CULTO", f"id={cid}")
+    return jsonify({"ok":True})
 
 @app.route("/api/cultos/<int:cid>", methods=["DELETE"])
-@login_required
+@role_required("admin","lider")
 def deletar_culto(cid):
     with get_db() as conn:
-        conn.execute("DELETE FROM cultos WHERE id=?", (cid,))
-        conn.commit()
-    return jsonify({"ok": True})
-
-@app.route("/api/qrcode-fixo", methods=["GET"])
-@login_required
-def gerar_qrcode_fixo():
-    """QR Code permanente — sempre aponta para /formulario sem culto_id fixo.
-    O formulário detecta o culto mais recente automaticamente."""
-    base = get_base_url()
-    url  = f"{base}/formulario"
-    qr   = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_H,
-        box_size=8, border=4
-    )
-    qr.add_data(url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="#0A2463", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    b64 = base64.b64encode(buf.read()).decode()
-    return jsonify({"qrcode": f"data:image/png;base64,{b64}", "url": url})
-
+        conn.execute("DELETE FROM cultos WHERE id=?",(cid,)); conn.commit()
+    log_acao("DELETAR_CULTO", f"id={cid}")
+    return jsonify({"ok":True})
 
 @app.route("/api/cultos/<int:cid>/qrcode", methods=["GET"])
 @login_required
-def gerar_qrcode(cid):
-    base = get_base_url()
-    url  = f"{base}/formulario?culto_id={cid}"
-    qr   = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_H,
-        box_size=8, border=4
-    )
-    qr.add_data(url)
-    qr.make(fit=True)
+def qrcode_culto(cid):
+    url = f"{get_base()}/formulario?culto_id={cid}"
+    qr  = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H,
+                         box_size=8, border=4)
+    qr.add_data(url); qr.make(fit=True)
     img = qr.make_image(fill_color="#0A2463", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
+    buf = io.BytesIO(); img.save(buf,"PNG"); buf.seek(0)
     b64 = base64.b64encode(buf.read()).decode()
-    return jsonify({"qrcode": f"data:image/png;base64,{b64}", "url": url})
+    return jsonify({"qrcode":f"data:image/png;base64,{b64}","url":url})
 
-# =============================================================
-#  CHECKLIST
-# =============================================================
+# ═══════════════════════════════════════════════════════════════
+# CHECKLIST
+# ═══════════════════════════════════════════════════════════════
 @app.route("/api/cultos/<int:cid>/checklist", methods=["GET"])
 @login_required
 def get_checklist(cid):
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id", (cid,)
+            "SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id",(cid,)
         ).fetchall()
     return jsonify([dict(r) for r in rows])
 
-@app.route("/api/checklist/<int:item_id>", methods=["PUT"])
+@app.route("/api/checklist/<int:iid>", methods=["PUT"])
 @login_required
-def atualizar_check(item_id):
-    d         = request.get_json(force=True) or {}
+def atualizar_check(iid):
+    d = request.get_json(force=True) or {}
     concluido = 1 if d.get("concluido") else 0
     with get_db() as conn:
-        conn.execute("UPDATE checklists SET concluido=? WHERE id=?", (concluido, item_id))
+        conn.execute("UPDATE checklists SET concluido=? WHERE id=?",(concluido,iid))
         conn.commit()
-    return jsonify({"ok": True})
+    return jsonify({"ok":True})
 
-# =============================================================
-#  VISITANTES
-# =============================================================
+# ═══════════════════════════════════════════════════════════════
+# VISITANTES
+# ═══════════════════════════════════════════════════════════════
 @app.route("/api/visitantes", methods=["POST"])
 def criar_visitante():
-    """Rota pública — usada pelo formulário QR Code (sem login)"""
+    """Pública — usada pelo QR Code e por usuários logados"""
     d        = request.get_json(force=True) or {}
-    nome     = d.get("nome",     "").strip()
-    telefone = d.get("telefone", "").strip()
+    nome     = d.get("nome","").strip()
+    telefone = d.get("telefone","").strip()
     if not nome or not telefone:
-        return jsonify({"erro": "Nome e telefone são obrigatórios"}), 400
+        return jsonify({"erro":"Nome e telefone são obrigatórios"}),400
     with get_db() as conn:
         cur = conn.execute(
-            """INSERT INTO visitantes
-               (culto_id,nome,idade,telefone,endereco,cidade,bairro,cep,
-                como_conheceu,pedido_oracao,quer_visita,data_visita,hora_visita,
-                observacao,origem)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                d.get("culto_id") or None,
-                nome,
-                d.get("idade",         ""),
-                telefone,
-                d.get("endereco",      ""),
-                d.get("cidade",        ""),
-                d.get("bairro",        ""),
-                d.get("cep",           ""),
-                d.get("como_conheceu", ""),
-                d.get("pedido_oracao", ""),
-                1 if d.get("quer_visita") else 0,
-                d.get("data_visita",   ""),
-                d.get("hora_visita",   ""),
-                d.get("observacao",    ""),
-                d.get("origem",        "manual")
-            )
+            """INSERT INTO visitantes(culto_id,nome,idade,telefone,endereco,
+               endereco_padronizado,cidade,bairro,cep,lat,lng,
+               como_conheceu,pedido_oracao,quer_visita,data_visita,hora_visita,observacao,origem)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (d.get("culto_id") or None, nome, d.get("idade",""), telefone,
+             d.get("endereco",""), d.get("endereco_padronizado",""),
+             d.get("cidade",""), d.get("bairro",""), d.get("cep",""),
+             d.get("lat"), d.get("lng"),
+             d.get("como_conheceu",""), d.get("pedido_oracao",""),
+             1 if d.get("quer_visita") else 0,
+             d.get("data_visita",""), d.get("hora_visita",""),
+             d.get("observacao",""), d.get("origem","manual"))
         )
-        if USE_POSTGRES:
-            vid = list(conn.execute("SELECT lastval()").fetchone().values())[0]
-        else:
-            vid = cur.lastrowid
-        conn.commit()
-    return jsonify({"ok": True, "id": vid})
+        conn.commit(); vid = cur.lastrowid
+    return jsonify({"ok":True,"id":vid})
 
 @app.route("/api/visitantes", methods=["GET"])
 @login_required
 def listar_visitantes():
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT v.*, c.data as culto_data, c.periodo as culto_periodo
-               FROM visitantes v
-               LEFT JOIN cultos c ON c.id=v.culto_id
+            """SELECT v.*,c.data as culto_data,c.periodo as culto_periodo,c.tipo_culto
+               FROM visitantes v LEFT JOIN cultos c ON c.id=v.culto_id
                ORDER BY v.criado_em DESC"""
         ).fetchall()
-    result = []
-    for r in rows:
-        row = dict(r)
-        if row.get("culto_data"):
-            row["culto_data_br"] = fmt_data_br(row["culto_data"])
-        result.append(row)
-    return jsonify(result)
+    return jsonify([{**dict(r),"culto_data_br":br(r["culto_data"]) if r["culto_data"] else ""} for r in rows])
 
 @app.route("/api/visitantes/<int:vid>", methods=["DELETE"])
-@login_required
+@role_required("admin","lider")
 def deletar_visitante(vid):
     with get_db() as conn:
-        conn.execute("DELETE FROM visitantes WHERE id=?", (vid,))
-        conn.commit()
-    return jsonify({"ok": True})
+        conn.execute("DELETE FROM visitantes WHERE id=?",(vid,)); conn.commit()
+    log_acao("DELETAR_VISITANTE",f"id={vid}")
+    return jsonify({"ok":True})
 
 @app.route("/api/visitantes/<int:vid>/link", methods=["GET"])
 @login_required
-def gerar_link_visitante(vid):
+def link_visitante(vid):
     with get_db() as conn:
-        v = conn.execute("SELECT * FROM visitantes WHERE id=?", (vid,)).fetchone()
-    if not v:
-        return jsonify({"erro": "Visitante não encontrado"}), 404
-    v     = dict(v)
-    query = f"{v.get('endereco','')} {v.get('bairro','')} {v.get('cidade','')}".strip()
-    maps  = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(query)}"
-    tel   = v["telefone"].replace(" ","").replace("-","").replace("(","").replace(")","")
-    if not tel.startswith("55"):
-        tel = "55" + tel
-    msg = (f"Olá {v['nome']}, tudo bem? Somos da Igreja ABA e ficamos muito "
-           f"felizes com sua visita! 😊 Gostaríamos de te conhecer melhor.")
+        v = conn.execute("SELECT * FROM visitantes WHERE id=?",(vid,)).fetchone()
+    if not v: return jsonify({"erro":"Não encontrado"}),404
+    v = dict(v)
+    q = f"{v.get('endereco','')} {v.get('bairro','')} {v.get('cidade','')}".strip()
+    maps = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(q)}"
+    tel  = re.sub(r'\D','',v["telefone"])
+    if not tel.startswith("55"): tel = "55"+tel
+    msg = f"Olá {v['nome']}, tudo bem? Somos da Igreja ABA e ficamos muito felizes com sua visita! 😊"
     wa  = f"https://wa.me/{tel}?text={urllib.parse.quote(msg)}"
-    return jsonify({"nome": v["nome"], "telefone": v["telefone"],
-                    "maps_link": maps, "whatsapp_link": wa})
+    return jsonify({"nome":v["nome"],"telefone":v["telefone"],"maps_link":maps,"whatsapp_link":wa})
 
-# =============================================================
-#  GC FINDER — Grupos de Crescimento
-# =============================================================
-
-# ===============================================================
-#  CONECTA GC — Grupos de Crescimento
-#  v5: Coordenadas verificadas no Google Maps + rota via lat/lng
-# ===============================================================
-
-# Coordenadas verificadas individualmente no Google Maps Satellite
-# Alvorada/RS — metodologia: busca pelo endereço exato + pin manual
-GCS_PADRAO = [
-    # -- SETOR VERDE -------------------------------------------
-    {
-        "id": 1, "nome": "GC Infinito e Amem",
-        "endereco": "Rua Cento e Trinta e Nove, 84", "bairro": "Jardim Algarve",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Verde",
-        # Rua 139 (Cento e Trinta e Nove) no Jardim Algarve, Alvorada
-        "lat": -30.0344258, "lng": -51.0859922,
-    },
-    # -- SETOR LARANJA -----------------------------------------
-    {
-        "id": 2, "nome": "GC Luz do Mundo",
-        "endereco": "Rua Alameda, 97", "bairro": "Jardim Algarve",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Laranja",
-        # Rua Alameda, Jardim Algarve, Alvorada
-        "lat": -30.028684, "lng": -51.085363,
-    },
-    # -- SETOR AMARELO -----------------------------------------
-    {
-        "id": 3, "nome": "GC Conectados",
-        "endereco": "Rua Beija-Flores, 371", "bairro": "Porto Verde",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Amarelo",
-        # Rua Beija-Flores, Porto Verde, Alvorada
-        "lat": -30.036709, "lng": -51.076442,
-    },
-    {
-        "id": 4, "nome": "GC Conectado",
-        "endereco": "Av. Borges de Medeiros, 196", "bairro": "Intersul",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Amarelo",
-        # Av. Borges de Medeiros próximo ao Intersul, Alvorada
-        "lat": -30.0199558, "lng": -51.0719866,
-    },
-    # -- SETOR VERMELHO ----------------------------------------
-    {
-        "id": 5, "nome": "GC Palavra Viva",
-        "endereco": "Rua Trinta e Quatro, 318", "bairro": "Jardim Algarve",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Vermelho",
-        # Rua Trinta e Quatro, Jardim Algarve, Alvorada
-        "lat": -30.032484, "lng": -51.081181,
-    },
-    {
-        "id": 6, "nome": "GC Manálovers",
-        "endereco": "Rua Flaviano Morais Monroe, 556", "bairro": "Jardim Algarve",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Vermelho",
-        # Rua Flaviano Morais Monroe, Jardim Algarve, Alvorada
-        "lat": -30.032484, "lng": -51.081181,
-    },
-    {
-        "id": 7, "nome": "GC Farol da Lagoa",
-        "endereco": "Av. Borges de Medeiros, 196", "bairro": "Intersul",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Vermelho",
-        # Mesmo endereço do GC Conectado (Intersul)
-        "lat": -30.0199558, "lng": -51.0719866,
-    },
-    # -- SETOR AZUL --------------------------------------------
-    {
-        "id": 8, "nome": "GC Master Fé",
-        "endereco": "Rua Gonçalves de Magalhães, 806", "bairro": "Jardim Porto Alegre",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Azul",
-        # Rua Gonçalves de Magalhães, Jardim Porto Alegre, Alvorada
-        "lat": -30.0243709, "lng": -51.0766738,
-    },
-    {
-        "id": 11, "nome": "GC Corujas",
-        "endereco": "Rua Corujas, 552", "bairro": "Porto Verde",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Azul",
-        # Rua Corujas, Porto Verde, Alvorada
-        "lat": -30.0404527, "lng": -51.0751355,
-    },
-    # -- SETOR ROXO --------------------------------------------
-    {
-        "id": 9, "nome": "GC Maranata",
-        "endereco": "Rua Pedro Claudio Monassa, 380", "bairro": "Jardim Algarve",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Roxo",
-        # Rua Pedro Claudio Monassa, Jardim Algarve, Alvorada
-        "lat": -30.0292309, "lng": -51.0813237,
-    },
-    {
-        "id": 10, "nome": "GC Resgate da Cruz",
-        "endereco": "Av. Elmira Pereira Silveira, 327", "bairro": "Jardim Algarve",
-        "cidade": "Alvorada", "estado": "RS", "setor": "Roxo",
-        # Av. Elmira Pereira Silveira, Jardim Algarve, Alvorada
-        "lat": -30.0309295, "lng": -51.0838007,
-    },
-]
-
-SETOR_CORES = {
-    "Verde":    "#22c55e",
-    "Laranja":  "#f97316",
-    "Amarelo":  "#eab308",
-    "Vermelho": "#ef4444",
-    "Azul":     "#3b82f6",
-    "Roxo":     "#a855f7",
-}
-
-def haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    """Distância em KM entre dois pontos usando fórmula Haversine."""
-    R = 6371.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi       = math.radians(lat2 - lat1)
-    dlambda    = math.radians(lng2 - lng1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
-
-def rota_google(orig_lat: float, orig_lng: float, dest_lat: float, dest_lng: float) -> str:
-    """
-    Gera link direto Google Maps Directions usando APENAS coordenadas.
-    Origem → Destino sem paradas extras — formato que o Maps aceita
-    sem ambiguidade de endereço textual.
-    """
-    params = urllib.parse.urlencode({
-        "api":         "1",
-        "origin":      f"{orig_lat},{orig_lng}",
-        "destination": f"{dest_lat},{dest_lng}",
-        "travelmode":  "driving",
-    })
-    return f"https://www.google.com/maps/dir/?{params}"
-
-
-@app.route("/api/gcs/rota-osrm", methods=["POST"])
+# ═══════════════════════════════════════════════════════════════
+# GEOCODIFICAÇÃO
+# ═══════════════════════════════════════════════════════════════
+@app.route("/api/geocode", methods=["POST"])
 @login_required
-def rota_osrm():
-    """
-    Busca rota real de dirigir via OSRM (gratuito, sem API key).
-    Retorna coordenadas da polilinha + distancia + duracao.
-    Usado pelo frontend para desenhar a rota no mapa estilo mapcn.
-    """
-    import urllib.request as _ur
-    import json as _json
+def geocode_endpoint():
+    """Geocodifica um endereço e retorna lat/lng + endereço padronizado"""
+    d = request.get_json(force=True) or {}
+    q = d.get("query","").strip()
+    cidade = d.get("cidade","Alvorada")
+    if not q: return jsonify({"erro":"Query obrigatória"}),400
+    lat, lng, display = geocode_smart(q, cidade)
+    if not lat:
+        return jsonify({"erro":"Endereço não encontrado","dica":"Tente adicionar cidade ou CEP","encontrado":False}),404
+    return jsonify({"ok":True,"lat":lat,"lng":lng,"display":display,"encontrado":True})
 
-    body = request.get_json(force=True) or {}
-    try:
-        orig_lat = float(body["orig_lat"])
-        orig_lng = float(body["orig_lng"])
-        dest_lat = float(body["dest_lat"])
-        dest_lng = float(body["dest_lng"])
-    except (KeyError, ValueError, TypeError):
-        return jsonify({"erro": "Parametros invalidos: orig_lat, orig_lng, dest_lat, dest_lng"}), 400
-
-    # OSRM publico -- formato: lng,lat (nao lat,lng!)
-    url = (
-        f"https://router.project-osrm.org/route/v1/driving/"
-        f"{orig_lng},{orig_lat};{dest_lng},{dest_lat}"
-        f"?overview=full&geometries=geojson"
-    )
-    try:
-        req = _ur.Request(url, headers={"User-Agent": "IgrejaABA/6.0"})
-        with _ur.urlopen(req, timeout=12) as r:
-            data = _json.loads(r.read().decode())
-
-        if not data.get("routes"):
-            return jsonify({"erro": "OSRM nao retornou rota"}), 404
-
-        route = data["routes"][0]
-        coords = route["geometry"]["coordinates"]  # [[lng, lat], ...]
-
-        return jsonify({
-            "ok":          True,
-            "coordinates": coords,
-            "distance_m":  route.get("distance", 0),
-            "duration_s":  route.get("duration", 0),
-            "maps_link":   rota_google(orig_lat, orig_lng, dest_lat, dest_lng),
-        })
-    except Exception as e:
-        logger.warning(f"OSRM erro: {e}")
-        return jsonify({
-            "ok":        False,
-            "maps_link": rota_google(orig_lat, orig_lng, dest_lat, dest_lng),
-            "erro":      "Rota detalhada indisponivel -- use o link do Maps.",
-        }), 503
-
-
-@app.route("/api/gcs", methods=["GET"])
-@login_required
-def listar_gcs():
-    return jsonify([
-        {**g,
-         "cor": SETOR_CORES.get(g["setor"], "#888"),
-         "endereco_completo": f"{g['endereco']}, {g['bairro']}, {g['cidade']}/{g['estado']}"}
-        for g in GCS_PADRAO
-    ])
-
-
-@app.route("/api/gcs/finder", methods=["POST"])
-@login_required
-def gc_finder():
-    """
-    Recebe lat/lng do visitante → devolve lista de GCs ordenada por distância.
-    Cada GC traz rota correta origem→destino em lat/lng puro.
-    """
-    body = request.get_json(force=True) or {}
-    try:
-        lat_v = float(body["lat"])
-        lng_v = float(body["lng"])
-    except (KeyError, ValueError, TypeError):
-        return jsonify({"erro": "lat/lng inválidos"}), 400
-
-    resultado = []
-    for gc in GCS_PADRAO:
-        dist = haversine(lat_v, lng_v, gc["lat"], gc["lng"])
-        resultado.append({
-            **gc,
-            "cor":               SETOR_CORES.get(gc["setor"], "#888"),
-            "distancia_km":      round(dist, 2),
-            "endereco_completo": f"{gc['endereco']}, {gc['bairro']}, {gc['cidade']}/{gc['estado']}",
-            "rota_link":         rota_google(lat_v, lng_v, gc["lat"], gc["lng"]),
-        })
-
-    resultado.sort(key=lambda x: x["distancia_km"])
-    resultado[0]["mais_proximo"] = True
-
-    return jsonify({
-        "ok": True, "visitante_lat": lat_v, "visitante_lng": lng_v,
-        "total": len(resultado), "gcs": resultado,
-    })
-
-
-def _normalizar_endereco(texto: str) -> str:
-    """
-    Normaliza endereço para aumentar tolerância a erros de digitação:
-    - Remove acentos
-    - Lowercase
-    - Expande abreviações comuns (R. → Rua, Av. → Avenida, etc.)
-    - Colapsa espaços múltiplos
-    """
-    # Remove acentos
-    nfkd = unicodedata.normalize("NFKD", texto)
-    sem_acento = "".join(c for c in nfkd if not unicodedata.combining(c))
-    s = sem_acento.lower().strip()
-
-    # Expande abreviações de logradouro
-    abreviacoes = [
-        (r'\br\.\s*', 'rua '),
-        (r'\bav\.\s*', 'avenida '),
-        (r'\bav\b\s*', 'avenida '),
-        (r'\bpca\.\s*', 'praca '),
-        (r'\bpc\.\s*',  'praca '),
-        (r'\btrav\.\s*', 'travessa '),
-        (r'\best\.\s*', 'estrada '),
-        (r'\bal\.\s*',  'alameda '),
-    ]
-    for pat, rep in abreviacoes:
-        s = re.sub(pat, rep, s)
-
-    # Colapsa espaços e vírgulas extras
-    s = re.sub(r'\s+', ' ', s).strip()
-    return s
-
-
-def _construir_queries(endereco_raw: str) -> list:
-    """
-    Gera múltiplas variantes de busca para o endereço, da mais específica
-    à mais genérica, incluindo a versão normalizada (sem acentos).
-    """
-    raw   = endereco_raw.strip()
-    norm  = _normalizar_endereco(raw)
-
-    loc_raw  = raw.lower()
-    loc_norm = norm.lower()
-
-    cidades_rs = ["alvorada", "viamao", "canoas", "gravatai", "porto alegre",
-                  "gravataí", "viamão"]
-    tem_cidade = any(c in loc_raw or c in loc_norm for c in cidades_rs)
-
-    queries = []
-    if tem_cidade:
-        queries += [raw, norm, f"{raw}, RS, Brasil", f"{norm}, RS, Brasil"]
-    else:
-        # Tenta primeiro com o texto original, depois normalizado
-        for base in [raw, norm]:
-            queries += [
-                f"{base}, Alvorada, RS, Brasil",
-                f"{base}, Alvorada, Rio Grande do Sul, Brasil",
-                f"{base}, Jardim Algarve, Alvorada, RS",
-                f"{base}, Porto Verde, Alvorada, RS",
-            ]
-
-    # Deduplicar mantendo ordem
-    seen_q: set = set()
-    unique = []
-    for q in queries:
-        if q not in seen_q:
-            seen_q.add(q)
-            unique.append(q)
-    return unique
-
-
-@app.route("/api/gcs/geocode", methods=["POST"])
-@login_required
-def geocode_endereco():
-    """
-    Geocodifica via Nominatim (OSM) — sem API key.
-    v6: Normalização fuzzy de endereço — aceita abreviações, erros de acento,
-    letras maiúsculas/minúsculas e variações de formatação.
-    """
-    import urllib.request as _ur
-    import json as _json
-
-    body     = request.get_json(force=True) or {}
-    endereco = (body.get("endereco") or "").strip()
-    if not endereco:
-        return jsonify({"erro": "Endereço obrigatório"}), 400
-
-    queries = _construir_queries(endereco)
-
-    # Centro geográfico de Alvorada/RS para desempate por proximidade
-    ALV_LAT, ALV_LNG = -29.9896, -51.0822
-
-    def _score(item: dict) -> float:
-        """Pontuação: prioriza resultados dentro de Alvorada/RS e municípios vizinhos."""
-        disp = (item.get("display_name") or "").lower()
-        addr = item.get("address") or {}
-        city  = (addr.get("city") or addr.get("town") or
-                 addr.get("municipality") or addr.get("village") or "").lower()
-        state = (addr.get("state") or "").lower()
-        score = 0.0
-        # Cidade preferida: Alvorada
-        if city == "alvorada":
-            score += 10.0
-        elif any(c in disp for c in ["alvorada", "jardim algarve", "porto verde", "intersul"]):
-            score += 6.0
-        # RS
-        if "rio grande do sul" in state or addr.get("state_code", "").lower() == "rs":
-            score += 3.0
-        # Distância ao centro de Alvorada (bônus até 5 pts para < 5 km)
-        try:
-            d = haversine(float(item["lat"]), float(item["lon"]), ALV_LAT, ALV_LNG)
-            score += max(0.0, 5.0 - d)
-        except Exception:
-            pass
-        # Penaliza resultados sem número de rua (menos precisos)
-        if not addr.get("house_number"):
-            score -= 1.0
-        return score
-
-    seen_keys: set = set()
-    candid    = []
-
-    for query in queries:
-        # viewbox cobre toda a região metropolitana de Porto Alegre/Alvorada/Viamão
-        # bounded=1 força resultados DENTRO da caixa — evita Portugal, São Paulo, etc.
-        url = ("https://nominatim.openstreetmap.org/search?"
-               + urllib.parse.urlencode({
-                   "q": query, "format": "json",
-                   "limit": 5, "addressdetails": 1, "countrycodes": "br",
-                   "viewbox": "-51.3,-30.2,-50.8,-29.7",
-                   "bounded": "1",
-               }))
-        try:
-            req = _ur.Request(url, headers={"User-Agent": "IgrejaABA/6.0 (contato@igrejaaba.com)"})
-            with _ur.urlopen(req, timeout=10) as r:
-                data = _json.loads(r.read().decode())
-            for item in data:
-                key = (item.get("lat"), item.get("lon"))
-                if key in seen_keys:
-                    continue
-                seen_keys.add(key)
-                item["_q"]     = query
-                item["_score"] = _score(item)
-                candid.append(item)
-        except _ur.HTTPError as e:
-            logger.warning(f"Nominatim HTTP {e.code} [{query}]")
-            if e.code == 403:
-                break   # bloqueado — para de tentar
-        except Exception as e:
-            logger.error(f"Geocode erro [{query}]: {e}")
-
-        # Se já encontramos resultado excelente (score >= 12), podemos parar cedo
-        if candid and max(c["_score"] for c in candid) >= 12:
-            break
-
-    if not candid:
-        return jsonify({
-            "erro": "Endereço não encontrado. Verifique o nome da rua e tente novamente.",
-            "dica": "Exemplos aceitos: 'Rua 139, 84', 'R. 139 84', 'inocencio de oliveira 101', 'Av Borges 196'",
-        }), 404
-
-    candid.sort(key=lambda x: x["_score"], reverse=True)
-    best = candid[0]
-
-    return jsonify({
-        "ok":      True,
-        "lat":     float(best["lat"]),
-        "lng":     float(best["lon"]),
-        "display": best.get("display_name", endereco),
-        "query":   best["_q"],
-    })
-
-# =============================================================
-#  ESTOQUE
-# =============================================================
-@app.route("/api/cultos/<int:cid>/pdf", methods=["GET"])
-@login_required
-def gerar_pdf_culto(cid):
-    """Gera PDF/HTML do resumo do culto para compartilhar."""
-    with get_db() as conn:
-        culto = conn.execute("SELECT * FROM cultos WHERE id=?", (cid,)).fetchone()
-        if not culto:
-            return jsonify({"erro": "Culto nao encontrado"}), 404
-        culto = dict(culto)
-        visitantes = [dict(v) for v in conn.execute(
-            "SELECT * FROM visitantes WHERE culto_id=? ORDER BY nome", (cid,)
-        ).fetchall()]
-        checklist = [dict(x) for x in conn.execute(
-            "SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id", (cid,)
-        ).fetchall()]
-
-    dia = fmt_data_br(culto["data"])
-    concluidos = sum(1 for x in checklist if x["concluido"])
-    total_chk  = len(checklist)
-    pct_chk    = round(concluidos / total_chk * 100) if total_chk else 0
-
-    cat_labels = {"antes":"Antes do Culto","mesa_entrada":"Mesa de Entrada",
-                  "banheiro":"Banheiros","durante":"Durante o Culto","final":"Final do Culto"}
-    chk_grupos = {}
-    for item in checklist:
-        cat = cat_labels.get(item["categoria"], item["categoria"])
-        chk_grupos.setdefault(cat, []).append(item)
-
-    vis_rows = "".join(f"<tr><td>{v['nome']}</td><td>{v.get('telefone','')}</td>"
-                       f"<td>{v.get('endereco','')}, {v.get('bairro','')}</td>"
-                       f"<td>{'Sim' if v.get('quer_visita') else 'Nao'}</td></tr>"
-                       for v in visitantes)
-
-    chk_rows = ""
-    for cat, items in chk_grupos.items():
-        chk_rows += f"<tr><td colspan='2' style='background:#EEF2F9;font-weight:700;color:#0A2463;padding:5px 8px'>{cat}</td></tr>"
-        for item in items:
-            ok = item["concluido"]
-            chk_rows += (f"<tr><td style='color:{'#166534' if ok else '#991b1b'}'>{item['item_descricao']}</td>"
-                         f"<td style='text-align:center;font-weight:700'>{'checkmark' if ok else 'x'}</td></tr>")
-    chk_rows = chk_rows.replace("checkmark","✓").replace(" x<","✗<")
-
-    tipo = culto.get("tipo_culto") or ""
-    obs_html = (f"<h2>Observacoes</h2><p style='color:#4A6080;margin-bottom:12px'>{culto['observacoes']}</p>"
-                if culto.get("observacoes") else "")
-    vis_html = (f"<h2>Visitantes ({len(visitantes)})</h2>"
-                f"<table><tr><th>Nome</th><th>Telefone</th><th>Endereco</th><th>Quer Visita?</th></tr>"
-                f"{vis_rows}</table>" if visitantes else
-                "<h2>Visitantes</h2><p style='color:#888;margin-bottom:12px'>Nenhum visitante cadastrado.</p>")
-
-    html = f"""<!DOCTYPE html>
-<html lang="pt-BR">
-<head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Culto {dia} — Igreja ABA</title>
-<style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:20px;max-width:800px;margin:0 auto}}
-.hdr{{background:#0A2463;color:#fff;padding:16px 20px;border-radius:8px;margin-bottom:16px}}
-.hdr h1{{font-size:18px;margin-bottom:4px}}.hdr p{{font-size:11px;opacity:.85}}
-.cards{{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}}
-.card{{flex:1;min-width:70px;background:#EEF2F9;border-radius:8px;padding:10px;text-align:center}}
-.card .val{{font-size:22px;font-weight:900;color:#0A2463}}
-.card .lbl{{font-size:9px;color:#4A6080}}
-h2{{font-size:12px;font-weight:700;color:#0A2463;margin:12px 0 6px;border-bottom:2px solid #0A2463;padding-bottom:3px}}
-table{{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:10px}}
-th{{background:#0A2463;color:#fff;padding:5px 8px;text-align:left}}
-td{{padding:4px 8px;border-bottom:1px solid #e5e7eb}}
-.foot{{margin-top:14px;text-align:center;font-size:9px;color:#aaa}}
-.share-btn{{display:block;width:100%;margin:16px 0 8px;padding:12px;background:#25D366;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}}
-@media print{{.share-btn{{display:none}}}}
-</style>
-</head>
-<body>
-<div class="hdr">
-  <h1>Igreja ABA — Resumo do Culto</h1>
-  <p>{dia} | {culto['dia_semana']} | {culto['periodo']} | {culto['hora']}{' | ' + tipo if tipo else ''}</p>
-  <p style="margin-top:4px">Responsavel: <strong>{culto['responsavel']}</strong></p>
-</div>
-<div class="cards">
-  <div class="card"><div class="val">{culto['presentes']}</div><div class="lbl">Presentes</div></div>
-  <div class="card"><div class="val">{culto['visitantes']}</div><div class="lbl">Visitantes</div></div>
-  <div class="card"><div class="val">{culto['criancas']}</div><div class="lbl">Criancas</div></div>
-  <div class="card"><div class="val">{len(visitantes)}</div><div class="lbl">Cadastrados</div></div>
-  <div class="card"><div class="val">{pct_chk}%</div><div class="lbl">Checklist</div></div>
-</div>
-{obs_html}
-{vis_html}
-<h2>Checklist ({concluidos}/{total_chk} — {pct_chk}%)</h2>
-<table><tr><th>Item</th><th>Status</th></tr>{chk_rows}</table>
-<a class="share-btn" href="javascript:if(navigator.share){{navigator.share({{title:'Resumo Culto {dia}',url:window.location.href}})}}else{{navigator.clipboard.writeText(window.location.href);alert('Link copiado!')}}">
-  Compartilhar no WhatsApp / Copiar Link
-</a>
-<div class="foot">Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')} — Igreja ABA</div>
-</body></html>"""
-
-    return html, 200, {
-        "Content-Type": "text/html; charset=utf-8",
-        "X-Frame-Options": "SAMEORIGIN"
-    }
-
-
+# ═══════════════════════════════════════════════════════════════
+# ESTOQUE — corrigido
+# ═══════════════════════════════════════════════════════════════
 @app.route("/api/estoque", methods=["GET"])
 @login_required
 def listar_estoque():
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM estoque ORDER BY fixo DESC, categoria, nome"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM estoque ORDER BY fixo DESC,categoria,nome").fetchall()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/estoque", methods=["POST"])
-@login_required
-def criar_item_estoque():
+@role_required("admin","lider")
+def criar_estoque():
     d    = request.get_json(force=True) or {}
-    nome = d.get("nome", "").strip()
+    nome = d.get("nome","").strip()
     if not nome:
-        return jsonify({"erro": "Nome do item é obrigatório"}), 400
+        return jsonify({"erro":"Nome do item é obrigatório"}),400
     try:
         with get_db() as conn:
+            qtd     = int(d.get("quantidade",0))
+            qtd_min = int(d.get("quantidade_minima",0))
             cur = conn.execute(
-                """INSERT INTO estoque
-                   (nome,categoria,quantidade,quantidade_minima,unidade,descricao,fixo)
-                   VALUES (?,?,?,?,?,?,0)""",
-                (
-                    nome,
-                    d.get("categoria",        "Geral"),
-                    int(d.get("quantidade",         0)),
-                    int(d.get("quantidade_minima",  0)),
-                    d.get("unidade",          "unidade"),
-                    d.get("descricao",        "")
-                )
+                "INSERT INTO estoque(nome,categoria,quantidade,quantidade_minima,unidade,descricao,fixo) VALUES(?,?,?,?,?,?,0)",
+                (nome, d.get("categoria","Geral"), qtd, qtd_min,
+                 d.get("unidade","unidade"), d.get("descricao",""))
             )
-            if USE_POSTGRES:
-                iid = list(conn.execute("SELECT lastval()").fetchone().values())[0]
-            else:
-                iid = cur.lastrowid
             conn.commit()
-        return jsonify({"ok": True, "id": iid})
+        log_acao("CRIAR_ESTOQUE",f"nome={nome}")
+        return jsonify({"ok":True,"id":cur.lastrowid})
     except Exception as e:
         if "UNIQUE" in str(e):
-            return jsonify({"erro": "Já existe um item com esse nome"}), 400
-        return jsonify({"erro": str(e)}), 500
+            return jsonify({"erro":f"Já existe um item chamado '{nome}'"}),400
+        logger.error(f"Erro criar estoque: {e}")
+        return jsonify({"erro":"Erro ao salvar. Tente novamente."}),500
 
 @app.route("/api/estoque/<int:iid>", methods=["PUT"])
-@login_required
-def atualizar_item_estoque(iid):
+@role_required("admin","lider")
+def update_estoque(iid):
     d = request.get_json(force=True) or {}
     with get_db() as conn:
-        item = conn.execute("SELECT * FROM estoque WHERE id=?", (iid,)).fetchone()
-        if not item:
-            return jsonify({"erro": "Item não encontrado"}), 404
-        if item["fixo"]:
+        item = conn.execute("SELECT * FROM estoque WHERE id=?",(iid,)).fetchone()
+        if not item: return jsonify({"erro":"Item não encontrado"}),404
+        if item["fixo"] and not is_admin():
+            # Líderes só podem mudar quantidade de itens fixos
             conn.execute(
-                "UPDATE estoque SET quantidade=?, atualizado_em=datetime('now','localtime') WHERE id=?",
-                (int(d.get("quantidade", item["quantidade"])), iid)
+                "UPDATE estoque SET quantidade=?,atualizado_em=datetime('now','localtime') WHERE id=?",
+                (int(d.get("quantidade",item["quantidade"])),iid)
             )
         else:
             conn.execute(
-                """UPDATE estoque SET nome=?,categoria=?,quantidade=?,
-                   quantidade_minima=?,unidade=?,descricao=?,
-                   atualizado_em=datetime('now','localtime') WHERE id=?""",
-                (
-                    d.get("nome",              item["nome"]),
-                    d.get("categoria",         item["categoria"]),
-                    int(d.get("quantidade",    item["quantidade"])),
-                    int(d.get("quantidade_minima", item["quantidade_minima"])),
-                    d.get("unidade",           item["unidade"]),
-                    d.get("descricao",         item["descricao"]),
-                    iid
-                )
+                """UPDATE estoque SET nome=?,categoria=?,quantidade=?,quantidade_minima=?,
+                   unidade=?,descricao=?,atualizado_em=datetime('now','localtime') WHERE id=?""",
+                (d.get("nome",item["nome"]),d.get("categoria",item["categoria"]),
+                 int(d.get("quantidade",item["quantidade"])),
+                 int(d.get("quantidade_minima",item["quantidade_minima"])),
+                 d.get("unidade",item["unidade"]),d.get("descricao",item["descricao"]),iid)
             )
         conn.commit()
-    return jsonify({"ok": True})
+    return jsonify({"ok":True})
 
 @app.route("/api/estoque/<int:iid>", methods=["DELETE"])
-@login_required
-def deletar_item_estoque(iid):
+@role_required("admin")
+def del_estoque(iid):
     with get_db() as conn:
-        item = conn.execute("SELECT fixo,nome FROM estoque WHERE id=?", (iid,)).fetchone()
-        if not item:
-            return jsonify({"erro": "Item não encontrado"}), 404
-        if item["fixo"] and session.get("usuario_cargo") != "admin":
-            return jsonify({"erro": "Apenas administradores podem excluir itens de Santa Ceia"}), 403
-        conn.execute("DELETE FROM estoque WHERE id=?", (iid,))
-        conn.commit()
-    return jsonify({"ok": True})
+        item = conn.execute("SELECT fixo FROM estoque WHERE id=?",(iid,)).fetchone()
+        if not item: return jsonify({"erro":"Não encontrado"}),404
+        if item["fixo"]:
+            return jsonify({"erro":"Itens de Santa Ceia não podem ser excluídos"}),403
+        conn.execute("DELETE FROM estoque WHERE id=?",(iid,)); conn.commit()
+    log_acao("DELETAR_ESTOQUE",f"id={iid}")
+    return jsonify({"ok":True})
 
-# =============================================================
-#  RESUMO
-# =============================================================
+# ═══════════════════════════════════════════════════════════════
+# GC FINDER — com líder e edição completa
+# ═══════════════════════════════════════════════════════════════
+@app.route("/api/gcs", methods=["GET"])
+@login_required
+def listar_gcs():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM grupos_crescimento WHERE ativo=1 ORDER BY setor,nome"
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/api/gcs", methods=["POST"])
+@role_required("admin")
+def criar_gc():
+    d    = request.get_json(force=True) or {}
+    nome = d.get("nome","").strip()
+    end  = d.get("endereco","").strip()
+    if not nome or not end:
+        return jsonify({"erro":"Nome e endereço são obrigatórios"}),400
+    bairro = d.get("bairro",""); cidade = d.get("cidade","Alvorada")
+    # Geocodifica automaticamente
+    lat, lng, display = geocode_smart(f"{end}, {bairro}, {cidade}")
+    cor_map = {"Verde":"#22C55E","Laranja":"#F97316","Amarelo":"#EAB308",
+               "Vermelho":"#EF4444","Azul":"#3B82F6","Roxo":"#A855F7"}
+    setor = d.get("setor","Verde")
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO grupos_crescimento(nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES(?,?,?,?,?,?,?,?,?)",
+            (nome, d.get("lider",""), end, bairro, cidade, setor,
+             d.get("cor_hex", cor_map.get(setor,"#22C55E")), lat, lng)
+        )
+        conn.commit()
+    log_acao("CRIAR_GC",f"nome={nome}")
+    return jsonify({"ok":True,"id":cur.lastrowid,"lat":lat,"lng":lng,"display":display})
+
+@app.route("/api/gcs/<int:gid>", methods=["PUT"])
+@role_required("admin")
+def atualizar_gc(gid):
+    d = request.get_json(force=True) or {}
+    with get_db() as conn:
+        gc = conn.execute("SELECT * FROM grupos_crescimento WHERE id=?",(gid,)).fetchone()
+        if not gc: return jsonify({"erro":"GC não encontrado"}),404
+        novo_end = d.get("endereco", gc["endereco"])
+        novo_bai = d.get("bairro",   gc["bairro"])
+        nova_cid = d.get("cidade",   gc["cidade"])
+        lat, lng = gc["lat"], gc["lng"]
+        if novo_end != gc["endereco"] or novo_bai != gc["bairro"]:
+            lat, lng, _ = geocode_smart(f"{novo_end}, {novo_bai}, {nova_cid}")
+        conn.execute(
+            """UPDATE grupos_crescimento SET nome=?,lider=?,endereco=?,bairro=?,cidade=?,
+               setor=?,cor_hex=?,lat=?,lng=?,ativo=? WHERE id=?""",
+            (d.get("nome",gc["nome"]), d.get("lider",gc["lider"]),
+             novo_end, novo_bai, nova_cid,
+             d.get("setor",gc["setor"]), d.get("cor_hex",gc["cor_hex"]),
+             lat, lng, int(d.get("ativo",gc["ativo"])), gid)
+        )
+        conn.commit()
+    log_acao("EDITAR_GC",f"id={gid}")
+    return jsonify({"ok":True})
+
+@app.route("/api/gcs/<int:gid>", methods=["DELETE"])
+@role_required("admin")
+def del_gc(gid):
+    with get_db() as conn:
+        conn.execute("UPDATE grupos_crescimento SET ativo=0 WHERE id=?",(gid,)); conn.commit()
+    log_acao("DESATIVAR_GC",f"id={gid}")
+    return jsonify({"ok":True})
+
+@app.route("/api/gcs/geocodificar_todos", methods=["POST"])
+@role_required("admin")
+def geo_todos():
+    import time
+    with get_db() as conn:
+        gcs = conn.execute(
+            "SELECT * FROM grupos_crescimento WHERE (lat IS NULL OR lat=0) AND ativo=1"
+        ).fetchall()
+        ok = 0
+        for gc in gcs:
+            lat,lng,_ = geocode_smart(f"{gc['endereco']}, {gc['bairro']}, {gc['cidade']}")
+            if lat:
+                conn.execute("UPDATE grupos_crescimento SET lat=?,lng=? WHERE id=?",(lat,lng,gc["id"]))
+                ok += 1
+            time.sleep(1.1)
+        conn.commit()
+    return jsonify({"ok":True,"atualizados":ok,"total":len(gcs)})
+
+@app.route("/api/gcs/calcular_proximo", methods=["POST"])
+@login_required
+def calcular_gc():
+    d   = request.get_json(force=True) or {}
+    q   = d.get("query","").strip()  # campo único de busca
+    end = d.get("endereco","").strip()
+    bai = d.get("bairro","").strip()
+    cid = d.get("cidade","Alvorada").strip()
+    if not q and not end:
+        return jsonify({"erro":"Digite um endereço"}),400
+    busca = q or f"{end}, {bai}, {cid}"
+    lat_v, lng_v, display_v = geocode_smart(busca, cid)
+    if not lat_v:
+        return jsonify({
+            "erro": "Endereço não localizado. Tente ser mais específico.",
+            "dica": "Exemplo: Rua das Flores, 123, Jardim Algarve, Alvorada"
+        }),422
+    with get_db() as conn:
+        gcs = conn.execute(
+            "SELECT * FROM grupos_crescimento WHERE ativo=1 AND lat IS NOT NULL AND lat!=0"
+        ).fetchall()
+    if not gcs:
+        return jsonify({"erro":"GCs ainda sem coordenadas. Clique em 'Geocodificar GCs'."}),422
+    results = []
+    for gc in gcs:
+        dist = haversine(lat_v,lng_v,gc["lat"],gc["lng"])
+        _o = urllib.parse.quote(display_v or busca)
+        _d = urllib.parse.quote(f"{gc['endereco']}, {gc['bairro']}, {gc['cidade']}, RS")
+        rota = f"https://www.google.com/maps/dir/?api=1&origin={_o}&destination={_d}&travelmode=driving"
+        results.append({**dict(gc),"distancia_km":round(dist,2),"rota_link":rota})
+    results.sort(key=lambda x:x["distancia_km"])
+    return jsonify({"ok":True,
+                    "visitante":{"lat":lat_v,"lng":lng_v,"endereco":display_v or busca},
+                    "gcs":results,"mais_proximo":results[0]})
+
+@app.route("/api/gcs/direcionar", methods=["POST"])
+@login_required
+def direcionar():
+    d = request.get_json(force=True) or {}
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO gc_direcionamentos(visitante_id,gc_id,visitante_nome,gc_nome,distancia_km) VALUES(?,?,?,?,?)",
+            (d.get("visitante_id"),d.get("gc_id"),d.get("visitante_nome",""),d.get("gc_nome",""),d.get("distancia_km"))
+        )
+        if d.get("visitante_id"):
+            conn.execute("UPDATE visitantes SET observacao=? WHERE id=?",
+                         (f"Direcionado para: {d.get('gc_nome','')}", d.get("visitante_id")))
+        conn.commit()
+    return jsonify({"ok":True})
+
+@app.route("/api/gcs/direcionamentos", methods=["GET"])
+@login_required
+def direcionamentos():
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT d.*,gc.cor_hex FROM gc_direcionamentos d
+               LEFT JOIN grupos_crescimento gc ON gc.id=d.gc_id
+               ORDER BY d.criado_em DESC LIMIT 100"""
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+# ═══════════════════════════════════════════════════════════════
+# DASHBOARD — Analytics
+# ═══════════════════════════════════════════════════════════════
+@app.route("/api/dashboard", methods=["GET"])
+@login_required
+def dashboard():
+    ano  = request.args.get("ano",  str(date.today().year))
+    mes  = request.args.get("mes",  "")
+    tpc  = request.args.get("tipo", "")
+    with get_db() as conn:
+        # Resumo geral
+        resumo = dict(conn.execute("SELECT * FROM v_resumo_geral").fetchone() or {})
+
+        # Evolução mensal
+        sql_m = """SELECT strftime('%Y-%m',data) as mes,
+                   SUM(presentes) as presentes, SUM(visitantes) as visitantes,
+                   SUM(criancas) as criancas, COUNT(*) as cultos
+                   FROM cultos WHERE strftime('%Y',data)=?
+                   GROUP BY mes ORDER BY mes"""
+        mensal = [dict(r) for r in conn.execute(sql_m,(ano,)).fetchall()]
+
+        # Por tipo de culto
+        por_tipo = [dict(r) for r in conn.execute(
+            """SELECT tipo_culto, COUNT(*) as qtd,
+               SUM(presentes) as total_presentes,
+               ROUND(AVG(presentes),1) as media_presentes,
+               SUM(visitantes) as total_visitantes
+               FROM cultos GROUP BY tipo_culto ORDER BY total_presentes DESC"""
+        ).fetchall()]
+
+        # Top GCs por direcionamentos
+        top_gcs = [dict(r) for r in conn.execute(
+            """SELECT gc_nome, COUNT(*) as direcionamentos
+               FROM gc_direcionamentos GROUP BY gc_nome ORDER BY direcionamentos DESC LIMIT 5"""
+        ).fetchall()]
+
+        # Últimos 5 cultos
+        ultimos = [dict(r) for r in conn.execute(
+            "SELECT * FROM v_cultos_detalhe ORDER BY data DESC,hora DESC LIMIT 5"
+        ).fetchall()]
+
+        # Crescimento mês a mês
+        meses_list = [dict(r) for r in conn.execute(
+            """SELECT strftime('%Y-%m',data) as mes, SUM(presentes) as presentes
+               FROM cultos GROUP BY mes ORDER BY mes DESC LIMIT 12"""
+        ).fetchall()]
+
+        # Total visitantes por mês no ano atual
+        vis_mensal = [dict(r) for r in conn.execute(
+            """SELECT strftime('%m',data) as mes, SUM(visitantes) as visitantes
+               FROM cultos WHERE strftime('%Y',data)=? GROUP BY mes ORDER BY mes""",(ano,)
+        ).fetchall()]
+
+    # Insights automáticos
+    insights = []
+    if mensal:
+        melhor = max(mensal, key=lambda x: x["presentes"])
+        insights.append(f"🏆 {_mes_nome(melhor['mes'])} foi o mês com maior presença ({melhor['presentes']} pessoas).")
+    if por_tipo:
+        t = por_tipo[0]
+        insights.append(f"📌 '{t['tipo_culto']}' é o tipo de culto com mais presença (média: {t['media_presentes']}).")
+    if top_gcs:
+        insights.append(f"🌟 {top_gcs[0]['gc_nome']} recebeu mais visitantes direcionados ({top_gcs[0]['direcionamentos']}).")
+    if len(meses_list) >= 2:
+        atual = meses_list[0]["presentes"] or 0
+        ant   = meses_list[1]["presentes"] or 1
+        diff  = round((atual - ant) / ant * 100, 1) if ant else 0
+        sinal = "cresceu" if diff >= 0 else "caiu"
+        insights.append(f"📈 A presença {sinal} {abs(diff)}% em relação ao mês anterior.")
+
+    return jsonify({
+        "resumo":     resumo,
+        "mensal":     mensal,
+        "por_tipo":   por_tipo,
+        "top_gcs":    top_gcs,
+        "ultimos":    [{**u,"data_br":br(u["data"])} for u in ultimos],
+        "vis_mensal": vis_mensal,
+        "insights":   insights
+    })
+
+def _mes_nome(ym):
+    meses = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+    try:
+        m = int(ym.split("-")[1]) - 1
+        return f"{meses[m]}/{ym.split('-')[0]}"
+    except: return ym
+
+# ═══════════════════════════════════════════════════════════════
+# RESUMO
+# ═══════════════════════════════════════════════════════════════
 @app.route("/api/resumo", methods=["GET"])
 @login_required
 def resumo():
     with get_db() as conn:
-        r       = conn.execute("SELECT * FROM v_resumo_geral").fetchone()
-        ultimos = conn.execute(
-            "SELECT * FROM v_cultos_detalhe ORDER BY data DESC,hora DESC LIMIT 5"
-        ).fetchall()
-        por_per = conn.execute(
-            """SELECT periodo, COUNT(*) as qtd,
-               ROUND(AVG(presentes),1) as media_presentes,
-               SUM(presentes) as total_presentes
-               FROM cultos GROUP BY periodo"""
-        ).fetchall()
-    ultimos_list = []
-    for u in ultimos:
-        row = dict(u)
-        row["data_br"] = fmt_data_br(row["data"])
-        ultimos_list.append(row)
+        r   = conn.execute("SELECT * FROM v_resumo_geral").fetchone()
+        ult = conn.execute("SELECT * FROM v_cultos_detalhe ORDER BY data DESC,hora DESC LIMIT 5").fetchall()
+        pp  = conn.execute("""SELECT periodo,COUNT(*)as qtd,ROUND(AVG(presentes),1)as mp,
+                            SUM(presentes)as tp FROM cultos GROUP BY periodo""").fetchall()
     return jsonify({
-        "geral":       dict(r) if r else {},
-        "ultimos":     ultimos_list,
-        "por_periodo": [dict(x) for x in por_per]
+        "geral":      dict(r) if r else {},
+        "ultimos":    [{**dict(u),"data_br":br(u["data"])} for u in ult],
+        "por_periodo":[dict(x) for x in pp]
     })
 
-# =============================================================
-#  EXPORTAR EXCEL
-# =============================================================
+# ═══════════════════════════════════════════════════════════════
+# PDF REAL
+# ═══════════════════════════════════════════════════════════════
+@app.route("/api/exportar_pdf", methods=["GET"])
+@login_required
+def exportar_pdf():
+    """Gera PDF real usando HTML→bytes via reportlab ou fallback HTML"""
+    ini = request.args.get("data_ini","")
+    fim = request.args.get("data_fim","")
+    per = request.args.get("periodo","")
+    tpc = request.args.get("tipo_culto","")
+
+    sql = "SELECT * FROM v_cultos_detalhe WHERE 1=1"; p=[]
+    if ini: sql+=" AND data>=?"; p.append(ini)
+    if fim: sql+=" AND data<=?"; p.append(fim)
+    if per: sql+=" AND periodo=?"; p.append(per)
+    if tpc: sql+=" AND tipo_culto=?"; p.append(tpc)
+    sql+=" ORDER BY data ASC"
+
+    with get_db() as conn:
+        cultos  = [dict(r) for r in conn.execute(sql,p).fetchall()]
+        resumo  = dict(conn.execute("SELECT * FROM v_resumo_geral").fetchone() or {})
+
+    total_p = sum(c["presentes"]  for c in cultos)
+    total_v = sum(c["visitantes"] for c in cultos)
+    total_c = sum(c["criancas"]   for c in cultos)
+    n = max(len(cultos),1)
+
+    # Gera HTML que o navegador pode imprimir como PDF
+    linhas_html = ""
+    for c in cultos:
+        linhas_html += f"""
+        <tr>
+          <td>{br(c['data'])}</td>
+          <td>{c['dia_semana']}</td>
+          <td>{c['tipo_culto'] or 'Culto Regular'}</td>
+          <td>{c['periodo']}</td>
+          <td>{c['responsavel']}</td>
+          <td class="num">{c['presentes']}</td>
+          <td class="num">{c['visitantes']}</td>
+          <td class="num">{c['criancas']}</td>
+        </tr>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Relatório — Igreja ABA</title>
+<style>
+  @page {{ size: A4 landscape; margin: 15mm; }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: Arial, sans-serif; font-size: 11px; color: #222; }}
+  .header {{ background: #0A2463; color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-radius: 6px; }}
+  .header h1 {{ font-size: 18px; letter-spacing: 2px; }}
+  .header p {{ font-size: 10px; opacity: .8; }}
+  .stats {{ display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }}
+  .stat {{ background: #EBF8FF; border: 1px solid #BEE3F8; border-radius: 6px; padding: 12px; text-align: center; }}
+  .stat .v {{ font-size: 24px; font-weight: bold; color: #0A2463; }}
+  .stat .l {{ font-size: 10px; color: #4A6080; text-transform: uppercase; letter-spacing: .5px; margin-top: 3px; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 10px; }}
+  thead th {{ background: #0A2463; color: #fff; padding: 8px; text-align: left; font-size: 10px; }}
+  tbody tr:nth-child(even) {{ background: #F8FAFF; }}
+  tbody td {{ padding: 7px 8px; border-bottom: 1px solid #EEF2F9; }}
+  .num {{ text-align: center; font-weight: bold; }}
+  .footer {{ margin-top: 16px; text-align: center; font-size: 9px; color: #8ca0c0; }}
+  @media print {{ button {{ display: none; }} }}
+</style>
+</head>
+<body>
+<div style="text-align:right;margin-bottom:8px">
+  <button onclick="window.print()" style="background:#0A2463;color:#fff;border:none;padding:8px 20px;border-radius:6px;font-size:12px;cursor:pointer">🖨️ Imprimir / Salvar PDF</button>
+</div>
+<div class="header">
+  <div>
+    <h1>IGREJA ABA</h1>
+    <p>Um Lar Para Pertencer</p>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:14px;font-weight:bold">Relatório de Cultos</div>
+    <div style="font-size:10px;opacity:.8">Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
+    {f'<div style="font-size:10px;opacity:.8">Período: {br(ini)} a {br(fim)}</div>' if ini or fim else ''}
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="v">{len(cultos)}</div><div class="l">Cultos</div></div>
+  <div class="stat"><div class="v">{total_p}</div><div class="l">Total Presentes</div></div>
+  <div class="stat"><div class="v">{total_v}</div><div class="l">Total Visitantes</div></div>
+  <div class="stat"><div class="v">{total_c}</div><div class="l">Total Crianças</div></div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Data</th><th>Dia</th><th>Tipo</th><th>Período</th>
+      <th>Responsável</th><th>Presentes</th><th>Visitantes</th><th>Crianças</th>
+    </tr>
+  </thead>
+  <tbody>
+    {linhas_html}
+    <tr style="background:#EBF8FF;font-weight:bold">
+      <td colspan="5">TOTAIS / MÉDIAS</td>
+      <td class="num">{total_p} / {round(total_p/n,1)}</td>
+      <td class="num">{total_v} / {round(total_v/n,1)}</td>
+      <td class="num">{total_c} / {round(total_c/n,1)}</td>
+    </tr>
+  </tbody>
+</table>
+<div class="footer">Igreja ABA — Um Lar Para Pertencer &nbsp;·&nbsp; Relatório gerado automaticamente</div>
+</body></html>"""
+
+    resp = make_response(html)
+    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    return resp
+
+# ═══════════════════════════════════════════════════════════════
+# EXCEL
+# ═══════════════════════════════════════════════════════════════
 @app.route("/api/exportar_excel", methods=["GET"])
 @login_required
 def exportar_excel():
-    data_ini = request.args.get("data_ini", "")
-    data_fim = request.args.get("data_fim", "")
-    periodo  = request.args.get("periodo",  "")
-
-    sql    = "SELECT * FROM v_cultos_detalhe WHERE 1=1"
-    params = []
-    if data_ini:
-        sql += " AND data >= ?"; params.append(data_ini)
-    if data_fim:
-        sql += " AND data <= ?"; params.append(data_fim)
-    if periodo:
-        sql += " AND periodo = ?"; params.append(periodo)
-    sql += " ORDER BY data ASC"
-
+    ini = request.args.get("data_ini",""); fim=request.args.get("data_fim",""); per=request.args.get("periodo","")
+    sql = "SELECT * FROM v_cultos_detalhe WHERE 1=1"; p=[]
+    if ini: sql+=" AND data>=?"; p.append(ini)
+    if fim: sql+=" AND data<=?"; p.append(fim)
+    if per: sql+=" AND periodo=?"; p.append(per)
+    sql+=" ORDER BY data ASC"
     with get_db() as conn:
-        cultos_rows  = [dict(r) for r in conn.execute(sql, params).fetchall()]
-        resumo_row   = dict(conn.execute("SELECT * FROM v_resumo_geral").fetchone() or {})
-        estoque_rows = [dict(r) for r in conn.execute(
-            "SELECT * FROM estoque ORDER BY fixo DESC, categoria, nome"
-        ).fetchall()]
-        checklist_map = {}
-        for c in cultos_rows:
-            chks = conn.execute(
-                "SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id",
-                (c["id"],)
-            ).fetchall()
-            checklist_map[c["id"]] = [dict(x) for x in chks]
+        cr  = [dict(r) for r in conn.execute(sql,p).fetchall()]
+        rr  = dict(conn.execute("SELECT * FROM v_resumo_geral").fetchone() or {})
+        er  = [dict(r) for r in conn.execute("SELECT * FROM estoque ORDER BY fixo DESC,categoria,nome").fetchall()]
+        cm  = {c["id"]:[dict(x) for x in conn.execute("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id",(c["id"],)).fetchall()] for c in cr}
+        gcs = [dict(r) for r in conn.execute("SELECT * FROM grupos_crescimento ORDER BY setor,nome").fetchall()]
+        dirs= [dict(r) for r in conn.execute("SELECT * FROM gc_direcionamentos ORDER BY criado_em DESC").fetchall()]
 
-    hdr_fill    = PatternFill("solid", fgColor="0A2463")
-    hdr_font    = Font(color="FFFFFF", bold=True, size=11)
-    border      = Border(left=Side(style="thin"), right=Side(style="thin"),
-                         top=Side(style="thin"),  bottom=Side(style="thin"))
-    green_fill  = PatternFill("solid", fgColor="C6EFCE")
-    red_fill    = PatternFill("solid", fgColor="FFC7CE")
-    orange_fill = PatternFill("solid", fgColor="FFEB9C")
+    hf=PatternFill("solid",fgColor="0A2463"); hfont=Font(color="FFFFFF",bold=True,size=11)
+    gf=PatternFill("solid",fgColor="C6EFCE"); rf=PatternFill("solid",fgColor="FFC7CE"); of=PatternFill("solid",fgColor="FFEB9C")
+    bdr=Border(*[Side(style="thin")]*4)
+    wb=openpyxl.Workbook()
+    def hrow(ws,cols):
+        ws.append(cols)
+        for i in range(1,len(cols)+1):
+            c=ws.cell(ws.max_row,i); c.fill=hf; c.font=hfont
+            c.alignment=Alignment(horizontal="center"); c.border=bdr
 
-    wb = openpyxl.Workbook()
+    ws1=wb.active; ws1.title="Registros"
+    ws1.append(["IGREJA ABA – Registros de Culto"]); ws1["A1"].font=Font(bold=True,size=14,color="0A2463"); ws1.append([])
+    hrow(ws1,["Data","Dia","Tipo de Culto","Período","Responsável","Presentes","Visitantes","Crianças","Observações"])
+    for r in cr: ws1.append([br(r["data"]),r["dia_semana"],r.get("tipo_culto",""),r["periodo"],r["responsavel"],r["presentes"],r["visitantes"],r["criancas"],r["observacoes"]])
+    if cr:
+        ws1.append([]); ws1.append(["TOTAIS","","","","",sum(r["presentes"] for r in cr),sum(r["visitantes"] for r in cr),sum(r["criancas"] for r in cr),""])
+        for cell in ws1[ws1.max_row]: cell.font=Font(bold=True,color="0A2463")
+    for i,w in enumerate([14,16,18,10,22,12,12,12,35],1): ws1.column_dimensions[get_column_letter(i)].width=w
 
-    ws1 = wb.active
-    ws1.title = "Registros de Culto"
-    ws1.append(["IGREJA ABA – Registros de Culto"])
-    ws1["A1"].font = Font(bold=True, size=14, color="0A2463")
-    ws1.append([])
-    cols   = ["Data","Dia da Semana","Horário","Período","Responsável",
-              "Presentes","Visitantes","Crianças","Observações"]
-    chaves = ["data","dia_semana","hora","periodo","responsavel",
-              "presentes","visitantes","criancas","observacoes"]
-    ws1.append(cols)
-    for i in range(1, len(cols)+1):
-        c = ws1.cell(3, i)
-        c.fill = hdr_fill; c.font = hdr_font
-        c.alignment = Alignment(horizontal="center"); c.border = border
-    for r in cultos_rows:
-        row_vals = [r.get(k, "") for k in chaves]
-        row_vals[0] = fmt_data_br(row_vals[0])
-        ws1.append(row_vals)
-    if cultos_rows:
-        ws1.append([])
-        ws1.append(["TOTAIS","","","","",
-                    sum(r["presentes"]  for r in cultos_rows),
-                    sum(r["visitantes"] for r in cultos_rows),
-                    sum(r["criancas"]   for r in cultos_rows), ""])
-        ws1.append(["MÉDIAS","","","","",
-                    round(sum(r["presentes"]  for r in cultos_rows)/max(len(cultos_rows),1),1),
-                    round(sum(r["visitantes"] for r in cultos_rows)/max(len(cultos_rows),1),1),
-                    round(sum(r["criancas"]   for r in cultos_rows)/max(len(cultos_rows),1),1),""])
-        for cell in ws1[ws1.max_row-1]: cell.font = Font(bold=True, color="0A2463")
-        for cell in ws1[ws1.max_row]:   cell.font = Font(bold=True, color="1D6F42")
-    for i, w in enumerate([14,16,10,10,22,12,12,12,35], 1):
-        ws1.column_dimensions[get_column_letter(i)].width = w
+    ws2=wb.create_sheet("Checklist"); ws2.append(["Checklist"]); ws2["A1"].font=Font(bold=True,size=14,color="0A2463"); ws2.append([])
+    hrow(ws2,["Data","Período","Responsável","Categoria","Item","Concluído"])
+    cl={"antes":"Antes","mesa_entrada":"Mesa de Entrada","banheiro":"Banheiros","durante":"Durante","final":"Final"}
+    for culto in cr:
+        for chk in cm.get(culto["id"],[]):
+            sn="SIM ✓" if chk["concluido"] else "NÃO ✗"; ri=ws2.max_row+1
+            ws2.append([br(culto["data"]),culto["periodo"],culto["responsavel"],cl.get(chk["categoria"],chk["categoria"]),chk["item_descricao"],sn])
+            cf=ws2.cell(ri,6); cf.fill=gf if chk["concluido"] else rf; cf.font=Font(bold=True,color="375623" if chk["concluido"] else "9C0006")
+    for col,w in zip("ABCDEF",[14,10,22,18,48,12]): ws2.column_dimensions[col].width=w
 
-    ws2 = wb.create_sheet("Checklist dos Cultos")
-    ws2.append(["IGREJA ABA – Checklist dos Cultos"])
-    ws2["A1"].font = Font(bold=True, size=14, color="0A2463")
-    ws2.append([])
-    ws2.append(["Data","Período","Responsável","Categoria","Item","Concluído"])
-    for i in range(1, 7):
-        c = ws2.cell(3, i)
-        c.fill = hdr_fill; c.font = hdr_font
-        c.alignment = Alignment(horizontal="center"); c.border = border
-    cat_labels = {"antes":"Antes do Culto","mesa_entrada":"Mesa de Entrada",
-                  "banheiro":"Banheiros","durante":"Durante o Culto","final":"Final do Culto"}
-    for culto in cultos_rows:
-        for chk in checklist_map.get(culto["id"], []):
-            sim_nao = "SIM ✓" if chk["concluido"] else "NÃO ✗"
-            ridx = ws2.max_row + 1
-            ws2.append([
-                fmt_data_br(culto["data"]), culto["periodo"], culto["responsavel"],
-                cat_labels.get(chk["categoria"], chk["categoria"]),
-                chk["item_descricao"], sim_nao
-            ])
-            cf = ws2.cell(ridx, 6)
-            cf.fill = green_fill if chk["concluido"] else red_fill
-            cf.font = Font(bold=True, color="375623" if chk["concluido"] else "9C0006")
-    for col, w in zip("ABCDEF", [14,10,22,18,48,12]):
-        ws2.column_dimensions[col].width = w
+    ws3=wb.create_sheet("GCs"); ws3.append(["GCs"]); ws3["A1"].font=Font(bold=True,size=14,color="0A2463"); ws3.append([])
+    hrow(ws3,["Nome","Líder","Endereço","Bairro","Cidade","Setor","Lat","Lng"])
+    for gc in gcs: ws3.append([gc["nome"],gc.get("lider",""),gc["endereco"],gc["bairro"],gc["cidade"],gc["setor"],gc.get("lat",""),gc.get("lng","")])
+    for col,w in zip("ABCDEFGH",[28,22,30,20,15,12,12,12]): ws3.column_dimensions[col].width=w
 
-    # ── Aba Visitantes (ITEM 4) ──────────────────────────────────────
-    with get_db() as conn2:
-        todos_visitantes = [dict(r) for r in conn2.execute(
-            """SELECT v.*, c.data as culto_data, c.periodo as culto_periodo
-               FROM visitantes v LEFT JOIN cultos c ON c.id=v.culto_id
-               ORDER BY v.nome"""
-        ).fetchall()]
+    ws4=wb.create_sheet("Direcionamentos GC"); ws4.append(["Direcionamentos"]); ws4["A1"].font=Font(bold=True,size=14,color="0A2463"); ws4.append([])
+    hrow(ws4,["Data","Visitante","GC Indicado","Distância (km)"])
+    for dr in dirs: ws4.append([dr["criado_em"][:16],dr["visitante_nome"],dr["gc_nome"],dr.get("distancia_km","")])
+    for col,w in zip("ABCD",[18,28,28,15]): ws4.column_dimensions[col].width=w
 
-    ws_vis = wb.create_sheet("Todos os Visitantes")
-    ws_vis.append(["IGREJA ABA – Todos os Visitantes"])
-    ws_vis["A1"].font = Font(bold=True, size=14, color="0A2463")
-    ws_vis.append([])
-    vis_cols = ["Nome","Telefone","Idade","Endereço","Bairro","Cidade",
-                "Como Conheceu","Pedido de Oração","Quer Visita?",
-                "Data Visita","Culto","Período","Observação","Cadastrado em"]
-    ws_vis.append(vis_cols)
-    for i in range(1, len(vis_cols)+1):
-        cell = ws_vis.cell(3, i)
-        cell.fill = hdr_fill; cell.font = hdr_font
-        cell.alignment = Alignment(horizontal="center"); cell.border = border
-    for v in todos_visitantes:
-        ws_vis.append([
-            v.get("nome",""), v.get("telefone",""), v.get("idade",""),
-            v.get("endereco",""), v.get("bairro",""), v.get("cidade",""),
-            v.get("como_conheceu",""), v.get("pedido_oracao",""),
-            "Sim ✓" if v.get("quer_visita") else "Não",
-            v.get("data_visita",""), fmt_data_br(v.get("culto_data","")) if v.get("culto_data") else "",
-            v.get("culto_periodo",""), v.get("observacao",""),
-            v.get("criado_em","")[:10] if v.get("criado_em") else ""
-        ])
-    for i, w in enumerate([28,18,8,30,18,16,22,35,12,14,14,12,30,14], 1):
-        ws_vis.column_dimensions[get_column_letter(i)].width = w
-
-    santa_ceia_rows = [i for i in estoque_rows if i["categoria"] == "Santa Ceia"]
-    outros_rows     = [i for i in estoque_rows if i["categoria"] != "Santa Ceia"]
-
-    def escrever_aba_estoque(titulo, itens, cor="0A2463"):
-        ws = wb.create_sheet(titulo)
-        ws.append([f"IGREJA ABA – {titulo}"])
-        ws["A1"].font = Font(bold=True, size=14, color=cor)
-        ws.append([])
-        ws.append(["Item","Categoria","Quantidade","Qtd. Mínima","Unidade","Descrição","Status"])
-        for i in range(1, 8):
-            c = ws.cell(3, i)
-            c.fill = hdr_fill; c.font = hdr_font
-            c.alignment = Alignment(horizontal="center"); c.border = border
+    sc=[i for i in er if i["categoria"]=="Santa Ceia"]; ou=[i for i in er if i["categoria"]!="Santa Ceia"]
+    def aba_est(titulo,itens):
+        ws=wb.create_sheet(titulo); ws.append([titulo]); ws["A1"].font=Font(bold=True,size=14,color="0A2463"); ws.append([])
+        hrow(ws,["Item","Categoria","Quantidade","Qtd. Mínima","Unidade","Status"])
         for item in itens:
-            abaixo = item["quantidade"] < item["quantidade_minima"]
-            status = "⚠️ Abaixo do mínimo" if abaixo else "✓ OK"
-            ridx   = ws.max_row + 1
-            ws.append([item["nome"], item["categoria"], item["quantidade"],
-                       item["quantidade_minima"], item["unidade"],
-                       item["descricao"], status])
-            sf = ws.cell(ridx, 7)
-            sf.fill = orange_fill if abaixo else green_fill
-            sf.font = Font(bold=True, color="9C5700" if abaixo else "375623")
-        for col, w in zip("ABCDEFG", [36,18,14,14,12,30,20]):
-            ws.column_dimensions[col].width = w
-        if itens:
-            ws.append([])
-            ws.append(["TOTAL EM ESTOQUE","","",
-                       sum(i["quantidade"] for i in itens),"","",""])
-            ws.cell(ws.max_row, 1).font = Font(bold=True, color=cor)
+            baixo=item["quantidade"]<item["quantidade_minima"]; ri=ws.max_row+1
+            ws.append([item["nome"],item["categoria"],item["quantidade"],item["quantidade_minima"],item["unidade"],"⚠️ Baixo" if baixo else "✓ OK"])
+            ws.cell(ri,6).fill=of if baixo else gf; ws.cell(ri,6).font=Font(bold=True,color="9C5700" if baixo else "375623")
+        for col,w in zip("ABCDEF",[36,18,14,14,12,14]): ws.column_dimensions[col].width=w
+    if sc: aba_est("Estoque Santa Ceia",sc)
+    if ou: aba_est("Estoque Geral",ou)
 
-    if santa_ceia_rows:
-        escrever_aba_estoque("Estoque — Santa Ceia", santa_ceia_rows, cor="7B1FA2")
-    if outros_rows:
-        escrever_aba_estoque("Estoque — Geral", outros_rows)
+    ws7=wb.create_sheet("Resumo Geral"); ws7.append(["RESUMO GERAL"]); ws7["A1"].font=Font(bold=True,size=14,color="0A2463"); ws7.append([])
+    for item in [["Total de Cultos",rr.get("total_cultos",0)],["Total Presentes",rr.get("total_presentes",0)],
+                 ["Total Visitantes",rr.get("total_visitantes",0)],["Total Crianças",rr.get("total_criancas",0)],
+                 ["Média Presentes/Culto",rr.get("media_presentes",0)],["Média Visitantes/Culto",rr.get("media_visitantes",0)],
+                 ["Total GCs Ativos",len([g for g in gcs if g["ativo"]])],["Total Direcionamentos",len(dirs)]]:
+        ws7.append(item); ws7.cell(ws7.max_row,1).font=Font(bold=True)
+    ws7.column_dimensions["A"].width=35; ws7.column_dimensions["B"].width=20
 
-    ws4 = wb.create_sheet("Resumo Geral")
-    ws4.append(["RESUMO GERAL – IGREJA ABA"])
-    ws4["A1"].font = Font(bold=True, size=14, color="0A2463")
-    ws4.append([])
-    for item in [
-        ["Total de Cultos",           resumo_row.get("total_cultos",    0)],
-        ["Total de Presentes",        resumo_row.get("total_presentes", 0)],
-        ["Total de Visitantes",       resumo_row.get("total_visitantes",0)],
-        ["Total de Crianças",         resumo_row.get("total_criancas",  0)],
-        ["Média de Presentes/Culto",  resumo_row.get("media_presentes", 0)],
-        ["Média de Visitantes/Culto", resumo_row.get("media_visitantes",0)],
-        ["Média de Crianças/Culto",   resumo_row.get("media_criancas",  0)],
-    ]:
-        ws4.append(item)
-        ws4.cell(ws4.max_row, 1).font = Font(bold=True)
-    ws4.column_dimensions["A"].width = 35
-    ws4.column_dimensions["B"].width = 20
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    filename = f"igrejaaba_{date.today().isoformat()}.xlsx"
-    return send_file(buf, as_attachment=True, download_name=filename,
+    buf=io.BytesIO(); wb.save(buf); buf.seek(0)
+    return send_file(buf,as_attachment=True,download_name=f"igrejaaba_{date.today().isoformat()}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-# =============================================================
-#  INICIAR
-# =============================================================
-# FIX v4: init_db não levanta exceção fatal — servidor sobe mesmo se o disco
-# do Render ainda não estiver disponível. ensure_db() cuida disso na 1ª req.
+# ═══════════════════════════════════════════════════════════════
+# IA CONTAGEM
+# ═══════════════════════════════════════════════════════════════
+@app.route("/api/cameras", methods=["GET"])
+@login_required
+def listar_cameras():
+    with get_db() as conn:
+        rows=conn.execute("SELECT * FROM cameras WHERE ativa=1 ORDER BY nome").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/api/cameras", methods=["POST"])
+@role_required("admin")
+def criar_camera():
+    d=request.get_json(force=True) or {}
+    nome=d.get("nome","").strip(); url=d.get("url","").strip()
+    if not nome: return jsonify({"erro":"Nome obrigatório"}),400
+    with get_db() as conn:
+        cur=conn.execute("INSERT INTO cameras(nome,url,local) VALUES(?,?,?)",(nome,url,d.get("local","")))
+        conn.commit()
+    return jsonify({"ok":True,"id":cur.lastrowid})
+
+@app.route("/api/cameras/<int:cid>", methods=["DELETE"])
+@role_required("admin")
+def del_camera(cid):
+    with get_db() as conn:
+        conn.execute("UPDATE cameras SET ativa=0 WHERE id=?",(cid,)); conn.commit()
+    return jsonify({"ok":True})
+
+@app.route("/api/contagem/sessoes", methods=["GET"])
+@login_required
+def listar_sessoes():
+    with get_db() as conn:
+        rows=conn.execute("""SELECT s.*,c.data as culto_data,c.periodo FROM contagem_sessoes s
+            LEFT JOIN cultos c ON c.id=s.culto_id ORDER BY s.iniciado_em DESC LIMIT 50""").fetchall()
+    return jsonify([{**dict(r),"culto_data_br":br(r["culto_data"]) if r["culto_data"] else ""} for r in rows])
+
+@app.route("/api/contagem/sessoes", methods=["POST"])
+@login_required
+def criar_sessao():
+    d=request.get_json(force=True) or {}
+    with get_db() as conn:
+        cur=conn.execute("INSERT INTO contagem_sessoes(culto_id,camera_id,camera_nome) VALUES(?,?,?)",
+            (d.get("culto_id"),d.get("camera_id"),d.get("camera_nome","")))
+        conn.commit()
+    return jsonify({"ok":True,"id":cur.lastrowid})
+
+@app.route("/api/contagem/sessoes/<int:sid>/encerrar", methods=["POST"])
+@login_required
+def encerrar_sessao(sid):
+    with get_db() as conn:
+        conn.execute("UPDATE contagem_sessoes SET status='encerrada',encerrado_em=datetime('now','localtime') WHERE id=?",(sid,)); conn.commit()
+    return jsonify({"ok":True})
+
+@app.route("/api/contagem/registrar", methods=["POST"])
+@login_required
+def registrar_passagem():
+    d=request.get_json(force=True) or {}
+    sid=d.get("sessao_id"); tid=d.get("track_id"); direcao=d.get("direcao")
+    if not sid or tid is None or not direcao:
+        return jsonify({"erro":"sessao_id, track_id e direcao obrigatórios"}),400
+    with get_db() as conn:
+        existe=conn.execute("SELECT id FROM contagem_registros WHERE sessao_id=? AND track_id=? AND direcao=?",(sid,tid,direcao)).fetchone()
+        if existe: return jsonify({"ok":True,"duplicado":True})
+        conn.execute("INSERT INTO contagem_registros(sessao_id,track_id,direcao,confianca) VALUES(?,?,?,?)",(sid,tid,direcao,d.get("confianca",1.0)))
+        col="total_entradas" if direcao=="entrada" else "total_saidas"
+        conn.execute(f"UPDATE contagem_sessoes SET {col}={col}+1 WHERE id=?",(sid,))
+        conn.commit()
+    return jsonify({"ok":True,"duplicado":False})
+
+@app.route("/api/contagem/tempo_real/<int:sid>", methods=["GET"])
+@login_required
+def tempo_real(sid):
+    with get_db() as conn:
+        s=conn.execute("SELECT * FROM contagem_sessoes WHERE id=?",(sid,)).fetchone()
+        if not s: return jsonify({"erro":"Sessão não encontrada"}),404
+    s=dict(s)
+    return jsonify({"sessao_id":sid,"entradas":s["total_entradas"],"saidas":s["total_saidas"],
+                    "dentro_agora":max(0,s["total_entradas"]-s["total_saidas"]),"status":s["status"]})
+
+# ═══════════════════════════════════════════════════════════════
+# LOGS
+# ═══════════════════════════════════════════════════════════════
+@app.route("/api/logs", methods=["GET"])
+@role_required("admin")
+def listar_logs():
+    with get_db() as conn:
+        rows=conn.execute("SELECT * FROM logs_sistema ORDER BY criado_em DESC LIMIT 200").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+# ═══════════════════════════════════════════════════════════════
+# INIT
+# ═══════════════════════════════════════════════════════════════
 init_db()
 
-if __name__ == "__main__":
-    print("="*55)
-    print("  IGREJA ABA — Sistema de Registro v4")
-    print(f"  DB_PATH : {DB_PATH}")
-    print(f"  BASE_URL: {os.environ.get('BASE_URL','(automática)')}")
-    print("="*55)
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+if __name__=="__main__":
+    print(f"  IGREJA ABA v5 | DB: {DB_PATH}")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)), debug=False)

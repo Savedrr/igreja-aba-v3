@@ -1,0 +1,5 @@
+# Instale APENAS se for usar a contagem por câmera (IA)
+# Execute: pip install -r requirements_ia.txt
+ultralytics==8.3.0
+opencv-python==4.10.0.84
+numpy==1.26.4

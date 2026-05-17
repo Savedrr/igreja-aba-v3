@@ -1,338 +1,131 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Igreja ABA — Login</title>
-  <link rel="icon" type="image/x-icon"  href="/static/favicon.ico">
-  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
-  <link rel="apple-touch-icon" sizes="180x180"    href="/static/apple-touch-icon.png">
-  <meta name="theme-color" content="#0d2a6b">
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Barlow+Condensed:wght@400;500&family=Barlow:wght@400;500&display=swap" rel="stylesheet" />
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      background: linear-gradient(145deg, #0d2a6b 0%, #1a4db5 55%, #0a5fa0 100%);
-      font-family: 'Barlow', sans-serif;
-    }
-
-    .card {
-      width: 340px;
-      max-width: 92%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 2.5rem 1.5rem;
-    }
-
-    /* ── Brand ── */
-    .brand {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-
-    .brand-top {
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 11px;
-      letter-spacing: 5px;
-      color: rgba(255, 255, 255, 0.5);
-      text-transform: uppercase;
-      margin-bottom: 4px;
-    }
-
-    .brand-main {
-      font-family: 'Cinzel', serif;
-      font-size: 38px;
-      font-weight: 700;
-      color: #fff;
-      letter-spacing: 6px;
-      text-transform: uppercase;
-      line-height: 1;
-      text-shadow: 0 2px 18px rgba(30, 143, 212, 0.35);
-    }
-
-    .divider {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin: 10px 0 6px;
-      width: 200px;
-    }
-
-    .divider-line {
-      flex: 1;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
-    }
-
-    .divider-dot {
-      width: 4px;
-      height: 4px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.45);
-    }
-
-    .brand-sub {
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 10px;
-      letter-spacing: 4px;
-      color: rgba(255, 255, 255, 0.5);
-      text-align: center;
-      text-transform: uppercase;
-      margin-bottom: 20px;
-    }
-
-    /* ── Badge ── */
-    .badge {
-      display: inline-block;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      border-radius: 20px;
-      color: rgba(255, 255, 255, 0.75);
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 10px;
-      letter-spacing: 3px;
-      text-transform: uppercase;
-      padding: 5px 16px;
-      margin-bottom: 26px;
-    }
-
-    /* ── Form ── */
-    .form {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-    .fgroup {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-
-    label {
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 10px;
-      letter-spacing: 3px;
-      color: rgba(255, 255, 255, 0.6);
-      text-transform: uppercase;
-    }
-
-    .input-wrap {
-      position: relative;
-      width: 100%;
-    }
-
-    input {
-      width: 100%;
-      background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
-      color: #fff;
-      font-family: 'Barlow', sans-serif;
-      font-size: 14px;
-      padding: 11px 14px;
-      outline: none;
-      transition: border-color 0.2s, background 0.2s;
-    }
-
-    input.has-toggle {
-      padding-right: 42px;
-    }
-
-    input::placeholder {
-      color: rgba(255, 255, 255, 0.35);
-    }
-
-    input:focus {
-      border-color: rgba(255, 255, 255, 0.55);
-      background: rgba(255, 255, 255, 0.17);
-    }
-
-    /* ── Eye toggle ── */
-    .eye-btn {
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: rgba(255, 255, 255, 0.45);
-      transition: color 0.2s;
-    }
-
-    .eye-btn:hover {
-      color: rgba(255, 255, 255, 0.85);
-    }
-
-    /* ── Submit ── */
-    .btn-login {
-      width: 100%;
-      margin-top: 6px;
-      background: linear-gradient(90deg, #29b6d8 0%, #1e8fd4 100%);
-      border: none;
-      border-radius: 8px;
-      color: #fff;
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 13px;
-      letter-spacing: 4px;
-      text-transform: uppercase;
-      font-weight: 600;
-      padding: 13px;
-      cursor: pointer;
-      transition: opacity 0.2s;
-      position: relative;
-    }
-
-    .btn-login:hover { opacity: 0.88; }
-    .btn-login:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    /* ── Erro ── */
-    .err {
-      background: rgba(220, 53, 69, 0.15);
-      border: 1px solid rgba(220, 53, 69, 0.3);
-      color: #ff8888;
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 13px;
-      margin-top: 6px;
-      display: none;
-      text-align: center;
-    }
-
-    /* ── Spinner inline ── */
-    .spin {
-      display: inline-block;
-      width: 14px; height: 14px;
-      border: 2px solid rgba(255,255,255,0.35);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin .7s linear infinite;
-      vertical-align: middle;
-      margin-right: 6px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<title>Igreja ABA — Login</title>
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+<meta name="theme-color" content="#0A2463">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{min-height:100vh;background:linear-gradient(145deg,#061A3A,#0A2463 50%,#0d3585);
+  display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;overflow:hidden;}
+.bg{position:fixed;inset:0;pointer-events:none;}
+.ring{position:absolute;border-radius:50%;border:1px solid rgba(86,180,211,.08);animation:pulse 8s ease-in-out infinite;}
+.ring:nth-child(1){width:600px;height:600px;top:-100px;right:-150px;}
+.ring:nth-child(2){width:400px;height:400px;bottom:-80px;left:-80px;animation-delay:-3s;}
+.ring:nth-child(3){width:250px;height:250px;top:40%;left:5%;animation-delay:-5s;}
+@keyframes pulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+.pt{position:fixed;border-radius:50%;background:rgba(255,255,255,.3);animation:fly linear infinite;pointer-events:none;}
+@keyframes fly{from{transform:translateY(110vh);opacity:0}10%{opacity:1}90%{opacity:1}to{transform:translateY(-5vh);opacity:0}}
+.wrap{position:relative;z-index:10;animation:up .7s ease;}
+@keyframes up{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}
+.card{background:rgba(255,255,255,.065);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
+  border:1px solid rgba(255,255,255,.14);border-radius:28px;padding:44px 40px;
+  width:420px;max-width:94vw;box-shadow:0 32px 80px rgba(0,0,0,.45);}
+/* logo */
+.logo-area{text-align:center;margin-bottom:30px;}
+.logo-circle{width:84px;height:84px;background:#000;border-radius:50%;margin:0 auto 16px;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 8px 28px rgba(0,0,0,.5);}
+.logo-circle svg{width:48px;height:48px;}
+.cname{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:8px;color:#fff;line-height:1;}
+.csub{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#56B4D3;font-weight:500;margin:4px 0 10px;}
+.badge{display:inline-block;background:rgba(86,180,211,.15);border:1px solid rgba(86,180,211,.3);
+  color:#56B4D3;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;padding:4px 14px;border-radius:20px;}
+/* divider */
+.div{height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);margin:0 0 24px;}
+/* form */
+.fg{margin-bottom:16px;}
+.fg label{display:block;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.45);font-weight:600;margin-bottom:6px;}
+.iw{position:relative;}
+.iw svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:17px;height:17px;color:rgba(255,255,255,.3);pointer-events:none;}
+input.fi{width:100%;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.12);border-radius:12px;
+  padding:13px 13px 13px 42px;color:#fff;font-size:15px;font-family:'Inter',sans-serif;outline:none;transition:all .2s;}
+input.fi::placeholder{color:rgba(255,255,255,.2);}
+input.fi:focus{border-color:#56B4D3;background:rgba(86,180,211,.09);box-shadow:0 0 0 3px rgba(86,180,211,.17);}
+.btn{width:100%;padding:15px;background:linear-gradient(135deg,#3E7CB1,#56B4D3);border:none;border-radius:12px;
+  color:#fff;font-size:14px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;margin-top:6px;transition:all .3s;}
+.btn:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(86,180,211,.35);}
+.btn:disabled{opacity:.7;pointer-events:none;}
+.err-box{background:rgba(220,53,69,.15);border:1px solid rgba(220,53,69,.3);color:#ff8888;
+  padding:11px 15px;border-radius:10px;font-size:13px;margin-top:12px;display:none;}
+.foot{text-align:center;margin-top:20px;font-size:11px;color:rgba(255,255,255,.3);}
+.sp{width:15px;height:15px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;
+  border-radius:50%;display:inline-block;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:480px){.card{padding:30px 20px;}.cname{font-size:28px;letter-spacing:6px;}}
+</style>
 </head>
 <body>
-
+<div class="bg">
+  <div class="ring"></div><div class="ring"></div><div class="ring"></div>
+</div>
+<div id="particles"></div>
+<div class="wrap">
   <div class="card">
-
-    <div class="brand">
-      <p class="brand-top">Igreja</p>
-      <h1 class="brand-main">ABA</h1>
-      <div class="divider">
-        <div class="divider-line"></div>
-        <div class="divider-dot"></div>
-        <div class="divider-line"></div>
+    <div class="logo-area">
+      <div class="logo-circle">
+        <svg viewBox="0 0 100 100" fill="none">
+          <rect x="20" y="15" width="60" height="70" fill="white"/>
+          <rect x="35" y="38" width="30" height="30" fill="#0A2463"/>
+          <rect x="44" y="29" width="12" height="12" fill="#0A2463"/>
+          <rect x="45" y="44" width="10" height="18" fill="white"/>
+          <rect x="40" y="49" width="20" height="8" fill="white"/>
+        </svg>
       </div>
-      <p class="brand-sub">Um lar para pertencer</p>
+      <div class="cname">IGREJA ABA</div>
+      <div class="csub">Um Lar Para Pertencer</div>
+      <div class="badge">Registro de Culto</div>
     </div>
-
-    <span class="badge">Registro de Culto</span>
-
-    <div class="form">
-
-      <div class="fgroup">
-        <label for="email">E-mail</label>
-        <div class="input-wrap">
-          <input id="email" type="email" placeholder="seu@email.com" autocomplete="email" />
-        </div>
+    <div class="div"></div>
+    <div class="fg">
+      <label>E-mail</label>
+      <div class="iw">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        <input type="email" class="fi" id="email" placeholder="seu@email.com" autocomplete="email">
       </div>
-
-      <div class="fgroup">
-        <label for="senha">Senha</label>
-        <div class="input-wrap">
-          <input id="senha" type="password" class="has-toggle" autocomplete="current-password" />
-          <button type="button" class="eye-btn" id="eye-btn" aria-label="Mostrar/ocultar senha" onclick="toggleSenha()">
-            <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-              <line x1="1" y1="1" x2="23" y2="23"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <button class="btn-login" id="btnLogin" onclick="doLogin()">Entrar</button>
-      <div class="err" id="errMsg"></div>
-
     </div>
-
+    <div class="fg">
+      <label>Senha</label>
+      <div class="iw">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        <input type="password" class="fi" id="senha" placeholder="••••••••" autocomplete="current-password">
+      </div>
+    </div>
+    <button class="btn" id="btnLogin">Entrar</button>
+    <div class="err-box" id="errMsg"></div>
+    <p class="foot">admin@igrejaaba.com &nbsp;|&nbsp; Admin@123</p>
   </div>
-
-  <script>
-    // Enter nos campos dispara login
-    document.getElementById('email').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-    document.getElementById('senha').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-
-    function toggleSenha() {
-      var input = document.getElementById('senha');
-      var icon  = document.getElementById('eye-icon');
-      var oculto = input.type === 'password';
-      input.type = oculto ? 'text' : 'password';
-      icon.innerHTML = oculto
-        ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
-        : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>';
-    }
-
-    async function doLogin() {
-      const btn   = document.getElementById('btnLogin');
-      const err   = document.getElementById('errMsg');
-      const email = document.getElementById('email').value.trim();
-      const senha = document.getElementById('senha').value;
-
-      if (!email || !senha) { showErr('Preencha e-mail e senha.'); return; }
-
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spin"></span> Entrando...';
-      err.style.display = 'none';
-
-      try {
-        const r = await fetch('/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, senha })
-        });
-        const d = await r.json();
-        if (r.ok && d.ok) {
-          btn.innerHTML = '✓ Bem-vindo(a), ' + d.nome + '!';
-          setTimeout(() => { window.location.href = '/app'; }, 700);
-        } else {
-          showErr(d.erro || 'Usuário ou senha incorretos.');
-          btn.innerHTML = 'Entrar';
-          btn.disabled = false;
-        }
-      } catch (e) {
-        showErr('Erro de conexão. Tente novamente.');
-        btn.innerHTML = 'Entrar';
-        btn.disabled = false;
-      }
-    }
-
-    function showErr(m) {
-      const e = document.getElementById('errMsg');
-      e.textContent = m;
-      e.style.display = 'block';
-    }
-  </script>
-
+</div>
+<script>
+// partículas
+const pc=document.getElementById('particles');
+for(let i=0;i<25;i++){
+  const p=document.createElement('div');p.className='pt';
+  p.style.cssText=`left:${Math.random()*100}%;width:${Math.random()*3+1}px;height:${Math.random()*3+1}px;
+    animation-duration:${Math.random()*14+9}s;animation-delay:-${Math.random()*14}s;`;
+  pc.appendChild(p);
+}
+document.getElementById('senha').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+document.getElementById('btnLogin').addEventListener('click',login);
+async function login(){
+  const btn=document.getElementById('btnLogin'),err=document.getElementById('errMsg');
+  const email=document.getElementById('email').value.trim(),senha=document.getElementById('senha').value;
+  if(!email||!senha){show('Preencha e-mail e senha.');return;}
+  btn.innerHTML='<span class="sp"></span>Entrando...';btn.disabled=true;err.style.display='none';
+  try{
+    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,senha})});
+    const d=await r.json();
+    if(r.ok&&d.ok){btn.innerHTML='✓ Bem-vindo(a), '+d.nome+'!';setTimeout(()=>location.href='/app',700);}
+    else{show(d.erro||'Erro ao entrar.');btn.innerHTML='Entrar';btn.disabled=false;}
+  }catch{show('Erro de conexão com o servidor.');btn.innerHTML='Entrar';btn.disabled=false;}
+}
+function show(m){const e=document.getElementById('errMsg');e.textContent=m;e.style.display='block';}
+</script>
 </body>
 </html>

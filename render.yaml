@@ -15,8 +15,6 @@ services:
         value: https://igreja-aba.onrender.com
       - key: DB_DIR
         value: /opt/render/project/src/database
-      - key: RENDER
-        value: "true"
     disk:
       name: database
       mountPath: /opt/render/project/src/database

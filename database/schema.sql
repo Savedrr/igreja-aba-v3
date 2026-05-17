@@ -1,69 +1,78 @@
--- ============================================================
---  IGREJA ABA — Banco de Dados v3
---  Novidade: tabela estoque + itens Santa Ceia pré-cadastrados
--- ============================================================
+-- IGREJA ABA — Schema v5
 PRAGMA foreign_keys = ON;
 
--- ── Usuários ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS usuarios (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome       TEXT    NOT NULL,
-    email      TEXT    NOT NULL UNIQUE,
-    senha_hash TEXT    NOT NULL,
-    cargo      TEXT    DEFAULT 'voluntario',
-    ativo      INTEGER DEFAULT 1,
-    criado_em  TEXT    DEFAULT (datetime('now','localtime'))
-);
-
--- ── Cultos ────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS cultos (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    data        TEXT    NOT NULL,
-    hora        TEXT    NOT NULL,
-    dia_semana  TEXT    NOT NULL,
-    periodo     TEXT    NOT NULL,
-    responsavel TEXT    NOT NULL,
-    presentes   INTEGER DEFAULT 0,
-    visitantes  INTEGER DEFAULT 0,
-    criancas    INTEGER DEFAULT 0,
-    observacoes TEXT    DEFAULT '',
-    usuario_id  INTEGER REFERENCES usuarios(id),
-    criado_em   TEXT    DEFAULT (datetime('now','localtime'))
+    nome        TEXT    NOT NULL,
+    email       TEXT    NOT NULL UNIQUE,
+    senha_hash  TEXT    NOT NULL,
+    cargo       TEXT    DEFAULT 'voluntario', -- voluntario | lider | admin
+    ativo       INTEGER DEFAULT 1,
+    criado_em   TEXT    DEFAULT (datetime('now','localtime')),
+    ultimo_acesso TEXT  DEFAULT NULL
 );
 
--- ── Visitantes ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS cultos (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    data            TEXT    NOT NULL,
+    hora            TEXT    NOT NULL,
+    dia_semana      TEXT    NOT NULL,
+    periodo         TEXT    NOT NULL,  -- Manhã | Tarde | Noite
+    tipo_culto      TEXT    DEFAULT 'Culto Regular', -- Culto Regular | NAREAL | Evento | Reunião de Líderes | Outro
+    responsavel     TEXT    NOT NULL,
+    presentes       INTEGER DEFAULT 0,
+    visitantes      INTEGER DEFAULT 0,
+    criancas        INTEGER DEFAULT 0,
+    observacoes     TEXT    DEFAULT '',
+    usuario_id      INTEGER REFERENCES usuarios(id),
+    editado_em      TEXT    DEFAULT NULL,
+    editado_por     TEXT    DEFAULT NULL,
+    criado_em       TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+-- Histórico de edições de culto
+CREATE TABLE IF NOT EXISTS cultos_historico (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    culto_id    INTEGER REFERENCES cultos(id) ON DELETE CASCADE,
+    campo       TEXT    NOT NULL,
+    valor_antes TEXT    DEFAULT '',
+    valor_depois TEXT   DEFAULT '',
+    alterado_por TEXT   DEFAULT '',
+    alterado_em TEXT    DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS visitantes (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    culto_id      INTEGER REFERENCES cultos(id) ON DELETE SET NULL,
-    nome          TEXT    NOT NULL,
-    idade         TEXT    DEFAULT '',
-    telefone      TEXT    NOT NULL,
-    endereco      TEXT    DEFAULT '',
-    cidade        TEXT    DEFAULT '',
-    bairro        TEXT    DEFAULT '',
-    cep           TEXT    DEFAULT '',
-    como_conheceu TEXT    DEFAULT '',
-    pedido_oracao TEXT    DEFAULT '',
-    quer_visita   INTEGER DEFAULT 0,
-    data_visita   TEXT    DEFAULT '',
-    hora_visita   TEXT    DEFAULT '',
-    lat           REAL    DEFAULT NULL,
-    lng           REAL    DEFAULT NULL,
-    observacao    TEXT    DEFAULT '',
-    origem        TEXT    DEFAULT 'manual',
-    criado_em     TEXT    DEFAULT (datetime('now','localtime'))
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    culto_id        INTEGER REFERENCES cultos(id) ON DELETE SET NULL,
+    nome            TEXT    NOT NULL,
+    idade           TEXT    DEFAULT '',
+    telefone        TEXT    NOT NULL,
+    endereco        TEXT    DEFAULT '',
+    endereco_padronizado TEXT DEFAULT '',
+    cidade          TEXT    DEFAULT '',
+    bairro          TEXT    DEFAULT '',
+    cep             TEXT    DEFAULT '',
+    lat             REAL    DEFAULT NULL,
+    lng             REAL    DEFAULT NULL,
+    como_conheceu   TEXT    DEFAULT '',
+    pedido_oracao   TEXT    DEFAULT '',
+    quer_visita     INTEGER DEFAULT 0,
+    data_visita     TEXT    DEFAULT '',
+    hora_visita     TEXT    DEFAULT '',
+    observacao      TEXT    DEFAULT '',
+    origem          TEXT    DEFAULT 'manual',
+    criado_em       TEXT    DEFAULT (datetime('now','localtime'))
 );
 
--- ── Checklists ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS checklists (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    culto_id       INTEGER REFERENCES cultos(id) ON DELETE CASCADE,
-    categoria      TEXT    NOT NULL,
-    item_key       TEXT    NOT NULL,
-    item_descricao TEXT    NOT NULL,
-    concluido      INTEGER DEFAULT 0,
-    responsavel    TEXT    DEFAULT '',
-    criado_em      TEXT    DEFAULT (datetime('now','localtime'))
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    culto_id        INTEGER REFERENCES cultos(id) ON DELETE CASCADE,
+    categoria       TEXT    NOT NULL,
+    item_key        TEXT    NOT NULL,
+    item_descricao  TEXT    NOT NULL,
+    concluido       INTEGER DEFAULT 0,
+    responsavel     TEXT    DEFAULT '',
+    criado_em       TEXT    DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS itens_checklist_padrao (
@@ -74,10 +83,9 @@ CREATE TABLE IF NOT EXISTS itens_checklist_padrao (
     item_key  TEXT    NOT NULL UNIQUE
 );
 
--- ── ESTOQUE (novo) ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS estoque (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome              TEXT    NOT NULL UNIQUE,           -- UNIQUE evita duplicatas
+    nome              TEXT    NOT NULL UNIQUE,
     categoria         TEXT    DEFAULT 'Geral',
     quantidade        INTEGER DEFAULT 0,
     quantidade_minima INTEGER DEFAULT 0,
@@ -88,16 +96,85 @@ CREATE TABLE IF NOT EXISTS estoque (
     atualizado_em     TEXT    DEFAULT (datetime('now','localtime'))
 );
 
--- ── Dados iniciais: Admin ─────────────────────────────────────
--- Senha: Aba@2026
-INSERT OR IGNORE INTO usuarios (nome, email, senha_hash, cargo) VALUES
-('Adriel','adrieladm@aba.com',
- '9fb629f59f0305ba847aa0f1847c1a6813b5a7574538330e7883743f5637a86d','admin');
+CREATE TABLE IF NOT EXISTS grupos_crescimento (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome         TEXT    NOT NULL,
+    lider        TEXT    DEFAULT '',
+    endereco     TEXT    NOT NULL,
+    bairro       TEXT    DEFAULT '',
+    cidade       TEXT    DEFAULT 'Alvorada',
+    setor        TEXT    DEFAULT 'Verde',
+    cor_hex      TEXT    DEFAULT '#22C55E',
+    lat          REAL    DEFAULT NULL,
+    lng          REAL    DEFAULT NULL,
+    ativo        INTEGER DEFAULT 1,
+    criado_em    TEXT    DEFAULT (datetime('now','localtime'))
+);
 
--- ── Checklist padrão ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS gc_direcionamentos (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    visitante_id    INTEGER REFERENCES visitantes(id) ON DELETE SET NULL,
+    gc_id           INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL,
+    visitante_nome  TEXT    DEFAULT '',
+    gc_nome         TEXT    DEFAULT '',
+    distancia_km    REAL    DEFAULT NULL,
+    criado_em       TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS cameras (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome      TEXT    NOT NULL,
+    url       TEXT    NOT NULL,
+    local     TEXT    DEFAULT '',
+    ativa     INTEGER DEFAULT 1,
+    criado_em TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS contagem_sessoes (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    culto_id         INTEGER REFERENCES cultos(id) ON DELETE SET NULL,
+    camera_id        INTEGER REFERENCES cameras(id) ON DELETE SET NULL,
+    camera_nome      TEXT    DEFAULT '',
+    iniciado_em      TEXT    DEFAULT (datetime('now','localtime')),
+    encerrado_em     TEXT    DEFAULT NULL,
+    total_entradas   INTEGER DEFAULT 0,
+    total_saidas     INTEGER DEFAULT 0,
+    pico_simultaneo  INTEGER DEFAULT 0,
+    status           TEXT    DEFAULT 'ativa'
+);
+
+CREATE TABLE IF NOT EXISTS contagem_registros (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    sessao_id     INTEGER REFERENCES contagem_sessoes(id) ON DELETE CASCADE,
+    track_id      INTEGER NOT NULL,
+    direcao       TEXT    NOT NULL,
+    confianca     REAL    DEFAULT 1.0,
+    registrado_em TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+-- Logs de ações dos usuários
+CREATE TABLE IF NOT EXISTS logs_sistema (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    usuario_nome TEXT   DEFAULT '',
+    acao        TEXT    NOT NULL,
+    detalhes    TEXT    DEFAULT '',
+    criado_em   TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+-- ═══════════════════════════════════════
+-- DADOS INICIAIS
+-- ═══════════════════════════════════════
+
+-- Admin: Admin@123
+INSERT OR IGNORE INTO usuarios (nome, email, senha_hash, cargo) VALUES
+('Administrador','admin@igrejaaba.com',
+ 'e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7','admin');
+
+-- Checklist padrão
 INSERT OR IGNORE INTO itens_checklist_padrao (categoria,ordem,descricao,item_key) VALUES
 ('antes',1,'Verificar se tem copos no bebedouro','ant_copos'),
-('antes',2,'Equipe do estacionamento: usar coletes, distribuir cones e organizar mesas da cantina','ant_estac'),
+('antes',2,'Equipe do estacionamento: usar coletes, distribuir cones','ant_estac'),
 ('antes',3,'Ligar os ar-condicionados em dias de calor','ant_ar'),
 ('antes',4,'Estacionamento organizado','ant_estac2'),
 ('antes',5,'Usar crachá','ant_cracha'),
@@ -124,12 +201,33 @@ INSERT OR IGNORE INTO itens_checklist_padrao (categoria,ordem,descricao,item_key
 ('final',7,'Acionar alarme','fin_alarme'),
 ('final',8,'Recolher cones e placas','fin_cones');
 
--- ── Estoque pré-cadastrado: Santa Ceia ───────────────────────
-INSERT OR IGNORE INTO estoque (nome, categoria, quantidade, quantidade_minima, unidade, descricao, fixo) VALUES
-('Cálices de Santa Ceia — Individuais', 'Santa Ceia', 0, 50, 'unidade',
- 'Cálices descartáveis individuais usados na Santa Ceia', 1);
+-- Estoque Santa Ceia
+INSERT OR IGNORE INTO estoque (nome,categoria,quantidade,quantidade_minima,unidade,descricao,fixo) VALUES
+('Cálices de Santa Ceia — Individuais','Santa Ceia',0,50,'unidade','Cálices descartáveis individuais',1),
+('Pão da Santa Ceia','Santa Ceia',0,10,'pacote','Pão para celebração',1),
+('Suco de Uva da Santa Ceia','Santa Ceia',0,10,'garrafa','Suco de uva para celebração',1),
+('Bandeja de Santa Ceia','Santa Ceia',0,5,'unidade','Bandejas para distribuição',1);
 
--- ── Views ─────────────────────────────────────────────────────
+-- GCs
+INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex) VALUES
+('GC Infinito e Amém','','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E'),
+('GC Luz do Mundo','','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316'),
+('GC Conectados','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308'),
+('GC Conectado','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308'),
+('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444'),
+('GC Manálovers','','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444'),
+('GC Farol da Lagoa','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444'),
+('GC Master Fé','','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6'),
+('GC Maranata','','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7'),
+('GC Resgate da Cruz','','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7'),
+('GC Corujas','','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6');
+
+-- Câmera padrão
+INSERT OR IGNORE INTO cameras (nome,url,local) VALUES ('Câmera Principal','0','Entrada Principal');
+
+-- ═══════════════════════════════════════
+-- VIEWS
+-- ═══════════════════════════════════════
 CREATE VIEW IF NOT EXISTS v_resumo_geral AS
 SELECT
     COUNT(*)                    AS total_cultos,
@@ -142,8 +240,9 @@ SELECT
 FROM cultos;
 
 CREATE VIEW IF NOT EXISTS v_cultos_detalhe AS
-SELECT c.id, c.data, c.hora, c.dia_semana, c.periodo, c.responsavel,
-       c.presentes, c.visitantes, c.criancas, c.observacoes, c.criado_em,
+SELECT c.id, c.data, c.hora, c.dia_semana, c.periodo, c.tipo_culto,
+       c.responsavel, c.presentes, c.visitantes, c.criancas,
+       c.observacoes, c.criado_em, c.editado_em, c.editado_por,
        COUNT(v.id) AS qtd_visitantes_cadastrados
 FROM cultos c
 LEFT JOIN visitantes v ON v.culto_id = c.id
