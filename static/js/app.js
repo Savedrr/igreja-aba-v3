@@ -4,6 +4,7 @@ const S={presentes:0,visitantes:0,criancas:0,periodo:"Noite",tipoCulto:"Culto Re
 const DIAS=["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"];
 const TIPOS=["Culto Regular","NAREAL","Evento","Reunião de Líderes","Culto de GC","Outro"];
 const COR_TIPO={"Culto Regular":"badge-noite","NAREAL":"badge-nareal","Evento":"badge-evento","Reunião de Líderes":"badge-tarde","Culto de GC":"badge-manha","Outro":""};
+function tipoBadgeClass(t){if(!t)return "";if(t.startsWith("Outro:"))return "";return COR_TIPO[t]||"";}
 let _cargo="voluntario",_isAdmin=false,_isLider=false,_iaSessaoId=null,_iaTimer=null;
 
 // ── INIT ──────────────────────────────────────────────────────
@@ -100,6 +101,12 @@ function selecionarPeriodo(btn){
 function selecionarTipo(btn){
   document.querySelectorAll(".tipo-btn").forEach(b=>b.classList.remove("active"));
   btn.classList.add("active"); S.tipoCulto=btn.dataset.tipo;
+  // Mostra campo de texto se "Outro"
+  const wrap=document.getElementById("tipo_outro_wrap");
+  if(wrap) wrap.style.display=btn.dataset.tipo==="Outro"?"block":"none";
+  if(btn.dataset.tipo==="Outro"){
+    setTimeout(()=>document.getElementById("tipo_outro_input")?.focus(),100);
+  }
 }
 function ajustar(c,d){S[c]=Math.max(0,S[c]+d);syncCnt(c);}
 function setContador(c,v){S[c]=Math.max(0,parseInt(v)||0);syncCnt(c);}
@@ -124,7 +131,7 @@ async function salvarRegistro(){
   btn.innerHTML='<span class="spinner"></span>Salvando...'; btn.disabled=true;
   try{
     const r=await fetch("/api/cultos",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({data,hora,periodo:S.periodo,tipo_culto:S.tipoCulto,responsavel:resp,
+      body:JSON.stringify({data,hora,periodo:S.periodo,tipo_culto:S.tipoCulto,tipo_outro:document.getElementById('tipo_outro_input')?.value||'',responsavel:resp,
         presentes:S.presentes,visitantes:S.visitantes,criancas:S.criancas,observacoes:obs})});
     const d=await r.json();
     if(r.ok&&d.ok){
@@ -172,7 +179,7 @@ async function salvarEdicaoCulto(id){
     visitantes:parseInt(document.getElementById("ed_visitantes").value)||0,
     criancas:  parseInt(document.getElementById("ed_criancas").value)||0,
     periodo:   document.getElementById("ed_periodo").value,
-    tipo_culto:document.getElementById("ed_tipo").value,
+    tipo_culto:document.getElementById("ed_tipo").value,tipo_outro:document.getElementById("ed_tipo_outro")?.value||'',
     observacoes:document.getElementById("ed_obs").value
   };
   const r=await fetch(`/api/cultos/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
@@ -423,7 +430,7 @@ function renderizarResultadoGC(data){
     <div style="display:flex;gap:7px;margin-top:12px;flex-wrap:wrap">
       <button class="btn-sm green" onclick="copiarLink('${mp.rota_link}')">📋 Copiar Rota</button>
       <a href="${mp.rota_link}" target="_blank" style="text-decoration:none"><button class="btn-sm blue">🗺️ Abrir Maps</button></a>
-      ${vidId?`<button class="btn-sm orange" onclick="confirmarDirecionamento('${vidId}','${mp.id}','${esc(mp.nome)}',${mp.distancia_km})">✅ Confirmar Direcionamento</button>`:""}
+      ${vidId?`<button class="btn-sm orange" onclick="confirmarDirecionamento('${vidId}','${mp.id}','${esc(mp.nome)}',${mp.distancia_km},'${mp.rota_link}')">✅ Confirmar Direcionamento</button>`:""}
     </div>
   </div>`;
   data.gcs.forEach((gc,i)=>{
@@ -449,12 +456,30 @@ function copiarLink(url){
   navigator.clipboard.writeText(url).then(()=>toast("✅ Link copiado!","success"))
     .catch(()=>{const i=document.createElement("input");i.value=url;document.body.appendChild(i);i.select();document.execCommand("copy");document.body.removeChild(i);toast("✅ Link copiado!","success");});
 }
-async function confirmarDirecionamento(vidId,gcId,gcNome,dist){
+async function confirmarDirecionamento(vidId,gcId,gcNome,dist,rotaLink){
   const r=await fetch("/api/gcs/direcionar",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({visitante_id:parseInt(vidId),gc_id:parseInt(gcId),gc_nome:gcNome,distancia_km:dist})});
+    body:JSON.stringify({visitante_id:parseInt(vidId),gc_id:parseInt(gcId),gc_nome:gcNome,
+      distancia_km:dist,rota_link:rotaLink||""})});
   const d=await r.json();
-  if(r.ok&&d.ok){toast(`✅ Direcionado para ${gcNome}!`,"success");carregarDirecionamentos();}
-  else toast(d.erro||"Erro.","error");
+  if(r.ok&&d.ok){
+    toast(`✅ Direcionado para ${gcNome}!`,"success");
+    carregarDirecionamentos();
+    // Abre WhatsApp do líder se disponível
+    if(d.whatsapp_lider){
+      setTimeout(()=>{
+        abrirModal("📲 Avisar Líder do GC",`
+          <p style="font-size:14px;color:#4A6080;margin-bottom:14px">
+            O visitante foi direcionado para <strong>${gcNome}</strong>.<br>
+            Clique abaixo para avisar o líder pelo WhatsApp:
+          </p>
+          <a href="${d.whatsapp_lider}" target="_blank" style="text-decoration:none">
+            <button class="btn-primary-lg" style="background:linear-gradient(135deg,#25D366,#128C7E);padding:14px;font-size:14px">
+              📲 Enviar WhatsApp para o Líder
+            </button>
+          </a>`);
+      },400);
+    }
+  }else toast(d.erro||"Erro.","error");
 }
 async function criarGC(){
   if(!_isAdmin)return toast("Apenas administradores podem criar GCs.","error");
@@ -464,7 +489,7 @@ async function criarGC(){
   const btn=document.getElementById("btnCriarGC");
   btn.innerHTML='<span class="spinner"></span>'; btn.disabled=true;
   const r=await fetch("/api/gcs",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({nome,lider:document.getElementById("gc_novo_lider")?.value||"",
+    body:JSON.stringify({nome,lider:document.getElementById("gc_novo_lider")?.value||"",telefone_lider:document.getElementById("gc_novo_tel")?.value||"",
       endereco:end,bairro:document.getElementById("gc_novo_bairro")?.value||"",
       cidade:document.getElementById("gc_novo_cidade")?.value||"Alvorada",
       setor:document.getElementById("gc_novo_setor")?.value||"Verde"})});
@@ -483,6 +508,7 @@ function abrirEdicaoGC(id){
       <div style="display:grid;gap:10px">
         <div class="field-group"><label>Nome</label><input class="field-input" id="egc_nome" value="${esc(gc.nome)}"></div>
         <div class="field-group"><label>Líder</label><input class="field-input" id="egc_lider" value="${esc(gc.lider||"")}"></div>
+        <div class="field-group"><label>WhatsApp do Líder</label><input type="tel" class="field-input" id="egc_tel" value="${esc(gc.telefone_lider||"")}" placeholder="(51) 99999-9999"></div>
         <div class="field-group"><label>Endereço</label><input class="field-input" id="egc_end" value="${esc(gc.endereco)}"></div>
         <div class="field-group"><label>Bairro</label><input class="field-input" id="egc_bairro" value="${esc(gc.bairro||"")}"></div>
         <div class="field-group"><label>Setor</label>
@@ -502,6 +528,7 @@ async function salvarEdicaoGC(id){
   const r=await fetch(`/api/gcs/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({nome:document.getElementById("egc_nome").value,
       lider:document.getElementById("egc_lider").value,
+telefone_lider:document.getElementById("egc_tel").value,
       endereco:document.getElementById("egc_end").value,
       bairro:document.getElementById("egc_bairro").value,
       setor:document.getElementById("egc_setor").value,
@@ -737,7 +764,7 @@ async function buscarRelatorio(){
   body.innerHTML=list.map(c=>`<tr>
     <td><strong>${c.data_br||fmtBR(c.data)}</strong></td>
     <td style="color:#4A6080">${c.dia_semana}</td>
-    <td><span class="badge ${COR_TIPO[c.tipo_culto]||""}">${c.tipo_culto||"—"}</span></td>
+    <td><span class="badge ${tipoBadgeClass(c.tipo_culto)}">${c.tipo_culto||"—"}</span></td>
     <td><span class="badge badge-${c.periodo==="Manhã"?"manha":c.periodo==="Tarde"?"tarde":"noite"}">${c.periodo}</span></td>
     <td>${c.hora}</td><td><strong>${c.responsavel}</strong></td>
     <td><strong style="color:#0A2463">${c.presentes}</strong></td>
@@ -757,7 +784,7 @@ async function verDetalhes(id){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-bottom:14px">
       <div><strong>Data:</strong><br>${c.data_br||fmtBR(c.data)}</div>
       <div><strong>Horário:</strong><br>${c.hora}</div>
-      <div><strong>Tipo:</strong><br><span class="badge ${COR_TIPO[c.tipo_culto]||""}">${c.tipo_culto||"—"}</span></div>
+      <div><strong>Tipo:</strong><br><span class="badge ${tipoBadgeClass(c.tipo_culto)}">${c.tipo_culto||"—"}</span></div>
       <div><strong>Período:</strong><br>${c.periodo}</div>
       <div style="grid-column:1/-1"><strong>Responsável:</strong> ${c.responsavel}</div>
       ${c.editado_em?`<div style="grid-column:1/-1;font-size:11px;color:#8ca0c0">Última edição: ${c.editado_em?.substring(0,16)} por ${c.editado_por}</div>`:""}

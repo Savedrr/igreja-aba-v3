@@ -228,6 +228,7 @@ CREATE TABLE IF NOT EXISTS grupos_crescimento (
     id        SERIAL PRIMARY KEY,
     nome      TEXT NOT NULL UNIQUE,
     lider     TEXT DEFAULT '',
+    telefone_lider TEXT DEFAULT '',
     endereco  TEXT NOT NULL,
     bairro    TEXT DEFAULT '',
     cidade    TEXT DEFAULT 'Alvorada',
@@ -346,6 +347,7 @@ def _pg_migrations(conn):
     migrations = [
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_acesso TEXT DEFAULT NULL",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS lider TEXT DEFAULT ''",
+        "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS telefone_lider TEXT DEFAULT ''",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto Regular'",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_em TEXT DEFAULT NULL",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_por TEXT DEFAULT NULL",
@@ -361,6 +363,7 @@ def _pg_migrations(conn):
         "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS lat REAL DEFAULT NULL",
         "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS lng REAL DEFAULT NULL",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS lider TEXT DEFAULT ''",
+        "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS telefone_lider TEXT DEFAULT ''",
         "ALTER TABLE estoque ADD COLUMN IF NOT EXISTS atualizado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')",
     ]
     cur = conn.cursor()
@@ -861,8 +864,12 @@ def criar_culto():
     hc  = d.get("hora", datetime.now().strftime("%H:%M"))
     resp= d.get("responsavel","").strip()
     tc  = d.get("tipo_culto","Culto Regular")
+    tc_outro = d.get("tipo_outro","").strip()  # descrição quando tipo="Outro"
     if not resp: return jsonify({"erro":"Responsável obrigatório"}),400
     if tc not in TIPOS_CULTO: tc = "Culto Regular"
+    # Se "Outro" com descrição, salva como "Outro: descrição"
+    if tc == "Outro" and tc_outro:
+        tc = f"Outro: {tc_outro}"
     with get_db() as conn:
         cur = conn.execute(
             """INSERT INTO cultos(data,hora,dia_semana,periodo,tipo_culto,responsavel,
@@ -923,7 +930,13 @@ def atualizar_culto(cid):
                 )
 
         tc = d.get("tipo_culto", antigo["tipo_culto"])
-        if tc not in TIPOS_CULTO: tc = antigo["tipo_culto"]
+        tc_outro = d.get("tipo_outro","").strip()
+        if tc not in TIPOS_CULTO:
+            # Pode ser "Outro: descrição" salvo antes — mantém
+            if not str(tc).startswith("Outro:"):
+                tc = antigo["tipo_culto"]
+        if tc == "Outro" and tc_outro:
+            tc = f"Outro: {tc_outro}"
 
         conn.execute(
             """UPDATE cultos SET presentes=?,visitantes=?,criancas=?,observacoes=?,
@@ -1153,8 +1166,8 @@ def criar_gc():
     setor = d.get("setor","Verde")
     with get_db() as conn:
         cur = conn.execute(
-            qmark("INSERT INTO grupos_crescimento(nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES(?,?,?,?,?,?,?,?,?)"),
-            (nome, d.get("lider",""), end, bairro, cidade, setor,
+            qmark("INSERT INTO grupos_crescimento(nome,lider,telefone_lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES(?,?,?,?,?,?,?,?,?,?)"),
+            (nome, d.get("lider",""), d.get("telefone_lider",""), end, bairro, cidade, setor,
              d.get("cor_hex", cor_map.get(setor,"#22C55E")), lat, lng)
         )
         conn.commit()
@@ -1176,9 +1189,11 @@ def atualizar_gc(gid):
             if new_lat:
                 lat, lng = new_lat, new_lng
         conn.execute(
-            qmark("""UPDATE grupos_crescimento SET nome=?,lider=?,endereco=?,bairro=?,cidade=?,
+            qmark("""UPDATE grupos_crescimento SET nome=?,lider=?,telefone_lider=?,endereco=?,bairro=?,cidade=?,
                setor=?,cor_hex=?,lat=?,lng=?,ativo=? WHERE id=?"""),
-            (d.get("nome",gc["nome"]), d.get("lider",gc.get("lider","")),
+            (d.get("nome",gc["nome"]),
+             d.get("lider",gc.get("lider","")),
+             d.get("telefone_lider",gc.get("telefone_lider","")),
              novo_end, novo_bai, nova_cid,
              d.get("setor",gc["setor"]), d.get("cor_hex",gc["cor_hex"]),
              lat, lng, int(d.get("ativo",gc["ativo"])), gid)
@@ -1234,15 +1249,35 @@ def calcular_gc():
 @login_required
 def direcionar():
     d = request.get_json(force=True) or {}
+    gc_id = d.get("gc_id")
+    whatsapp_lider = None
     with get_db() as conn:
         conn.execute(
-            "INSERT INTO gc_direcionamentos(visitante_id,gc_id,visitante_nome,gc_nome,distancia_km) VALUES(?,?,?,?,?)",
-            (d.get("visitante_id"),d.get("gc_id"),d.get("visitante_nome",""),d.get("gc_nome",""),d.get("distancia_km"))
+            qmark("INSERT INTO gc_direcionamentos(visitante_id,gc_id,visitante_nome,gc_nome,distancia_km) VALUES(?,?,?,?,?)"),
+            (d.get("visitante_id"),gc_id,d.get("visitante_nome",""),d.get("gc_nome",""),d.get("distancia_km"))
         )
         if d.get("visitante_id"):
-            conn.execute(qmark("UPDATE visitantes SET observacao=? WHERE id=?"), (f"Direcionado para: {d.get('gc_nome','')}", d.get("visitante_id")))
+            conn.execute(qmark("UPDATE visitantes SET observacao=? WHERE id=?"),
+                         (f"Direcionado para: {d.get('gc_nome','')}", d.get("visitante_id")))
+        # Busca telefone do líder para gerar link WhatsApp
+        if gc_id:
+            gc_row = conn.execute(qmark("SELECT lider,telefone_lider FROM grupos_crescimento WHERE id=?"), (gc_id,)).fetchone()
+            if gc_row and gc_row.get("telefone_lider","").strip():
+                tel = re.sub(r"\D","",gc_row["telefone_lider"])
+                if not tel.startswith("55"): tel = "55" + tel
+                vis_nome = d.get("visitante_nome","Visitante")
+                gc_nome  = d.get("gc_nome","")
+                dist     = d.get("distancia_km","")
+                rota     = d.get("rota_link","")
+                msg = (f"Olá {gc_row['lider']}! 👋\n"
+                       f"Temos um visitante para o {gc_nome}.\n\n"
+                       f"👤 Nome: {vis_nome}\n"
+                       f"📏 Distância: {dist} km\n"
+                       f"🗺️ Rota: {rota}\n\n"
+                       f"Enviado pelo sistema Igreja ABA ✝️")
+                whatsapp_lider = f"https://wa.me/{tel}?text={urllib.parse.quote(msg)}"
         conn.commit()
-    return jsonify({"ok":True})
+    return jsonify({"ok":True, "whatsapp_lider": whatsapp_lider})
 
 @app.route("/api/gcs/direcionamentos", methods=["GET"])
 @login_required

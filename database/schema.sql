@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS grupos_crescimento (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     nome         TEXT    NOT NULL,
     lider        TEXT    DEFAULT '',
+    telefone_lider TEXT   DEFAULT '',
     endereco     TEXT    NOT NULL,
     bairro       TEXT    DEFAULT '',
     cidade       TEXT    DEFAULT 'Alvorada',
