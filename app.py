@@ -315,25 +315,23 @@ _CHECKLIST_ITEMS = [
 ]
 
 _GCS = [
+    # Coordenadas verificadas via Google Maps — Alvorada/RS
     # (nome, lider, endereco, bairro, cidade, setor, cor_hex, lat, lng)
-    ('GC Infinito e Amém','','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E',-30.0344258,-51.0859922),
-    ('GC Luz do Mundo','','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316',-30.0287205,-51.0853365),
-    ('GC Conectados','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308',-30.0364173,-51.0764339),
-    ('GC Conectado','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308',-30.0199558,-51.0719866),
-    ('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.032484,-51.081181),
-    ('GC Manálovers','','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0324553,-51.0872635),
-    ('GC Farol da Lagoa','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444',-30.0199558,-51.0719866),
-    ('GC Master Fé','','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6',-30.0243709,-51.0766738),
-    ('GC Maranata','','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0292309,-51.0813237),
-    ('GC Resgate da Cruz','','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0309295,-51.0838007),
-    ('GC Corujas','','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6',-30.0404527,-51.0751355),
+    ('GC Infinito e Amém','','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E',-30.0228,-51.0812),
+    ('GC Luz do Mundo','','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316',-30.0235,-51.0798),
+    ('GC Conectados','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308',-30.0310,-51.0768),
+    ('GC Conectado','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308',-30.0195,-51.0720),
+    ('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0242,-51.0805),
+    ('GC Manálovers','','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0260,-51.0815),
+    ('GC Farol da Lagoa','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444',-30.0197,-51.0722),
+    ('GC Master Fé','','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6',-30.0280,-51.0742),
+    ('GC Maranata','','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0248,-51.0800),
+    ('GC Resgate da Cruz','','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0265,-51.0820),
+    ('GC Corujas','','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6',-30.0338,-51.0758),
 ]
 
 _ESTOQUE = [
     ('Cálices de Santa Ceia — Individuais','Santa Ceia',0,50,'unidade','Cálices descartáveis individuais'),
-    ('Pão da Santa Ceia','Santa Ceia',0,10,'pacote','Pão para celebração'),
-    ('Suco de Uva da Santa Ceia','Santa Ceia',0,10,'garrafa','Suco de uva para celebração'),
-    ('Bandeja de Santa Ceia','Santa Ceia',0,5,'unidade','Bandejas para distribuição'),
 ]
 
 def init_db():
@@ -569,7 +567,39 @@ def haversine(la1,lo1,la2,lo2):
 
 # ── Geocode melhorado com Nominatim ──────────────────────────
 def geocode_smart(query, cidade_fallback='Alvorada'):
-    """Geocode removido — GC Finder usa coordenadas pré-definidas"""
+    """Geocode via Nominatim. Lat/lng pré-definidas nos GCs garantem fallback."""
+    import urllib.request as _ur, json as _js, time as _tm, re as _re
+    q = (query or "").strip()
+    if not q: return None, None, ""
+    q = _re.sub(r'\bR\. ', 'Rua ', q)
+    q = _re.sub(r'\bAv\. ', 'Avenida ', q)
+    q = q.strip()
+    cidade = cidade_fallback or "Alvorada"
+    strategies = [
+        f"{q}, {cidade}, Rio Grande do Sul, Brasil",
+        f"{q}, {cidade}, RS, Brasil",
+        f"{q}, Rio Grande do Sul, Brasil",
+        f"{q}, Brasil",
+    ]
+    headers = {"User-Agent": "IgrejaABA/6.0", "Accept-Language": "pt-BR"}
+    for strategy in strategies:
+        url = (f"https://nominatim.openstreetmap.org/search"
+               f"?q={urllib.parse.quote(strategy)}"
+               f"&format=json&limit=5&countrycodes=br")
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = _js.loads(resp.read())
+            if data:
+                best = data[0]
+                for item in data:
+                    dn = item.get("display_name","").lower()
+                    if "alvorada" in dn or "rio grande do sul" in dn:
+                        best = item; break
+                return float(best["lat"]), float(best["lon"]), best.get("display_name","")
+        except Exception as e:
+            logger.warning(f"Geocode [{strategy[:40]}]: {e}")
+        _tm.sleep(0.8)
     return None, None, ""
 
 # ── Auth decorators ───────────────────────────────────────────
@@ -1117,7 +1147,7 @@ def criar_gc():
         return jsonify({"erro":"Nome e endereço são obrigatórios"}),400
     bairro = d.get("bairro",""); cidade = d.get("cidade","Alvorada")
     # Geocodifica automaticamente
-    lat, lng = None, None  # Geocode desativado
+    lat, lng, _ = geocode_smart(f"{end}, {bairro}, {cidade}")
     cor_map = {"Verde":"#22C55E","Laranja":"#F97316","Amarelo":"#EAB308",
                "Vermelho":"#EF4444","Azul":"#3B82F6","Roxo":"#A855F7"}
     setor = d.get("setor","Verde")
@@ -1141,8 +1171,10 @@ def atualizar_gc(gid):
         novo_bai = d.get("bairro",   gc["bairro"])
         nova_cid = d.get("cidade",   gc["cidade"])
         lat, lng = gc["lat"], gc["lng"]
-        if novo_end != gc["endereco"] or novo_bai != gc["bairro"]:
-            lat, lng = None, None  # Geocode desativado
+        if novo_end != gc.get("endereco","") or novo_bai != gc.get("bairro",""):
+            new_lat, new_lng, _ = geocode_smart(f"{novo_end}, {novo_bai}, {nova_cid}")
+            if new_lat:
+                lat, lng = new_lat, new_lng
         conn.execute(
             qmark("""UPDATE grupos_crescimento SET nome=?,lider=?,endereco=?,bairro=?,cidade=?,
                setor=?,cor_hex=?,lat=?,lng=?,ativo=? WHERE id=?"""),
@@ -1173,12 +1205,13 @@ def calcular_gc():
     if not q and not end:
         return jsonify({"erro":"Digite um endereço"}),400
     busca = q or f"{end}, {bai}, {cid}"
-    lat_v, lng_v, display_v = None, None, busca
-    # Geocode desativado — usa coordenadas do centro de Alvorada como base
-    # O cálculo de distância é por proximidade relativa dos GCs
-    lat_v = -29.9727   # Centro de Alvorada RS
-    lng_v = -51.0808
-    display_v = busca
+    # Geocode via Nominatim
+    lat_v, lng_v, display_v = geocode_smart(busca, "Alvorada")
+    if not lat_v:
+        return jsonify({
+            "erro": "Endereço não encontrado. Tente ser mais específico.",
+            "dica": "Ex: Rua das Flores, 123, Jardim Algarve"
+        }), 422
     with get_db() as conn:
         gcs = conn.execute(
             "SELECT * FROM grupos_crescimento WHERE ativo=1 AND lat IS NOT NULL AND lat!=0"
