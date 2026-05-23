@@ -226,7 +226,7 @@ CREATE TABLE IF NOT EXISTS estoque (
 );
 CREATE TABLE IF NOT EXISTS grupos_crescimento (
     id        SERIAL PRIMARY KEY,
-    nome      TEXT NOT NULL,
+    nome      TEXT NOT NULL UNIQUE,
     lider     TEXT DEFAULT '',
     endereco  TEXT NOT NULL,
     bairro    TEXT DEFAULT '',
@@ -346,6 +346,11 @@ def _pg_migrations(conn):
     """Adiciona colunas/tabelas que podem faltar em bancos antigos (safe ALTER TABLE)"""
     migrations = [
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_acesso TEXT DEFAULT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_gc_nome ON grupos_crescimento(nome)",
+        # Limpa duplicatas de GC mantendo apenas o registro mais antigo (menor id)
+        """DELETE FROM grupos_crescimento WHERE id NOT IN (
+            SELECT MIN(id) FROM grupos_crescimento GROUP BY nome
+        )""",
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS criado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto Regular'",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_em TEXT DEFAULT NULL",
@@ -388,7 +393,7 @@ def _init_pg():
         # GCs
         for gc in _GCS:
             cur.execute(
-                "INSERT INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                "INSERT INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (nome) DO NOTHING",
                 gc
             )
         # Estoque
@@ -398,10 +403,14 @@ def _init_pg():
                 est
             )
         # Câmera padrão
-        cur.execute(
-            "INSERT INTO cameras (nome,url,local) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
-            ('Câmera Principal','0','Entrada Principal')
-        )
+        # Câmera: só insere se não existir nenhuma
+        cur.execute("SELECT COUNT(*) as n FROM cameras")
+        row = cur.fetchone()
+        if (row.get("n") if hasattr(row,"get") else row[0]) == 0:
+            cur.execute(
+                "INSERT INTO cameras (nome,url,local) VALUES (%s,%s,%s)",
+                ('Câmera Principal','0','Entrada Principal')
+            )
         conn.commit()
         conn.close()
         logger.info("PostgreSQL inicializado com sucesso!")
