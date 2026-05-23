@@ -1,19 +1,45 @@
 {
-  "name": "Igreja ABA",
-  "short_name": "Igreja ABA",
-  "description": "Sistema de Registro de Culto — Igreja ABA",
+  "name": "ABA Cultos",
+  "short_name": "ABA Cultos",
+  "description": "Sistema de Gestão de Cultos — Igreja ABA",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#061A3A",
-  "theme_color": "#0A2463",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait-primary",
   "lang": "pt-BR",
   "icons": [
-    { "src": "/static/favicon-16.png",       "sizes": "16x16",   "type": "image/png" },
-    { "src": "/static/favicon-32.png",       "sizes": "32x32",   "type": "image/png" },
-    { "src": "/static/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "/static/favicon-16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ],
-  "categories": ["productivity", "utilities"],
-  "screenshots": []
+  "categories": [
+    "productivity",
+    "utilities"
+  ]
 }

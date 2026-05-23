@@ -3,15 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
-<title>Igreja ABA — Sistema</title>
+<title>ABA Cultos</title>
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+<link rel="icon" sizes="192x192" href="/static/icon-192.png">
+<link rel="icon" sizes="512x512" href="/static/icon-512.png">
 <meta name="theme-color" content="#0A2463">
 <link rel="manifest" href="/static/manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Igreja ABA">
+<meta name="apple-mobile-web-app-title" content="ABA Cultos">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -49,7 +51,7 @@
       Visitantes</a></li>
     <li><a class="nav-item" data-tab="gc">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-      GC Finder</a></li>
+      Concecta GC</a></li>
     <li><a class="nav-item" data-tab="estoque">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
       Estoque</a></li>
@@ -116,12 +118,12 @@
         <div class="field-group" style="margin-top:12px">
           <label>Tipo de Culto</label>
           <div class="tipo-selector">
-            <button class="tipo-btn active" data-tipo="Culto Regular" onclick="selecionarTipo(this)">✝️ Regular</button>
-            <button class="tipo-btn nareal" data-tipo="NAREAL" onclick="selecionarTipo(this)">🟣 NAREAL</button>
-            <button class="tipo-btn" data-tipo="Evento" onclick="selecionarTipo(this)">🎉 Evento</button>
+            <button class="tipo-btn active" data-tipo="Culto de Celebração" onclick="selecionarTipo(this)">✝️ Culto de Celebração</button>
+            <button class="tipo-btn nareal" data-tipo="Nareal" onclick="selecionarTipo(this)">👑 Nareal</button>
+            <button class="tipo-btn" data-tipo="Eventos" onclick="selecionarTipo(this)">🎉 Eventos</button>
             <button class="tipo-btn" data-tipo="Reunião de Líderes" onclick="selecionarTipo(this)">👥 Líderes</button>
-            <button class="tipo-btn" data-tipo="Culto de GC" onclick="selecionarTipo(this)">🏘️ GC</button>
-            <button class="tipo-btn" data-tipo="Outro" onclick="selecionarTipo(this)">📌 Outro</button>
+            <button class="tipo-btn" data-tipo="Culto de GC" onclick="selecionarTipo(this)">🏘️ Gczão</button>
+            <button class="tipo-btn" data-tipo="Outro" onclick="selecionarTipo(this)">📌 Outros</button>
           </div>
         </div>
       </div>
@@ -243,10 +245,9 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
               </button>
             </div>
-            <div class="geo-result-box" id="v_geo_result"></div>
-            <div class="geo-error-box" id="v_geo_result_err"></div>
-            <input type="hidden" id="v_lat"><input type="hidden" id="v_lng">
-            <input type="hidden" id="v_end_display">
+            
+            
+            
           </div>
           <div class="field-group"><label>Bairro</label><input type="text" class="field-input" id="v_bairro" placeholder="Bairro"></div>
           <div class="field-group"><label>Cidade</label><input type="text" class="field-input" id="v_cidade" placeholder="Cidade"></div>
@@ -278,9 +279,9 @@
     </div>
   </div>
 
-  <!-- ═══ GC FINDER ══════════════════════════════════════════ -->
+  <!-- ═══ Concecta GC ══════════════════════════════════════════ -->
   <div class="tab-content" id="tab-gc">
-    <div class="page-header"><h1 class="page-title">GC Finder</h1><p class="page-sub">Encontre o Grupo de Crescimento mais próximo do visitante</p></div>
+    <div class="page-header"><h1 class="page-title">Conecta GC</h1><p class="page-sub">Encontre o Grupo de Crescimento mais próximo do visitante</p></div>
     <div class="form-card" style="margin-bottom:18px">
       <div class="form-section">
         <div class="section-title">🔍 Buscar GC por Endereço</div>
@@ -304,7 +305,7 @@
       <div class="form-section">
         <div class="section-title">
           🏘️ Grupos de Crescimento
-          <button class="btn-sm blue" id="btnGeocodificar" onclick="geocodificarTodos()" style="margin-left:auto;font-size:10px">📍 Geocodificar GCs</button>
+          
         </div>
         <div id="gc_lista"><div class="loading-msg">Carregando...</div></div>
       </div>

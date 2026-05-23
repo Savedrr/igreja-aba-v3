@@ -266,30 +266,7 @@ function baixarQR(){
   toast("✅ QR Code baixado!","success");
 }
 
-// ── GEOCODE INTELIGENTE ───────────────────────────────────────
-async function geocodificarCampo(inputId,resultBoxId,latId,lngId,dispId){
-  const query=document.getElementById(inputId)?.value?.trim();
-  const resBox=document.getElementById(resultBoxId);
-  const errBox=document.getElementById(resultBoxId+"_err");
-  if(!query){if(resBox)resBox.classList.remove("show");return;}
-  if(resBox)resBox.innerHTML="🔄 Buscando...";
-  if(resBox)resBox.classList.add("show");
-  if(errBox)errBox.classList.remove("show");
-  try{
-    const r=await fetch("/api/geocode",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({query,cidade:"Alvorada"})});
-    const d=await r.json();
-    if(r.ok&&d.ok){
-      if(resBox){resBox.textContent=`✅ ${d.display}`;resBox.classList.add("show");}
-      if(latId)document.getElementById(latId).value=d.lat;
-      if(lngId)document.getElementById(lngId).value=d.lng;
-      if(dispId)document.getElementById(dispId).value=d.display;
-    }else{
-      if(resBox)resBox.classList.remove("show");
-      if(errBox){errBox.textContent=`❌ ${d.erro||"Não encontrado"}. ${d.dica||""}`;errBox.classList.add("show");}
-    }
-  }catch{if(errBox){errBox.textContent="❌ Erro de conexão.";errBox.classList.add("show");}}
-}
+
 
 // ── VISITANTES ────────────────────────────────────────────────
 async function salvarVisitante(){
@@ -538,16 +515,7 @@ async function desativarGC(id,nome){
   await fetch(`/api/gcs/${id}`,{method:"DELETE"});
   toast("GC desativado.","info"); carregarGCs();
 }
-async function geocodificarTodos(){
-  const btn=document.getElementById("btnGeocodificar");
-  btn.innerHTML='<span class="spinner"></span>';btn.disabled=true;
-  toast("🔄 Geocodificando endereços...","info");
-  const r=await fetch("/api/gcs/geocodificar_todos",{method:"POST"});
-  const d=await r.json();
-  btn.innerHTML="📍 Geocodificar GCs"; btn.disabled=false;
-  if(r.ok&&d.ok){toast(`✅ ${d.atualizados}/${d.total} GCs geocodificados!`,"success");carregarGCs();}
-  else toast(d.erro||"Erro.","error");
-}
+
 async function carregarDirecionamentos(){
   const c=document.getElementById("gc_historico"); if(!c)return;
   const r=await fetch("/api/gcs/direcionamentos"); const list=await r.json();

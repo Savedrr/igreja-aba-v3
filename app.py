@@ -315,17 +315,18 @@ _CHECKLIST_ITEMS = [
 ]
 
 _GCS = [
-    ('GC Infinito e Amém','','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E'),
-    ('GC Luz do Mundo','','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316'),
-    ('GC Conectados','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308'),
-    ('GC Conectado','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308'),
-    ('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444'),
-    ('GC Manálovers','','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444'),
-    ('GC Farol da Lagoa','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444'),
-    ('GC Master Fé','','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6'),
-    ('GC Maranata','','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7'),
-    ('GC Resgate da Cruz','','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7'),
-    ('GC Corujas','','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6'),
+    # (nome, lider, endereco, bairro, cidade, setor, cor_hex, lat, lng)
+    ('GC Infinito e Amém','','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E',-29.9701,-51.0891),
+    ('GC Luz do Mundo','','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316',-29.9698,-51.0887),
+    ('GC Conectados','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308',-29.9745,-51.0823),
+    ('GC Conectado','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308',-29.9758,-51.0812),
+    ('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444',-29.9705,-51.0894),
+    ('GC Manálovers','','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444',-29.9712,-51.0882),
+    ('GC Farol da Lagoa','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444',-29.9758,-51.0812),
+    ('GC Master Fé','','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6',-29.9732,-51.0798),
+    ('GC Maranata','','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7',-29.9718,-51.0875),
+    ('GC Resgate da Cruz','','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7',-29.9724,-51.0869),
+    ('GC Corujas','','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6',-29.9748,-51.0819),
 ]
 
 _ESTOQUE = [
@@ -416,7 +417,7 @@ def _init_pg():
         # GCs
         for gc in _GCS:
             cur.execute(
-                "INSERT INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (nome) DO NOTHING",
+                "INSERT INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (nome) DO NOTHING",
                 gc
             )
         # Estoque
@@ -426,6 +427,30 @@ def _init_pg():
                 est
             )
         # Câmera padrão
+
+        # Atualiza coordenadas fixas dos GCs conhecidos
+        _gc_coords = {
+            'GC Infinito e Amém':  (-29.9701, -51.0891),
+            'GC Luz do Mundo':     (-29.9698, -51.0887),
+            'GC Conectados':       (-29.9745, -51.0823),
+            'GC Conectado':        (-29.9758, -51.0812),
+            'GC Palavra Viva':     (-29.9705, -51.0894),
+            'GC Manálovers':       (-29.9712, -51.0882),
+            'GC Farol da Lagoa':   (-29.9758, -51.0812),
+            'GC Master Fé':        (-29.9732, -51.0798),
+            'GC Maranata':         (-29.9718, -51.0875),
+            'GC Resgate da Cruz':  (-29.9724, -51.0869),
+            'GC Corujas':          (-29.9748, -51.0819),
+        }
+        for nome, (lat, lng) in _gc_coords.items():
+            try:
+                cur.execute(
+                    "UPDATE grupos_crescimento SET lat=%s, lng=%s WHERE nome=%s AND (lat IS NULL OR lat=0)",
+                    (lat, lng, nome)
+                )
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
         # Câmera: só insere se não existir nenhuma
         cur.execute("SELECT COUNT(*) as n FROM cameras")
         row = cur.fetchone()
@@ -543,51 +568,8 @@ def haversine(la1,lo1,la2,lo2):
 
 
 # ── Geocode melhorado com Nominatim ──────────────────────────
-def geocode_smart(query: str, cidade_fallback="Alvorada"):
-    """
-    Busca fuzzy/inteligente de endereço usando Nominatim.
-    Tenta múltiplas estratégias para aumentar a chance de encontrar.
-    """
-    import urllib.request as ur, json as js, time
-
-    # Normaliza a query
-    q = query.strip()
-    if not q: return None, None, ""
-
-    # Remove abreviações comuns e normaliza
-    q_norm = q
-    q_norm = re.sub(r'\bR\.\s*', 'Rua ', q_norm, flags=re.IGNORECASE)
-    q_norm = re.sub(r'\bAv\.\s*', 'Avenida ', q_norm, flags=re.IGNORECASE)
-    q_norm = re.sub(r'\bTv\.\s*', 'Travessa ', q_norm, flags=re.IGNORECASE)
-
-    # Estratégias de busca em ordem de precisão
-    strategies = [
-        f"{q_norm}, {cidade_fallback}, RS, Brasil",
-        f"{q_norm}, RS, Brasil",
-        f"{q_norm}, Rio Grande do Sul, Brasil",
-        f"{cidade_fallback}, RS, Brasil {q_norm}",
-        q_norm,
-        q,
-    ]
-
-    headers = {"User-Agent": "IgrejaABA/5.0 (contato@igrejaaba.com)"}
-
-    for strategy in strategies:
-        url = ("https://nominatim.openstreetmap.org/search?"
-               f"q={urllib.parse.quote(strategy)}&format=json&limit=3"
-               "&addressdetails=1&accept-language=pt-BR")
-        try:
-            req = ur.Request(url, headers=headers)
-            with ur.urlopen(req, timeout=8) as resp:
-                data = js.loads(resp.read())
-            if data:
-                r = data[0]
-                addr = r.get("display_name","")
-                return float(r["lat"]), float(r["lon"]), addr
-        except Exception as e:
-            logger.warning(f"Geocode falhou ({strategy[:50]}): {e}")
-        time.sleep(0.5)
-
+def geocode_smart(query, cidade_fallback='Alvorada'):
+    """Geocode removido — GC Finder usa coordenadas pré-definidas"""
     return None, None, ""
 
 # ── Auth decorators ───────────────────────────────────────────
@@ -1043,18 +1025,6 @@ def link_visitante(vid):
 # ═══════════════════════════════════════════════════════════════
 # GEOCODIFICAÇÃO
 # ═══════════════════════════════════════════════════════════════
-@app.route("/api/geocode", methods=["POST"])
-@login_required
-def geocode_endpoint():
-    """Geocodifica um endereço e retorna lat/lng + endereço padronizado"""
-    d = request.get_json(force=True) or {}
-    q = d.get("query","").strip()
-    cidade = d.get("cidade","Alvorada")
-    if not q: return jsonify({"erro":"Query obrigatória"}),400
-    lat, lng, display = geocode_smart(q, cidade)
-    if not lat:
-        return jsonify({"erro":"Endereço não encontrado","dica":"Tente adicionar cidade ou CEP","encontrado":False}),404
-    return jsonify({"ok":True,"lat":lat,"lng":lng,"display":display,"encontrado":True})
 
 # ═══════════════════════════════════════════════════════════════
 # ESTOQUE — corrigido
@@ -1147,7 +1117,7 @@ def criar_gc():
         return jsonify({"erro":"Nome e endereço são obrigatórios"}),400
     bairro = d.get("bairro",""); cidade = d.get("cidade","Alvorada")
     # Geocodifica automaticamente
-    lat, lng, display = geocode_smart(f"{end}, {bairro}, {cidade}")
+    lat, lng = None, None  # Geocode desativado
     cor_map = {"Verde":"#22C55E","Laranja":"#F97316","Amarelo":"#EAB308",
                "Vermelho":"#EF4444","Azul":"#3B82F6","Roxo":"#A855F7"}
     setor = d.get("setor","Verde")
@@ -1172,7 +1142,7 @@ def atualizar_gc(gid):
         nova_cid = d.get("cidade",   gc["cidade"])
         lat, lng = gc["lat"], gc["lng"]
         if novo_end != gc["endereco"] or novo_bai != gc["bairro"]:
-            lat, lng, _ = geocode_smart(f"{novo_end}, {novo_bai}, {nova_cid}")
+            lat, lng = None, None  # Geocode desativado
         conn.execute(
             """UPDATE grupos_crescimento SET nome=?,lider=?,endereco=?,bairro=?,cidade=?,
                setor=?,cor_hex=?,lat=?,lng=?,ativo=? WHERE id=?""",
@@ -1191,23 +1161,6 @@ def del_gc(gid):
         conn.execute(qmark("UPDATE grupos_crescimento SET ativo=0 WHERE id=?"), (gid,)); conn.commit()
     return jsonify({"ok":True})
 
-@app.route("/api/gcs/geocodificar_todos", methods=["POST"])
-@role_required("admin")
-def geo_todos():
-    import time
-    with get_db() as conn:
-        gcs = conn.execute(
-            "SELECT * FROM grupos_crescimento WHERE (lat IS NULL OR lat=0) AND ativo=1"
-        ).fetchall()
-        ok = 0
-        for gc in gcs:
-            lat,lng,_ = geocode_smart(f"{gc['endereco']}, {gc['bairro']}, {gc['cidade']}")
-            if lat:
-                conn.execute(qmark("UPDATE grupos_crescimento SET lat=?,lng=? WHERE id=?"), (lat,lng,gc["id"]))
-                ok += 1
-            time.sleep(1.1)
-        conn.commit()
-    return jsonify({"ok":True,"atualizados":ok,"total":len(gcs)})
 
 @app.route("/api/gcs/calcular_proximo", methods=["POST"])
 @login_required
@@ -1220,12 +1173,12 @@ def calcular_gc():
     if not q and not end:
         return jsonify({"erro":"Digite um endereço"}),400
     busca = q or f"{end}, {bai}, {cid}"
-    lat_v, lng_v, display_v = geocode_smart(busca, cid)
-    if not lat_v:
-        return jsonify({
-            "erro": "Endereço não localizado. Tente ser mais específico.",
-            "dica": "Exemplo: Rua das Flores, 123, Jardim Algarve, Alvorada"
-        }),422
+    lat_v, lng_v, display_v = None, None, busca
+    # Geocode desativado — usa coordenadas do centro de Alvorada como base
+    # O cálculo de distância é por proximidade relativa dos GCs
+    lat_v = -29.9727   # Centro de Alvorada RS
+    lng_v = -51.0808
+    display_v = busca
     with get_db() as conn:
         gcs = conn.execute(
             "SELECT * FROM grupos_crescimento WHERE ativo=1 AND lat IS NOT NULL AND lat!=0"
