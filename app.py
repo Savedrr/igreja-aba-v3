@@ -346,11 +346,14 @@ def _pg_migrations(conn):
     """Adiciona colunas/tabelas que podem faltar em bancos antigos (safe ALTER TABLE)"""
     migrations = [
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_acesso TEXT DEFAULT NULL",
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_gc_nome ON grupos_crescimento(nome)",
-        # Limpa duplicatas de GC mantendo apenas o registro mais antigo (menor id)
-        """DELETE FROM grupos_crescimento WHERE id NOT IN (
-            SELECT MIN(id) FROM grupos_crescimento GROUP BY nome
-        )""",
+        "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS lider TEXT DEFAULT ''",
+        "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto Regular'",
+        "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_em TEXT DEFAULT NULL",
+        "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_por TEXT DEFAULT NULL",
+        "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS endereco_padronizado TEXT DEFAULT ''",
+        "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS lat REAL DEFAULT NULL",
+        "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS lng REAL DEFAULT NULL",
+        "ALTER TABLE estoque ADD COLUMN IF NOT EXISTS atualizado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')",
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS criado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto Regular'",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_em TEXT DEFAULT NULL",
@@ -378,7 +381,27 @@ def _init_pg():
         _exec_pg(conn, _pg_schema())
         # Migrations seguras — adiciona colunas que podem não existir em bancos antigos
         _pg_migrations(conn)
+        # Limpa duplicatas antes de criar índice único
         cur = conn.cursor()
+        try:
+            cur.execute("""
+                DELETE FROM grupos_crescimento WHERE id NOT IN (
+                    SELECT MIN(id) FROM grupos_crescimento GROUP BY nome
+                )
+            """)
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.warning(f"Limpeza duplicatas GC: {e}")
+
+        # Cria índice único no nome do GC (se não existir)
+        try:
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_gc_nome ON grupos_crescimento(nome)")
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.warning(f"Índice GC: {e}")
+
         # Admin padrão
         cur.execute(
             "INSERT INTO usuarios (nome,email,senha_hash,cargo) VALUES (%s,%s,%s,%s) ON CONFLICT (email) DO NOTHING",
@@ -1322,10 +1345,20 @@ def dashboard():
         sinal = "cresceu" if diff >= 0 else "caiu"
         insights.append(f"📈 A presença {sinal} {abs(diff)}% em relação ao mês anterior.")
 
+    # Converte Decimal para int/float para JSON
+    def safe(v):
+        if v is None: return 0
+        try: return float(v) if '.' in str(v) else int(v)
+        except: return 0
+
+    resumo_clean = {k: safe(v) for k,v in resumo.items()}
+    mensal_clean = [{k: safe(v) if k != "mes" else v for k,v in m.items()} for m in mensal]
+    por_tipo_clean = [{k: safe(v) if k != "tipo_culto" else v for k,v in t.items()} for t in por_tipo]
+
     return jsonify({
-        "resumo":     resumo,
-        "mensal":     mensal,
-        "por_tipo":   por_tipo,
+        "resumo":     resumo_clean,
+        "mensal":     mensal_clean,
+        "por_tipo":   por_tipo_clean,
         "top_gcs":    top_gcs,
         "ultimos":    [{**u,"data_br":br(u["data"])} for u in ultimos],
         "vis_mensal": vis_mensal,
@@ -1346,21 +1379,35 @@ def _mes_nome(ym):
 @login_required
 def resumo():
     with get_db() as conn:
-        r   = conn.execute("""SELECT COUNT(*) as total_cultos,
+        if USE_PG:
+            r = conn.execute("""SELECT
+               COUNT(*) as total_cultos,
                COALESCE(SUM(presentes),0) as total_presentes,
                COALESCE(SUM(visitantes),0) as total_visitantes,
                COALESCE(SUM(criancas),0) as total_criancas,
-               ROUND(AVG(presentes::float),1) as media_presentes,
-               ROUND(AVG(visitantes::float),1) as media_visitantes,
-               ROUND(AVG(criancas::float),1) as media_criancas
-               FROM cultos""").fetchone() if USE_PG else conn.execute("SELECT * FROM v_resumo_geral").fetchone()
+               COALESCE(ROUND(CAST(AVG(presentes) AS NUMERIC),1),0) as media_presentes,
+               COALESCE(ROUND(CAST(AVG(visitantes) AS NUMERIC),1),0) as media_visitantes,
+               COALESCE(ROUND(CAST(AVG(criancas) AS NUMERIC),1),0) as media_criancas
+               FROM cultos""").fetchone()
+        else:
+            r = conn.execute("SELECT * FROM v_resumo_geral").fetchone()
         ult = conn.execute("SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos ORDER BY data DESC,hora DESC LIMIT 5").fetchall()
-        pp  = conn.execute("""SELECT periodo,COUNT(*)as qtd,ROUND(AVG(presentes),1)as mp,
-                            SUM(presentes)as tp FROM cultos GROUP BY periodo""").fetchall()
+        pp  = conn.execute("""SELECT periodo,COUNT(*) as qtd,
+                            COALESCE(ROUND(CAST(AVG(presentes) AS NUMERIC),1),0) as mp,
+                            COALESCE(SUM(presentes),0) as tp FROM cultos GROUP BY periodo""").fetchall()
+    # Converte Decimal/None para tipos JSON-serializáveis
+    def safe(v):
+        if v is None: return 0
+        try: return float(v) if '.' in str(v) else int(v)
+        except: return 0
+    geral = {}
+    if r:
+        rd = dict(r)
+        geral = {k: safe(v) for k,v in rd.items()}
     return jsonify({
-        "geral":      dict(r) if r else {},
+        "geral":      geral,
         "ultimos":    [{**dict(u),"data_br":br(u["data"])} for u in ult],
-        "por_periodo":[dict(x) for x in pp]
+        "por_periodo":[{k: safe(v) if k not in ("periodo",) else v for k,v in dict(x).items()} for x in pp]
     })
 
 # ═══════════════════════════════════════════════════════════════
