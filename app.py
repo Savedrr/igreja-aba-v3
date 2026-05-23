@@ -625,7 +625,7 @@ def login():
         session["usuario_cargo"] = u["cargo"]
         # Atualiza último acesso
         with get_db() as conn:
-            conn.execute(qmark("UPDATE usuarios SET ultimo_acesso=datetime('now','localtime') WHERE id=?"), (u["id"],))
+            conn.execute(qmark("UPDATE usuarios SET ultimo_acesso=? WHERE id=?"), (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), u["id"],))
             conn.commit()
         return jsonify({"ok":True,"nome":u["nome"],"cargo":u["cargo"]})
     except Exception as e:
@@ -851,7 +851,7 @@ def atualizar_culto(cid):
 
         conn.execute(
             """UPDATE cultos SET presentes=?,visitantes=?,criancas=?,observacoes=?,
-               periodo=?,tipo_culto=?,responsavel=?,editado_em=datetime('now','localtime'),editado_por=?
+               periodo=?,tipo_culto=?,responsavel=?,editado_em=?,editado_por=?
                WHERE id=?""",
             (int(d.get("presentes",  antigo["presentes"])),
              int(d.get("visitantes", antigo["visitantes"])),
@@ -860,6 +860,7 @@ def atualizar_culto(cid):
              d.get("periodo",        antigo["periodo"]),
              tc,
              d.get("responsavel",    antigo["responsavel"]),
+             datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
              session.get("usuario_nome","?"),
              cid)
         )
@@ -1035,16 +1036,16 @@ def update_estoque(iid):
         if is_admin():
             conn.execute(
                 """UPDATE estoque SET nome=?,categoria=?,quantidade=?,quantidade_minima=?,
-                   unidade=?,descricao=?,atualizado_em=datetime('now','localtime') WHERE id=?""",
+                   unidade=?,descricao=?,atualizado_em=? WHERE id=?""",
                 (d.get("nome",item["nome"]),d.get("categoria",item["categoria"]),
                  int(d.get("quantidade",item["quantidade"])),
                  int(d.get("quantidade_minima",item["quantidade_minima"])),
-                 d.get("unidade",item["unidade"]),d.get("descricao",item["descricao"]),iid)
+                 d.get("unidade",item["unidade"]),d.get("descricao",item["descricao"]),datetime.now().strftime('%Y-%m-%d %H:%M:%S'),iid)
             )
         else:
             conn.execute(
-                "UPDATE estoque SET quantidade=?,atualizado_em=datetime('now','localtime') WHERE id=?",
-                (int(d.get("quantidade",item["quantidade"])),iid)
+                "UPDATE estoque SET quantidade=?,atualizado_em=? WHERE id=?",
+                (int(d.get("quantidade",item["quantidade"])),datetime.now().strftime('%Y-%m-%d %H:%M:%S'),iid)
             )
         conn.commit()
     return jsonify({"ok":True})
@@ -1556,7 +1557,7 @@ def criar_sessao():
 @login_required
 def encerrar_sessao(sid):
     with get_db() as conn:
-        conn.execute(qmark("UPDATE contagem_sessoes SET status='encerrada',encerrado_em=datetime('now','localtime') WHERE id=?"), (sid,)); conn.commit()
+        conn.execute(qmark("UPDATE contagem_sessoes SET status='encerrada',encerrado_em=? WHERE id=?"), (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), sid,)); conn.commit()
     return jsonify({"ok":True})
 
 @app.route("/api/contagem/registrar", methods=["POST"])
