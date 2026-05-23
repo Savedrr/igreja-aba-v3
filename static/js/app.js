@@ -47,7 +47,7 @@ async function verificarAuth(){
   // Voluntário: oculta abas restritas no menu
   if(d.cargo==="voluntario"){
     ["gc","estoque","dashboard","relatorios","resumo","ia","usuarios","logs"].forEach(tab=>{
-      const nav=document.querySelector(\`[data-tab="\${tab}"]\`);
+      const nav=document.querySelector(`[data-tab="${tab}"]`);
       if(nav)nav.closest("li").style.display="none";
     });
   }
@@ -431,7 +431,6 @@ async function calcularGC(){
   }
   btn.innerHTML=orig; btn.disabled=false;
 }
-}
 
 function renderizarResultadoGC(data){
   const mp=data.mais_proximo; const vidId=document.getElementById("gc_visitante_id")?.value;
@@ -452,7 +451,7 @@ function renderizarResultadoGC(data){
   </div>`;
   data.gcs.forEach((gc,i)=>{
     html+=`<div class="gc-card${i===0?" primeiro":""}">
-      <div class="gc-rank${i===0?" gold"}">${i+1}°</div>
+      <div class="gc-rank${i===0?'gold':''}">${ i+1}°</div>
       <div class="gc-dot" style="background:${gc.cor_hex}"></div>
       <div class="gc-info">
         <div class="gc-nome">${gc.nome}</div>
