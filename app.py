@@ -59,17 +59,38 @@ def get_db():
 
 def init_db():
     os.makedirs(DB_DIR, exist_ok=True)
+
     with get_db() as conn:
-        with open(SQL_PATH,"r",encoding="utf-8") as f:
-            conn.executescript(f.read())
-        conn.execute("DELETE FROM estoque WHERE id NOT IN (SELECT MIN(id) FROM estoque GROUP BY nome)")
+        with open(SQL_PATH, "r", encoding="utf-8") as f:
+            sql = f.read()
+
+        cur = conn.cursor()
+        cur.execute(sql)
+
+        cur.execute("""
+            DELETE FROM estoque
+            WHERE id NOT IN (
+                SELECT MIN(id)
+                FROM estoque
+                GROUP BY nome
+            )
+        """)
+
         try:
-            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_estoque_nome ON estoque(nome)")
-        except: pass
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_estoque_nome
+                ON estoque(nome)
+            """)
+        except:
+            pass
+
         conn.commit()
+        cur.close()
+
     logger.info(f"DB: {DB_PATH}")
 
-def hs(s): return hashlib.sha256(s.encode()).hexdigest()
+def hs(s):
+    return hashlib.sha256(s.encode()).hexdigest()
 
 # ── Helpers ───────────────────────────────────────────────────
 DIAS = {0:"Segunda-feira",1:"Terça-feira",2:"Quarta-feira",
