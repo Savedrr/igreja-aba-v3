@@ -526,7 +526,7 @@ def ph(n=1):
     if USE_PG:
         return ",".join(["%s"]*n) if n>1 else "%s"
     return ",".join(["?"]*n) if n>1 else "?"
-
+    
 def qmark(sql):
     """Converte ? para %s quando usando PostgreSQL"""
     if USE_PG:
