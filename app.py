@@ -69,14 +69,20 @@ class _PGConnWrapper:
     def __init__(self, conn):
         self._conn = conn
     def execute(self, sql, params=None):
+        # Converte ? para %s (PostgreSQL não aceita ?)
+        pg_sql = sql.replace("?", "%s")
         cur = self._conn.cursor()
         if params:
-            cur.execute(sql, params)
+            cur.execute(pg_sql, params)
         else:
-            cur.execute(sql)
-        # Se foi INSERT, tenta pegar lastrowid
-        wrapper = type('_R', (), {'lastrowid': None, 'fetchone': cur.fetchone, 'fetchall': cur.fetchall})()
-        if sql.strip().upper().startswith('INSERT'):
+            cur.execute(pg_sql)
+        # Se foi INSERT, tenta pegar lastrowid via lastval()
+        wrapper = type('_R', (), {
+            'lastrowid': None,
+            'fetchone': cur.fetchone,
+            'fetchall': cur.fetchall
+        })()
+        if pg_sql.strip().upper().startswith('INSERT'):
             try:
                 cur2 = self._conn.cursor()
                 cur2.execute("SELECT lastval()")
