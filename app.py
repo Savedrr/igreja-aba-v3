@@ -316,17 +316,17 @@ _CHECKLIST_ITEMS = [
 
 _GCS = [
     # (nome, lider, endereco, bairro, cidade, setor, cor_hex, lat, lng)
-    ('GC Infinito e Amém','','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E',-29.9701,-51.0891),
-    ('GC Luz do Mundo','','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316',-29.9698,-51.0887),
-    ('GC Conectados','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308',-29.9745,-51.0823),
-    ('GC Conectado','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308',-29.9758,-51.0812),
-    ('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444',-29.9705,-51.0894),
-    ('GC Manálovers','','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444',-29.9712,-51.0882),
-    ('GC Farol da Lagoa','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444',-29.9758,-51.0812),
-    ('GC Master Fé','','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6',-29.9732,-51.0798),
-    ('GC Maranata','','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7',-29.9718,-51.0875),
-    ('GC Resgate da Cruz','','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7',-29.9724,-51.0869),
-    ('GC Corujas','','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6',-29.9748,-51.0819),
+    ('GC Infinito e Amém','','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E',-30.0344258,-51.0859922),
+    ('GC Luz do Mundo','','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316',-30.0287205,-51.0853365),
+    ('GC Conectados','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308',-30.0364173,-51.0764339),
+    ('GC Conectado','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308',-30.0199558,-51.0719866),
+    ('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.032484,-51.081181),
+    ('GC Manálovers','','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0324553,-51.0872635),
+    ('GC Farol da Lagoa','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444',-30.0199558,-51.0719866),
+    ('GC Master Fé','','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6',-30.0243709,-51.0766738),
+    ('GC Maranata','','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0292309,-51.0813237),
+    ('GC Resgate da Cruz','','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0309295,-51.0838007),
+    ('GC Corujas','','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6',-30.0404527,-51.0751355),
 ]
 
 _ESTOQUE = [
@@ -430,17 +430,17 @@ def _init_pg():
 
         # Atualiza coordenadas fixas dos GCs conhecidos
         _gc_coords = {
-            'GC Infinito e Amém':  (-29.9701, -51.0891),
-            'GC Luz do Mundo':     (-29.9698, -51.0887),
-            'GC Conectados':       (-29.9745, -51.0823),
-            'GC Conectado':        (-29.9758, -51.0812),
-            'GC Palavra Viva':     (-29.9705, -51.0894),
-            'GC Manálovers':       (-29.9712, -51.0882),
-            'GC Farol da Lagoa':   (-29.9758, -51.0812),
-            'GC Master Fé':        (-29.9732, -51.0798),
-            'GC Maranata':         (-29.9718, -51.0875),
-            'GC Resgate da Cruz':  (-29.9724, -51.0869),
-            'GC Corujas':          (-29.9748, -51.0819),
+            'GC Infinito e Amém':  (-30.0344258,-51.08599221),
+            'GC Luz do Mundo':     (-30.0287205,-51.0853365),
+            'GC Conectados':       (-30.0364173,-51.0764339),
+            'GC Conectados Intersul': (-30.0199558,-51.0719866),
+            'GC Palavra Viva':     (-30.032484,-51.081181),
+            'GC Manálovers':       (-30.0324553,-51.0872635),
+            'GC Farol da Lagoa':   (-30.0199558,-51.0719866),
+            'GC Master Fé':        (-30.0243709,-51.0766738),
+            'GC Maranata':         (-30.0292309,-51.0813237),
+            'GC Resgate da Cruz':  (-30.0309295,-51.0838007),
+            'GC Corujas':          (-30.0404527,-51.0751355),
         }
         for nome, (lat, lng) in _gc_coords.items():
             try:
@@ -1096,7 +1096,7 @@ def del_estoque(iid):
     return jsonify({"ok":True})
 
 # ═══════════════════════════════════════════════════════════════
-# GC FINDER — com líder e edição completa
+# CONECTA GC — com líder e edição completa
 # ═══════════════════════════════════════════════════════════════
 @app.route("/api/gcs", methods=["GET"])
 @login_required
