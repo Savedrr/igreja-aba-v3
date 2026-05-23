@@ -1,4 +1,12 @@
 # ⛪ IGREJA ABA — Sistema de Registro de Culto v3
+
+---
+
+## 🔐 Login padrão
+| E-mail | Senha |
+|---|---|
+| admin@igrejaaba.com | Admin@123 |
+
 ---
 
 ## 🚀 OPÇÃO 1 — Rodar localmente (VS Code)

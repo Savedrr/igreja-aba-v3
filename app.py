@@ -1123,12 +1123,12 @@ def criar_gc():
     setor = d.get("setor","Verde")
     with get_db() as conn:
         cur = conn.execute(
-            "INSERT INTO grupos_crescimento(nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES(?,?,?,?,?,?,?,?,?)",
+            qmark("INSERT INTO grupos_crescimento(nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES(?,?,?,?,?,?,?,?,?)"),
             (nome, d.get("lider",""), end, bairro, cidade, setor,
              d.get("cor_hex", cor_map.get(setor,"#22C55E")), lat, lng)
         )
         conn.commit()
-    return jsonify({"ok":True,"id":cur.lastrowid,"lat":lat,"lng":lng,"display":display})
+    return jsonify({"ok":True,"id":cur.lastrowid})
 
 @app.route("/api/gcs/<int:gid>", methods=["PUT"])
 @role_required("admin")
@@ -1144,9 +1144,9 @@ def atualizar_gc(gid):
         if novo_end != gc["endereco"] or novo_bai != gc["bairro"]:
             lat, lng = None, None  # Geocode desativado
         conn.execute(
-            """UPDATE grupos_crescimento SET nome=?,lider=?,endereco=?,bairro=?,cidade=?,
-               setor=?,cor_hex=?,lat=?,lng=?,ativo=? WHERE id=?""",
-            (d.get("nome",gc["nome"]), d.get("lider",gc["lider"]),
+            qmark("""UPDATE grupos_crescimento SET nome=?,lider=?,endereco=?,bairro=?,cidade=?,
+               setor=?,cor_hex=?,lat=?,lng=?,ativo=? WHERE id=?"""),
+            (d.get("nome",gc["nome"]), d.get("lider",gc.get("lider","")),
              novo_end, novo_bai, nova_cid,
              d.get("setor",gc["setor"]), d.get("cor_hex",gc["cor_hex"]),
              lat, lng, int(d.get("ativo",gc["ativo"])), gid)
