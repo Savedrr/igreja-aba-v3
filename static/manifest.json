@@ -1,7 +1,7 @@
 {
-  "name": "Holy App",
-  "short_name": "Holy App",
-  "description": "Gestão de Cultos — Holy App",
+  "name": "Igreja ABA",
+  "short_name": "Igreja ABA",
+  "description": "Sistema de Gestão de Cultos — Igreja ABA",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",

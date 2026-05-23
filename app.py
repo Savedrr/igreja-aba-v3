@@ -1233,53 +1233,109 @@ def dashboard():
     tpc  = request.args.get("tipo", "")
     with get_db() as conn:
         # Resumo geral
-        resumo = dict((conn.execute("""SELECT COUNT(*) as total_cultos,
-               COALESCE(SUM(presentes),0) as total_presentes,
-               COALESCE(SUM(visitantes),0) as total_visitantes,
-               COALESCE(SUM(criancas),0) as total_criancas,
-               ROUND(AVG(presentes::float),1) as media_presentes,
-               ROUND(AVG(visitantes::float),1) as media_visitantes
-               FROM cultos""").fetchone() if USE_PG else conn.execute("SELECT * FROM v_resumo_geral").fetchone()) or {})
+        try:
+            if USE_PG:
+                resumo = dict(conn.execute("""SELECT COUNT(*) as total_cultos,
+                   COALESCE(SUM(presentes),0) as total_presentes,
+                   COALESCE(SUM(visitantes),0) as total_visitantes,
+                   COALESCE(SUM(criancas),0) as total_criancas,
+                   COALESCE(ROUND(CAST(AVG(presentes) AS NUMERIC),1),0) as media_presentes,
+                   COALESCE(ROUND(CAST(AVG(visitantes) AS NUMERIC),1),0) as media_visitantes
+                   FROM cultos""").fetchone() or {})
+            else:
+                resumo = dict(conn.execute("SELECT * FROM v_resumo_geral").fetchone() or {})
+        except Exception as e:
+            logger.warning(f"Dashboard resumo erro: {e}")
+            resumo = {}
 
-        # Evolução mensal
-        sql_m = """SELECT strftime('%Y-%m',data) as mes,
-                   SUM(presentes) as presentes, SUM(visitantes) as visitantes,
-                   SUM(criancas) as criancas, COUNT(*) as cultos
-                   FROM cultos WHERE strftime('%Y',data)=?
-                   GROUP BY mes ORDER BY mes"""
-        mensal = [dict(r) for r in conn.execute(sql_m,(ano,)).fetchall()]
+        # Evolução mensal — compatível PG e SQLite
+        if USE_PG:
+            sql_m = """SELECT to_char(data::date,'YYYY-MM') as mes,
+                       COALESCE(SUM(presentes),0) as presentes,
+                       COALESCE(SUM(visitantes),0) as visitantes,
+                       COALESCE(SUM(criancas),0) as criancas,
+                       COUNT(*) as cultos
+                       FROM cultos WHERE to_char(data::date,'YYYY')=%s
+                       GROUP BY mes ORDER BY mes"""
+        else:
+            sql_m = """SELECT strftime('%Y-%m',data) as mes,
+                       SUM(presentes) as presentes, SUM(visitantes) as visitantes,
+                       SUM(criancas) as criancas, COUNT(*) as cultos
+                       FROM cultos WHERE strftime('%Y',data)=?
+                       GROUP BY mes ORDER BY mes"""
+        try:
+            mensal = [dict(r) for r in conn.execute(sql_m,(ano,)).fetchall()]
+        except Exception as e:
+            logger.warning(f"Dashboard mensal erro: {e}")
+            mensal = []
 
         # Por tipo de culto
-        por_tipo = [dict(r) for r in conn.execute(
-            """SELECT tipo_culto, COUNT(*) as qtd,
-               SUM(presentes) as total_presentes,
-               ROUND(AVG(presentes),1) as media_presentes,
-               SUM(visitantes) as total_visitantes
-               FROM cultos GROUP BY tipo_culto ORDER BY total_presentes DESC"""
-        ).fetchall()]
+        try:
+            por_tipo = [dict(r) for r in conn.execute(
+                """SELECT COALESCE(tipo_culto,'Culto Regular') as tipo_culto,
+                   COUNT(*) as qtd,
+                   COALESCE(SUM(presentes),0) as total_presentes,
+                   COALESCE(SUM(visitantes),0) as total_visitantes
+                   FROM cultos GROUP BY tipo_culto ORDER BY total_presentes DESC"""
+            ).fetchall()]
+            # Adiciona media_presentes manualmente
+            for t in por_tipo:
+                t['media_presentes'] = round(t['total_presentes']/max(t['qtd'],1),1)
+        except Exception as e:
+            logger.warning(f"Dashboard por_tipo erro: {e}")
+            por_tipo = []
 
-        # Top GCs por direcionamentos
-        top_gcs = [dict(r) for r in conn.execute(
-            """SELECT gc_nome, COUNT(*) as direcionamentos
-               FROM gc_direcionamentos GROUP BY gc_nome ORDER BY direcionamentos DESC LIMIT 5"""
-        ).fetchall()]
+        # Top GCs
+        try:
+            top_gcs = [dict(r) for r in conn.execute(
+                """SELECT gc_nome, COUNT(*) as direcionamentos
+                   FROM gc_direcionamentos GROUP BY gc_nome
+                   ORDER BY direcionamentos DESC LIMIT 5"""
+            ).fetchall()]
+        except:
+            top_gcs = []
 
         # Últimos 5 cultos
-        ultimos = [dict(r) for r in conn.execute(
-            "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos ORDER BY data DESC,hora DESC LIMIT 5"
-        ).fetchall()]
+        try:
+            ultimos = [dict(r) for r in conn.execute(
+                qmark("SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em FROM cultos ORDER BY data DESC,hora DESC LIMIT 5")
+            ).fetchall()]
+        except Exception as e:
+            logger.warning(f"Dashboard ultimos erro: {e}")
+            ultimos = []
 
         # Crescimento mês a mês
-        meses_list = [dict(r) for r in conn.execute(
-            """SELECT strftime('%Y-%m',data) as mes, SUM(presentes) as presentes
-               FROM cultos GROUP BY mes ORDER BY mes DESC LIMIT 12"""
-        ).fetchall()]
+        try:
+            if USE_PG:
+                meses_list = [dict(r) for r in conn.execute(
+                    """SELECT to_char(data::date,'YYYY-MM') as mes,
+                       COALESCE(SUM(presentes),0) as presentes
+                       FROM cultos GROUP BY mes ORDER BY mes DESC LIMIT 12"""
+                ).fetchall()]
+            else:
+                meses_list = [dict(r) for r in conn.execute(
+                    """SELECT strftime('%Y-%m',data) as mes, SUM(presentes) as presentes
+                       FROM cultos GROUP BY mes ORDER BY mes DESC LIMIT 12"""
+                ).fetchall()]
+        except:
+            meses_list = []
 
-        # Total visitantes por mês no ano atual
-        vis_mensal = [dict(r) for r in conn.execute(
-            """SELECT strftime('%m',data) as mes, SUM(visitantes) as visitantes
-               FROM cultos WHERE strftime('%Y',data)=? GROUP BY mes ORDER BY mes""",(ano,)
-        ).fetchall()]
+        # Visitantes por mês
+        try:
+            if USE_PG:
+                vis_mensal = [dict(r) for r in conn.execute(
+                    """SELECT to_char(data::date,'MM') as mes,
+                       COALESCE(SUM(visitantes),0) as visitantes
+                       FROM cultos WHERE to_char(data::date,'YYYY')=%s
+                       GROUP BY mes ORDER BY mes""", (ano,)
+                ).fetchall()]
+            else:
+                vis_mensal = [dict(r) for r in conn.execute(
+                    """SELECT strftime('%m',data) as mes, SUM(visitantes) as visitantes
+                       FROM cultos WHERE strftime('%Y',data)=? GROUP BY mes ORDER BY mes""", (ano,)
+                ).fetchall()]
+        except:
+            vis_mensal = []
 
     # Insights automáticos
     insights = []
