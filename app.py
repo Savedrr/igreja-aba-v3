@@ -6,7 +6,12 @@ Melhorias: Permissões granulares, NAREAL, Edição de cultos,
 """
 from flask import Flask, request, jsonify, render_template, session, redirect, send_file, make_response
 from flask_cors import CORS
-import sqlite3, os, hashlib, secrets, io, qrcode, base64, urllib.parse, logging, math, json, re
+import os, hashlib, secrets, io, qrcode, base64, urllib.parse, logging, math, json, re, sqlite3
+try:
+    import psycopg2, psycopg2.extras
+    HAS_PG = True
+except ImportError:
+    HAS_PG = False
 from datetime import datetime, date, timedelta
 from functools import wraps
 import openpyxl
@@ -30,15 +35,22 @@ app.config.update(
 )
 CORS(app, supports_credentials=True, origins="*")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_DIR   = os.environ.get("DB_DIR","").strip() or os.path.join(BASE_DIR,"database")
-DB_PATH  = os.path.join(DB_DIR,"igreja_aba.db")
-SQL_PATH = os.path.join(BASE_DIR,"database","schema.sql")
+BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+DATABASE_URL = os.environ.get("DATABASE_URL","").strip()
+USE_PG       = bool(DATABASE_URL and HAS_PG)
+_db_dir      = os.environ.get("DB_DIR","").strip() or os.path.join(BASE_DIR,"database")
+DB_DIR       = _db_dir
+DB_PATH      = os.path.join(DB_DIR,"igreja_aba.db")
+SQL_PATH     = os.path.join(BASE_DIR,"database","schema.sql")
 
 TIPOS_CULTO = ["Culto Regular","NAREAL","Evento","Reunião de Líderes","Culto de GC","Outro"]
 
 # ── DB ────────────────────────────────────────────────────────
 def get_db():
+    if USE_PG:
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        conn.autocommit = False
+        return conn
     conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -84,18 +96,6 @@ def haversine(la1,lo1,la2,lo2):
     a=math.sin(d1/2)**2+math.cos(la1*r)*math.cos(la2*r)*math.sin(d2/2)**2
     return R*2*math.asin(math.sqrt(max(0,a)))
 
-def log_acao(acao, detalhes=""):
-    """Registra ação no log do sistema"""
-    try:
-        uid   = session.get("usuario_id")
-        unome = session.get("usuario_nome","?")
-        with get_db() as conn:
-            conn.execute(
-                "INSERT INTO logs_sistema(usuario_id,usuario_nome,acao,detalhes) VALUES(?,?,?,?)",
-                (uid, unome, acao, detalhes)
-            )
-            conn.commit()
-    except: pass
 
 # ── Geocode melhorado com Nominatim ──────────────────────────
 def geocode_smart(query: str, cidade_fallback="Alvorada"):
@@ -117,10 +117,12 @@ def geocode_smart(query: str, cidade_fallback="Alvorada"):
 
     # Estratégias de busca em ordem de precisão
     strategies = [
-        f"{q_norm}, RS, Brasil",
         f"{q_norm}, {cidade_fallback}, RS, Brasil",
-        f"{q}, {cidade_fallback}, Rio Grande do Sul, Brasil",
+        f"{q_norm}, RS, Brasil",
+        f"{q_norm}, Rio Grande do Sul, Brasil",
+        f"{cidade_fallback}, RS, Brasil {q_norm}",
         q_norm,
+        q,
     ]
 
     headers = {"User-Agent": "IgrejaABA/5.0 (contato@igrejaaba.com)"}
@@ -161,7 +163,6 @@ def role_required(*roles):
                 return jsonify({"erro":"Não autenticado"}),401
             cargo = session.get("usuario_cargo","voluntario")
             if cargo not in roles:
-                log_acao(f"ACESSO NEGADO: {request.path}", f"cargo={cargo}")
                 return jsonify({"erro":"Sem permissão para esta ação"}),403
             return f(*a,**k)
         return dec
@@ -194,6 +195,15 @@ def app_main():
 @app.route("/formulario")
 def formulario():
     return render_template("formulario.html", culto_id=request.args.get("culto_id",""))
+
+@app.route("/static/sw.js")
+def service_worker():
+    from flask import send_from_directory, Response
+    sw_path = os.path.join(BASE_DIR, "static", "sw.js")
+    with open(sw_path) as f:
+        content = f.read()
+    return Response(content, mimetype="application/javascript",
+                    headers={"Service-Worker-Allowed": "/"})
 
 @app.route("/health")
 def health():
@@ -231,7 +241,6 @@ def login():
             conn.execute("UPDATE usuarios SET ultimo_acesso=datetime('now','localtime') WHERE id=?",
                          (u["id"],))
             conn.commit()
-        log_acao("LOGIN", f"email={email}")
         return jsonify({"ok":True,"nome":u["nome"],"cargo":u["cargo"]})
     except Exception as e:
         logger.error(f"Login error: {e}")
@@ -239,7 +248,6 @@ def login():
 
 @app.route("/api/logout", methods=["POST"])
 def logout():
-    log_acao("LOGOUT")
     session.clear()
     return jsonify({"ok":True})
 
@@ -294,7 +302,6 @@ def criar_usuario():
                 (nome, email, hs(senha), cargo)
             )
             conn.commit()
-        log_acao("CRIAR_USUARIO", f"email={email} cargo={cargo}")
         return jsonify({"ok":True})
     except Exception as e:
         return jsonify({"erro":"E-mail já cadastrado" if "UNIQUE" in str(e) else str(e)}),400
@@ -343,7 +350,6 @@ def editar_usuario(uid):
             conn.execute("UPDATE usuarios SET ativo=? WHERE id=?",(int(d["ativo"]),uid))
         conn.commit()
 
-    log_acao("EDITAR_USUARIO", f"uid={uid}")
     return jsonify({"ok":True})
 
 @app.route("/api/usuarios/<int:uid>", methods=["DELETE"])
@@ -361,7 +367,6 @@ def deletar_usuario(uid):
             if total_admins <= 1:
                 return jsonify({"erro":"Não é possível remover o único administrador"}),400
         conn.execute("DELETE FROM usuarios WHERE id=?",(uid,)); conn.commit()
-    log_acao("DELETAR_USUARIO", f"uid={uid}")
     return jsonify({"ok":True})
 
 # ═══════════════════════════════════════════════════════════════
@@ -414,7 +419,6 @@ def criar_culto():
                 (cid,item["categoria"],item["item_key"],item["descricao"],resp)
             )
         conn.commit()
-    log_acao("CRIAR_CULTO", f"id={cid} data={dc}")
     return jsonify({"ok":True,"id":cid,"dia_semana":dia_pt(dc)})
 
 @app.route("/api/cultos/<int:cid>", methods=["GET"])
@@ -474,7 +478,6 @@ def atualizar_culto(cid):
              cid)
         )
         conn.commit()
-    log_acao("EDITAR_CULTO", f"id={cid}")
     return jsonify({"ok":True})
 
 @app.route("/api/cultos/<int:cid>", methods=["DELETE"])
@@ -482,13 +485,13 @@ def atualizar_culto(cid):
 def deletar_culto(cid):
     with get_db() as conn:
         conn.execute("DELETE FROM cultos WHERE id=?",(cid,)); conn.commit()
-    log_acao("DELETAR_CULTO", f"id={cid}")
     return jsonify({"ok":True})
 
-@app.route("/api/cultos/<int:cid>/qrcode", methods=["GET"])
+@app.route("/api/qrcode_fixo", methods=["GET"])
 @login_required
-def qrcode_culto(cid):
-    url = f"{get_base()}/formulario?culto_id={cid}"
+def qrcode_fixo():
+    """QR Code único permanente — serve para todos os cultos"""
+    url = f"{get_base()}/formulario"
     qr  = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H,
                          box_size=8, border=4)
     qr.add_data(url); qr.make(fit=True)
@@ -496,6 +499,11 @@ def qrcode_culto(cid):
     buf = io.BytesIO(); img.save(buf,"PNG"); buf.seek(0)
     b64 = base64.b64encode(buf.read()).decode()
     return jsonify({"qrcode":f"data:image/png;base64,{b64}","url":url})
+
+@app.route("/api/cultos/<int:cid>/qrcode", methods=["GET"])
+@login_required
+def qrcode_culto(cid):
+    return qrcode_fixo()
 
 # ═══════════════════════════════════════════════════════════════
 # CHECKLIST
@@ -564,7 +572,6 @@ def listar_visitantes():
 def deletar_visitante(vid):
     with get_db() as conn:
         conn.execute("DELETE FROM visitantes WHERE id=?",(vid,)); conn.commit()
-    log_acao("DELETAR_VISITANTE",f"id={vid}")
     return jsonify({"ok":True})
 
 @app.route("/api/visitantes/<int:vid>/link", methods=["GET"])
@@ -625,7 +632,6 @@ def criar_estoque():
                  d.get("unidade","unidade"), d.get("descricao",""))
             )
             conn.commit()
-        log_acao("CRIAR_ESTOQUE",f"nome={nome}")
         return jsonify({"ok":True,"id":cur.lastrowid})
     except Exception as e:
         if "UNIQUE" in str(e):
@@ -640,13 +646,7 @@ def update_estoque(iid):
     with get_db() as conn:
         item = conn.execute("SELECT * FROM estoque WHERE id=?",(iid,)).fetchone()
         if not item: return jsonify({"erro":"Item não encontrado"}),404
-        if item["fixo"] and not is_admin():
-            # Líderes só podem mudar quantidade de itens fixos
-            conn.execute(
-                "UPDATE estoque SET quantidade=?,atualizado_em=datetime('now','localtime') WHERE id=?",
-                (int(d.get("quantidade",item["quantidade"])),iid)
-            )
-        else:
+        if is_admin():
             conn.execute(
                 """UPDATE estoque SET nome=?,categoria=?,quantidade=?,quantidade_minima=?,
                    unidade=?,descricao=?,atualizado_em=datetime('now','localtime') WHERE id=?""",
@@ -654,6 +654,11 @@ def update_estoque(iid):
                  int(d.get("quantidade",item["quantidade"])),
                  int(d.get("quantidade_minima",item["quantidade_minima"])),
                  d.get("unidade",item["unidade"]),d.get("descricao",item["descricao"]),iid)
+            )
+        else:
+            conn.execute(
+                "UPDATE estoque SET quantidade=?,atualizado_em=datetime('now','localtime') WHERE id=?",
+                (int(d.get("quantidade",item["quantidade"])),iid)
             )
         conn.commit()
     return jsonify({"ok":True})
@@ -667,7 +672,6 @@ def del_estoque(iid):
         if item["fixo"]:
             return jsonify({"erro":"Itens de Santa Ceia não podem ser excluídos"}),403
         conn.execute("DELETE FROM estoque WHERE id=?",(iid,)); conn.commit()
-    log_acao("DELETAR_ESTOQUE",f"id={iid}")
     return jsonify({"ok":True})
 
 # ═══════════════════════════════════════════════════════════════
@@ -703,7 +707,6 @@ def criar_gc():
              d.get("cor_hex", cor_map.get(setor,"#22C55E")), lat, lng)
         )
         conn.commit()
-    log_acao("CRIAR_GC",f"nome={nome}")
     return jsonify({"ok":True,"id":cur.lastrowid,"lat":lat,"lng":lng,"display":display})
 
 @app.route("/api/gcs/<int:gid>", methods=["PUT"])
@@ -728,7 +731,6 @@ def atualizar_gc(gid):
              lat, lng, int(d.get("ativo",gc["ativo"])), gid)
         )
         conn.commit()
-    log_acao("EDITAR_GC",f"id={gid}")
     return jsonify({"ok":True})
 
 @app.route("/api/gcs/<int:gid>", methods=["DELETE"])
@@ -736,7 +738,6 @@ def atualizar_gc(gid):
 def del_gc(gid):
     with get_db() as conn:
         conn.execute("UPDATE grupos_crescimento SET ativo=0 WHERE id=?",(gid,)); conn.commit()
-    log_acao("DESATIVAR_GC",f"id={gid}")
     return jsonify({"ok":True})
 
 @app.route("/api/gcs/geocodificar_todos", methods=["POST"])
@@ -822,7 +823,7 @@ def direcionamentos():
 # DASHBOARD — Analytics
 # ═══════════════════════════════════════════════════════════════
 @app.route("/api/dashboard", methods=["GET"])
-@login_required
+@role_required("lider","admin")
 def dashboard():
     ano  = request.args.get("ano",  str(date.today().year))
     mes  = request.args.get("mes",  "")
@@ -926,7 +927,7 @@ def resumo():
 # PDF REAL
 # ═══════════════════════════════════════════════════════════════
 @app.route("/api/exportar_pdf", methods=["GET"])
-@login_required
+@role_required("lider","admin")
 def exportar_pdf():
     """Gera PDF real usando HTML→bytes via reportlab ou fallback HTML"""
     ini = request.args.get("data_ini","")
@@ -992,7 +993,8 @@ def exportar_pdf():
 </head>
 <body>
 <div style="text-align:right;margin-bottom:8px">
-  <button onclick="window.print()" style="background:#0A2463;color:#fff;border:none;padding:8px 20px;border-radius:6px;font-size:12px;cursor:pointer">🖨️ Imprimir / Salvar PDF</button>
+  <button onclick="window.focus();setTimeout(()=>window.print(),300)" style="background:#0A2463;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;cursor:pointer;margin-bottom:8px">📥 Salvar PDF</button>
+  <p style="font-size:11px;color:#888;margin-top:4px">Na tela de impressão, escolha <strong>Salvar como PDF</strong></p>
 </div>
 <div class="header">
   <div>
@@ -1041,7 +1043,7 @@ def exportar_pdf():
 # EXCEL
 # ═══════════════════════════════════════════════════════════════
 @app.route("/api/exportar_excel", methods=["GET"])
-@login_required
+@role_required("lider","admin")
 def exportar_excel():
     ini = request.args.get("data_ini",""); fim=request.args.get("data_fim",""); per=request.args.get("periodo","")
     sql = "SELECT * FROM v_cultos_detalhe WHERE 1=1"; p=[]
@@ -1199,15 +1201,7 @@ def tempo_real(sid):
     return jsonify({"sessao_id":sid,"entradas":s["total_entradas"],"saidas":s["total_saidas"],
                     "dentro_agora":max(0,s["total_entradas"]-s["total_saidas"]),"status":s["status"]})
 
-# ═══════════════════════════════════════════════════════════════
-# LOGS
-# ═══════════════════════════════════════════════════════════════
-@app.route("/api/logs", methods=["GET"])
-@role_required("admin")
-def listar_logs():
-    with get_db() as conn:
-        rows=conn.execute("SELECT * FROM logs_sistema ORDER BY criado_em DESC LIMIT 200").fetchall()
-    return jsonify([dict(r) for r in rows])
+
 
 # ═══════════════════════════════════════════════════════════════
 # INIT

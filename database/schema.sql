@@ -152,15 +152,6 @@ CREATE TABLE IF NOT EXISTS contagem_registros (
     registrado_em TEXT    DEFAULT (datetime('now','localtime'))
 );
 
--- Logs de ações dos usuários
-CREATE TABLE IF NOT EXISTS logs_sistema (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    usuario_id  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
-    usuario_nome TEXT   DEFAULT '',
-    acao        TEXT    NOT NULL,
-    detalhes    TEXT    DEFAULT '',
-    criado_em   TEXT    DEFAULT (datetime('now','localtime'))
-);
 
 -- ═══════════════════════════════════════
 -- DADOS INICIAIS
@@ -203,10 +194,10 @@ INSERT OR IGNORE INTO itens_checklist_padrao (categoria,ordem,descricao,item_key
 
 -- Estoque Santa Ceia
 INSERT OR IGNORE INTO estoque (nome,categoria,quantidade,quantidade_minima,unidade,descricao,fixo) VALUES
-('Cálices de Santa Ceia — Individuais','Santa Ceia',0,50,'unidade','Cálices descartáveis individuais',1),
-('Pão da Santa Ceia','Santa Ceia',0,10,'pacote','Pão para celebração',1),
-('Suco de Uva da Santa Ceia','Santa Ceia',0,10,'garrafa','Suco de uva para celebração',1),
-('Bandeja de Santa Ceia','Santa Ceia',0,5,'unidade','Bandejas para distribuição',1);
+('Cálices de Santa Ceia — Individuais','Santa Ceia',0,50,'unidade','Cálices descartáveis individuais',0),
+('Pão da Santa Ceia','Santa Ceia',0,10,'pacote','Pão para celebração',0),
+('Suco de Uva da Santa Ceia','Santa Ceia',0,10,'garrafa','Suco de uva para celebração',0),
+('Bandeja de Santa Ceia','Santa Ceia',0,5,'unidade','Bandejas para distribuição',0);
 
 -- GCs
 INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex) VALUES

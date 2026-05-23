@@ -1,0 +1,19 @@
+{
+  "name": "Igreja ABA",
+  "short_name": "Igreja ABA",
+  "description": "Sistema de Registro de Culto — Igreja ABA",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#061A3A",
+  "theme_color": "#0A2463",
+  "orientation": "portrait-primary",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/static/favicon-16.png",       "sizes": "16x16",   "type": "image/png" },
+    { "src": "/static/favicon-32.png",       "sizes": "32x32",   "type": "image/png" },
+    { "src": "/static/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["productivity", "utilities"],
+  "screenshots": []
+}

@@ -37,13 +37,20 @@ async function verificarAuth(){
   if(badgeEl){badgeEl.textContent=roleLabel[d.cargo];badgeEl.className=`badge-role ${roleClass[d.cargo]}`;}
   // Controla itens de menu restritos
   document.getElementById("navUsuarios").style.display=_isAdmin?"":"none";
-  document.getElementById("navLogs").style.display=_isAdmin?"":"none";
+  const _nl=document.getElementById("navLogs"); if(_nl)_nl.style.display="none";
   // Voluntário não vê botão de criar usuário
   if(d.cargo==="voluntario"){
     document.getElementById("responsavel").value=d.nome;
   }
   // Mostra aba usuários para admin
   if(_isAdmin){carregarUsuarios();}
+  // Voluntário: oculta abas restritas no menu
+  if(d.cargo==="voluntario"){
+    ["gc","estoque","dashboard","relatorios","resumo","ia","usuarios","logs"].forEach(tab=>{
+      const nav=document.querySelector(\`[data-tab="\${tab}"]\`);
+      if(nav)nav.closest("li").style.display="none";
+    });
+  }
 }
 async function logout(){await fetch("/api/logout",{method:"POST"});window.location.href="/";}
 
@@ -65,7 +72,7 @@ function ativarTab(tab){
   if(tab==="estoque")carregarEstoque();
   if(tab==="dashboard")carregarDashboard();
   if(tab==="ia"){carregarSessoesIA();carregarCameras();}
-  if(tab==="logs"&&_isAdmin)carregarLogs();
+  
 }
 
 // ── DATA / HORA ───────────────────────────────────────────────
@@ -242,13 +249,22 @@ async function marcarItem(id,v,wrap,catDiv){
 
 // ── QR CODE ───────────────────────────────────────────────────
 async function gerarQRCode(){
-  const id=document.getElementById("qr_culto_id").value;
-  if(!id)return toast("Selecione um culto.","error");
-  const r=await fetch(`/api/cultos/${id}/qrcode`); const d=await r.json();
-  document.getElementById("qrImg").src=d.qrcode; document.getElementById("qrUrl").textContent=d.url;
-  document.getElementById("qrContainer").style.display="block";
+  const btn=document.getElementById("btnGerarQR");
+  if(btn){btn.innerHTML='<span class="spinner"></span>Gerando...';btn.disabled=true;}
+  try{
+    const r=await fetch("/api/qrcode_fixo"); const d=await r.json();
+    document.getElementById("qrImg").src=d.qrcode;
+    document.getElementById("qrUrl").textContent=d.url;
+    document.getElementById("qrContainer").style.display="block";
+  }catch{toast("Erro ao gerar QR Code.","error");}
+  if(btn){btn.innerHTML="📱 Exibir QR Code";btn.disabled=false;}
 }
-function baixarQR(){const a=document.createElement("a");a.href=document.getElementById("qrImg").src;a.download="qrcode.png";a.click();}
+function baixarQR(){
+  const a=document.createElement("a");
+  a.href=document.getElementById("qrImg").src;
+  a.download="qrcode_igrejaaba.png";a.click();
+  toast("✅ QR Code baixado!","success");
+}
 
 // ── GEOCODE INTELIGENTE ───────────────────────────────────────
 async function geocodificarCampo(inputId,resultBoxId,latId,lngId,dispId){
@@ -386,17 +402,35 @@ async function carregarGCs(){
 
 async function calcularGC(){
   const query=document.getElementById("gc_query").value.trim();
-  if(!query)return toast("Digite um endereço para buscar.","error");
+  if(!query){
+    toast("Digite o endereço do visitante.","error");
+    document.getElementById("gc_query").focus();
+    return;
+  }
   const btn=document.getElementById("btnCalcularGC");
-  btn.innerHTML='<span class="spinner"></span>Calculando...'; btn.disabled=true;
+  const orig=btn.innerHTML;
+  btn.innerHTML='<span class="spinner"></span> Buscando...'; btn.disabled=true;
+  document.getElementById("gc_resultado").innerHTML='<div class="loading-msg">🔍 Localizando endereço e calculando distâncias...</div>';
   try{
-    const r=await fetch("/api/gcs/calcular_proximo",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({query,cidade:"Alvorada"})});
+    const r=await fetch("/api/gcs/calcular_proximo",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({query,cidade:"Alvorada"})
+    });
     const d=await r.json();
-    btn.innerHTML="🔍 Calcular GC Mais Próximo"; btn.disabled=false;
-    if(!r.ok)return toast(d.erro+(d.dica?" — "+d.dica:""),"error");
-    renderizarResultadoGC(d);
-  }catch{btn.innerHTML="🔍 Calcular GC Mais Próximo";btn.disabled=false;toast("Erro de conexão.","error");}
+    if(!r.ok){
+      document.getElementById("gc_resultado").innerHTML=
+        `<div class="permission-alert" style="border-radius:10px;padding:14px 16px">
+          <div style="font-size:15px;margin-bottom:6px">❌ Endereço não encontrado</div>
+          <div style="font-size:13px;opacity:.8">${d.dica||"Tente escrever: Rua das Flores 123 Jardim Algarve"}</div>
+        </div>`;
+    } else {
+      renderizarResultadoGC(d);
+    }
+  }catch{
+    document.getElementById("gc_resultado").innerHTML='<div class="permission-alert" style="border-radius:10px;padding:14px">❌ Erro de conexão. Verifique a internet.</div>';
+  }
+  btn.innerHTML=orig; btn.disabled=false;
+}
 }
 
 function renderizarResultadoGC(data){
@@ -791,7 +825,7 @@ function exportarPDF(){
   const p=new URLSearchParams();
   if(per)p.append("periodo",per); if(ini)p.append("data_ini",ini); if(fim)p.append("data_fim",fim);
   window.open(`/api/exportar_pdf?${p}`,"_blank");
-  toast("📄 Abrindo PDF...","info");
+  toast("📄 PDF aberto! Use Ctrl+P → Salvar como PDF.","info");
 }
 
 // ── RESUMO ────────────────────────────────────────────────────
@@ -957,17 +991,7 @@ async function delCamera(id){
 }
 
 // ── LOGS ──────────────────────────────────────────────────────
-async function carregarLogs(){
-  const c=document.getElementById("listaLogs"); if(!c)return;
-  c.innerHTML="<div class='loading-msg'>Carregando...</div>";
-  const r=await fetch("/api/logs"); const list=await r.json();
-  if(!list.length){c.innerHTML="<p style='color:#8ca0c0;padding:16px'>Nenhum log ainda.</p>";return;}
-  c.innerHTML=`<div class="table-wrap"><table class="data-table"><thead><tr><th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Detalhes</th></tr></thead>
-    <tbody>${list.map(l=>`<tr><td style="white-space:nowrap">${l.criado_em?.substring(0,16)||""}</td>
-      <td>${l.usuario_nome||"—"}</td>
-      <td><strong>${l.acao}</strong></td>
-      <td style="color:#4A6080;font-size:11px">${l.detalhes||""}</td></tr>`).join("")}</tbody></table></div>`;
-}
+
 
 // ── UTIL ──────────────────────────────────────────────────────
 function esc(s){return String(s||"").replace(/'/g,"&#39;").replace(/"/g,"&quot;");}

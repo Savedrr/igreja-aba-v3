@@ -8,6 +8,11 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
 <meta name="theme-color" content="#0A2463">
+<link rel="manifest" href="/static/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Igreja ABA">
+<meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/app.css">
@@ -63,9 +68,7 @@
     <li style="display:none" id="navUsuarios"><a class="nav-item" data-tab="usuarios">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
       Usuários</a></li>
-    <li style="display:none" id="navLogs"><a class="nav-item" data-tab="logs">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
-      Logs</a></li>
+
   </ul>
   <div class="sidebar-footer">
     <div class="user-av" id="userAvatar">A</div>
@@ -202,15 +205,19 @@
     <div class="form-card" style="margin-bottom:18px">
       <div class="form-section">
         <div class="section-title">📱 QR Code — Auto Cadastro</div>
-        <p style="font-size:13px;color:#4A6080;margin-bottom:11px">Gere um QR Code para o culto. O visitante escaneia e preenche no celular.</p>
-        <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:11px">
-          <select class="field-input" id="qr_culto_id" style="max-width:320px"></select>
-          <button class="btn-secondary" onclick="gerarQRCode()">📱 Gerar QR Code</button>
+        <p style="font-size:13px;color:#4A6080;margin-bottom:14px">Um único QR Code serve para todos os cultos. O visitante escaneia e preenche os dados no celular.</p>
+        <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+          <button class="btn-secondary" id="btnGerarQR" onclick="gerarQRCode()">📱 Exibir QR Code</button>
         </div>
         <div id="qrContainer" style="display:none;text-align:center">
-          <img id="qrImg" src="" alt="QR Code" style="max-width:200px;border-radius:12px;border:3px solid #EEF2F9;padding:6px">
-          <p id="qrUrl" style="font-size:11px;color:#4A6080;margin-top:7px;word-break:break-all"></p>
-          <button class="btn-sm blue" style="margin-top:6px" onclick="baixarQR()">⬇️ Baixar</button>
+          <img id="qrImg" src="" alt="QR Code" style="max-width:220px;border-radius:14px;border:4px solid #EEF2F9;padding:8px;box-shadow:0 4px 16px rgba(0,0,0,.1)">
+          <p style="font-size:12px;color:#4A6080;margin-top:10px;font-weight:600">📎 Link do formulário:</p>
+          <p id="qrUrl" style="font-size:11px;color:#4A6080;margin-top:4px;word-break:break-all;background:#F8FAFF;padding:8px;border-radius:8px;border:1px solid #D8E4F0"></p>
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap">
+            <button class="btn-sm blue" onclick="baixarQR()">⬇️ Baixar QR Code</button>
+            <button class="btn-sm green" onclick="copiarLink(document.getElementById('qrUrl').textContent)">📋 Copiar Link</button>
+          </div>
+          <p style="font-size:11px;color:#8ca0c0;margin-top:8px">Imprima este QR Code e coloque na entrada da igreja</p>
         </div>
       </div>
     </div>
@@ -574,17 +581,6 @@
     </div>
   </div>
 
-  <!-- ═══ LOGS (admin) ═════════════════════════════════════════ -->
-  <div class="tab-content" id="tab-logs">
-    <div class="page-header"><h1 class="page-title">Logs do Sistema</h1><p class="page-sub">Histórico de ações dos usuários</p></div>
-    <div class="form-card">
-      <div class="form-section">
-        <div class="section-title">📋 Últimas 200 Ações</div>
-        <div id="listaLogs"><div class="loading-msg">Carregando...</div></div>
-      </div>
-    </div>
-  </div>
-
 </main>
 
 <!-- TOAST -->
@@ -602,5 +598,10 @@
 </div>
 
 <script src="/static/js/app.js"></script>
+<script>
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("/static/sw.js").catch(()=>{});
+}
+</script>
 </body>
 </html>

@@ -7,6 +7,11 @@
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
 <meta name="theme-color" content="#0A2463">
+<link rel="manifest" href="/static/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Igreja ABA">
+<meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -175,6 +180,11 @@ async function enviar(){
       window.scrollTo({top:0,behavior:'smooth'});
     }else{alert(d.erro||'Erro ao enviar. Tente novamente.');btn.innerHTML='Enviar Ficha 🙏';btn.disabled=false;}
   }catch{alert('Erro de conexão.');btn.innerHTML='Enviar Ficha 🙏';btn.disabled=false;}
+}
+</script>
+<script>
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("/static/sw.js").catch(()=>{});
 }
 </script>
 </body>

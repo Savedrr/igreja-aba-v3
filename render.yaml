@@ -13,9 +13,12 @@ services:
         generateValue: true
       - key: BASE_URL
         value: https://igreja-aba.onrender.com
-      - key: DB_DIR
-        value: /opt/render/project/src/database
-    disk:
-      name: database
-      mountPath: /opt/render/project/src/database
-      sizeGB: 1
+      - key: DATABASE_URL
+        fromDatabase:
+          name: igreja-aba-db
+          property: connectionString
+
+databases:
+  - name: igreja-aba-db
+    plan: free
+    region: ohio
