@@ -1,12 +1,12 @@
 {
-  "name": "ABA Cultos",
-  "short_name": "ABA Cultos",
-  "description": "Sistema de Gestão de Cultos — Igreja ABA",
+  "name": "Holy App",
+  "short_name": "Holy App",
+  "description": "Gestão de Cultos — Holy App",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#061A3A",
+  "theme_color": "#061A3A",
   "orientation": "portrait-primary",
   "lang": "pt-BR",
   "icons": [
@@ -37,9 +37,5 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ],
-  "categories": [
-    "productivity",
-    "utilities"
   ]
 }
