@@ -341,12 +341,38 @@ def init_db():
     else:
         _init_sqlite()
 
+
+def _pg_migrations(conn):
+    """Adiciona colunas/tabelas que podem faltar em bancos antigos (safe ALTER TABLE)"""
+    migrations = [
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_acesso TEXT DEFAULT NULL",
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS criado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')",
+        "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto Regular'",
+        "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_em TEXT DEFAULT NULL",
+        "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_por TEXT DEFAULT NULL",
+        "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS endereco_padronizado TEXT DEFAULT ''",
+        "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS lat REAL DEFAULT NULL",
+        "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS lng REAL DEFAULT NULL",
+        "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS lider TEXT DEFAULT ''",
+        "ALTER TABLE estoque ADD COLUMN IF NOT EXISTS atualizado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')",
+    ]
+    cur = conn.cursor()
+    for sql in migrations:
+        try:
+            cur.execute(sql)
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.warning(f"Migration ignorada: {e}")
+
 def _init_pg():
     """Inicializa banco PostgreSQL"""
     try:
         conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
         conn.autocommit = False
         _exec_pg(conn, _pg_schema())
+        # Migrations seguras — adiciona colunas que podem não existir em bancos antigos
+        _pg_migrations(conn)
         cur = conn.cursor()
         # Admin padrão
         cur.execute(
@@ -625,8 +651,14 @@ def login():
         session["usuario_cargo"] = u["cargo"]
         # Atualiza último acesso
         with get_db() as conn:
-            conn.execute(qmark("UPDATE usuarios SET ultimo_acesso=? WHERE id=?"), (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), u["id"],))
-            conn.commit()
+            try:
+                conn.execute(qmark("UPDATE usuarios SET ultimo_acesso=? WHERE id=?"),
+                             (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), u["id"]))
+                conn.commit()
+            except Exception as _e:
+                logger.warning(f"Nao salvou ultimo_acesso: {_e}")
+                try: conn.rollback()
+                except: pass
         return jsonify({"ok":True,"nome":u["nome"],"cargo":u["cargo"]})
     except Exception as e:
         logger.error(f"Login error: {e}")
@@ -656,7 +688,7 @@ def me():
 def listar_usuarios():
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id,nome,email,cargo,ativo,criado_em,ultimo_acesso FROM usuarios ORDER BY nome"
+            "SELECT id,nome,email,cargo,ativo,criado_em FROM usuarios ORDER BY nome"
         ).fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -765,7 +797,7 @@ def listar_cultos():
     fim = request.args.get("data_fim","")
     per = request.args.get("periodo","")
     tpc = request.args.get("tipo_culto","")
-    sql = "SELECT * FROM v_cultos_detalhe WHERE 1=1"
+    sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos WHERE 1=1"
     p   = []
     if ini: sql+=" AND data>=?"; p.append(ini)
     if fim: sql+=" AND data<=?"; p.append(fim)
@@ -811,7 +843,7 @@ def criar_culto():
 @login_required
 def obter_culto(cid):
     with get_db() as conn:
-        c = conn.execute(qmark("SELECT * FROM v_cultos_detalhe WHERE id=?"), (cid,)).fetchone()
+        c = conn.execute(qmark("SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos WHERE id=?"), (cid,)).fetchone()
         if not c: return jsonify({"erro":"Culto não encontrado"}),404
         chks= conn.execute(qmark("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id"), (cid,)).fetchall()
         vis = conn.execute(qmark("SELECT * FROM visitantes WHERE culto_id=? ORDER BY id"), (cid,)).fetchall()
@@ -1216,7 +1248,13 @@ def dashboard():
     tpc  = request.args.get("tipo", "")
     with get_db() as conn:
         # Resumo geral
-        resumo = dict(conn.execute("SELECT * FROM v_resumo_geral").fetchone() or {})
+        resumo = dict((conn.execute("""SELECT COUNT(*) as total_cultos,
+               COALESCE(SUM(presentes),0) as total_presentes,
+               COALESCE(SUM(visitantes),0) as total_visitantes,
+               COALESCE(SUM(criancas),0) as total_criancas,
+               ROUND(AVG(presentes::float),1) as media_presentes,
+               ROUND(AVG(visitantes::float),1) as media_visitantes
+               FROM cultos""").fetchone() if USE_PG else conn.execute("SELECT * FROM v_resumo_geral").fetchone()) or {})
 
         # Evolução mensal
         sql_m = """SELECT strftime('%Y-%m',data) as mes,
@@ -1243,7 +1281,7 @@ def dashboard():
 
         # Últimos 5 cultos
         ultimos = [dict(r) for r in conn.execute(
-            "SELECT * FROM v_cultos_detalhe ORDER BY data DESC,hora DESC LIMIT 5"
+            "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos ORDER BY data DESC,hora DESC LIMIT 5"
         ).fetchall()]
 
         # Crescimento mês a mês
@@ -1299,8 +1337,15 @@ def _mes_nome(ym):
 @login_required
 def resumo():
     with get_db() as conn:
-        r   = conn.execute("SELECT * FROM v_resumo_geral").fetchone()
-        ult = conn.execute("SELECT * FROM v_cultos_detalhe ORDER BY data DESC,hora DESC LIMIT 5").fetchall()
+        r   = conn.execute("""SELECT COUNT(*) as total_cultos,
+               COALESCE(SUM(presentes),0) as total_presentes,
+               COALESCE(SUM(visitantes),0) as total_visitantes,
+               COALESCE(SUM(criancas),0) as total_criancas,
+               ROUND(AVG(presentes::float),1) as media_presentes,
+               ROUND(AVG(visitantes::float),1) as media_visitantes,
+               ROUND(AVG(criancas::float),1) as media_criancas
+               FROM cultos""").fetchone() if USE_PG else conn.execute("SELECT * FROM v_resumo_geral").fetchone()
+        ult = conn.execute("SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos ORDER BY data DESC,hora DESC LIMIT 5").fetchall()
         pp  = conn.execute("""SELECT periodo,COUNT(*)as qtd,ROUND(AVG(presentes),1)as mp,
                             SUM(presentes)as tp FROM cultos GROUP BY periodo""").fetchall()
     return jsonify({
@@ -1321,7 +1366,7 @@ def exportar_pdf():
     per = request.args.get("periodo","")
     tpc = request.args.get("tipo_culto","")
 
-    sql = "SELECT * FROM v_cultos_detalhe WHERE 1=1"; p=[]
+    sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos WHERE 1=1"; p=[]
     if ini: sql+=" AND data>=?"; p.append(ini)
     if fim: sql+=" AND data<=?"; p.append(fim)
     if per: sql+=" AND periodo=?"; p.append(per)
@@ -1330,7 +1375,14 @@ def exportar_pdf():
 
     with get_db() as conn:
         cultos  = [dict(r) for r in conn.execute(sql,p).fetchall()]
-        resumo  = dict(conn.execute("SELECT * FROM v_resumo_geral").fetchone() or {})
+        resumo  = dict((conn.execute("""SELECT COUNT(*) as total_cultos,
+               COALESCE(SUM(presentes),0) as total_presentes,
+               COALESCE(SUM(visitantes),0) as total_visitantes,
+               COALESCE(SUM(criancas),0) as total_criancas,
+               ROUND(CAST(AVG(presentes) AS NUMERIC),1) as media_presentes,
+               ROUND(CAST(AVG(visitantes) AS NUMERIC),1) as media_visitantes,
+               ROUND(CAST(AVG(criancas) AS NUMERIC),1) as media_criancas
+               FROM cultos""").fetchone() if USE_PG else conn.execute("SELECT * FROM v_resumo_geral").fetchone()) or {})
 
     total_p = sum(c["presentes"]  for c in cultos)
     total_v = sum(c["visitantes"] for c in cultos)
@@ -1432,14 +1484,21 @@ def exportar_pdf():
 @role_required("lider","admin")
 def exportar_excel():
     ini = request.args.get("data_ini",""); fim=request.args.get("data_fim",""); per=request.args.get("periodo","")
-    sql = "SELECT * FROM v_cultos_detalhe WHERE 1=1"; p=[]
+    sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos WHERE 1=1"; p=[]
     if ini: sql+=" AND data>=?"; p.append(ini)
     if fim: sql+=" AND data<=?"; p.append(fim)
     if per: sql+=" AND periodo=?"; p.append(per)
     sql+=" ORDER BY data ASC"
     with get_db() as conn:
         cr  = [dict(r) for r in conn.execute(sql,p).fetchall()]
-        rr  = dict(conn.execute("SELECT * FROM v_resumo_geral").fetchone() or {})
+        rr  = dict((conn.execute("""SELECT COUNT(*) as total_cultos,
+               COALESCE(SUM(presentes),0) as total_presentes,
+               COALESCE(SUM(visitantes),0) as total_visitantes,
+               COALESCE(SUM(criancas),0) as total_criancas,
+               ROUND(CAST(AVG(presentes) AS NUMERIC),1) as media_presentes,
+               ROUND(CAST(AVG(visitantes) AS NUMERIC),1) as media_visitantes,
+               ROUND(CAST(AVG(criancas) AS NUMERIC),1) as media_criancas
+               FROM cultos""").fetchone() if USE_PG else conn.execute("SELECT * FROM v_resumo_geral").fetchone()) or {})
         er  = [dict(r) for r in conn.execute("SELECT * FROM estoque ORDER BY fixo DESC,categoria,nome").fetchall()]
         cm  = {c["id"]:[dict(x) for x in conn.execute(qmark("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id"), (c["id"],)).fetchall()] for c in cr}
         gcs = [dict(r) for r in conn.execute("SELECT * FROM grupos_crescimento ORDER BY setor,nome").fetchall()]
