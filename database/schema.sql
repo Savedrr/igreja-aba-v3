@@ -1,6 +1,4 @@
 -- IGREJA ABA — Schema v5
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS usuarios (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     nome        TEXT    NOT NULL,

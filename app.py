@@ -46,51 +46,411 @@ SQL_PATH     = os.path.join(BASE_DIR,"database","schema.sql")
 TIPOS_CULTO = ["Culto Regular","NAREAL","Evento","Reunião de Líderes","Culto de GC","Outro"]
 
 # ── DB ────────────────────────────────────────────────────────
+
+class _PGCursorWrapper:
+    """Wrapper de cursor PG que suporta .lastrowid como SQLite"""
+    def __init__(self, cur):
+        self._cur = cur
+        self.lastrowid = None
+        # Tenta obter lastval após INSERT
+        try:
+            self._cur.execute("SELECT lastval()")
+            row = self._cur.fetchone()
+            if row:
+                self.lastrowid = row.get("lastval") or row.get(0)
+        except:
+            pass
+    def fetchone(self): return self._cur.fetchone()
+    def fetchall(self): return self._cur.fetchall()
+    def __iter__(self): return iter(self._cur.fetchall())
+
+class _PGConnWrapper:
+    """Wrapper de conexão PG que imita interface SQLite"""
+    def __init__(self, conn):
+        self._conn = conn
+    def execute(self, sql, params=None):
+        cur = self._conn.cursor()
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
+        # Se foi INSERT, tenta pegar lastrowid
+        wrapper = type('_R', (), {'lastrowid': None, 'fetchone': cur.fetchone, 'fetchall': cur.fetchall})()
+        if sql.strip().upper().startswith('INSERT'):
+            try:
+                cur2 = self._conn.cursor()
+                cur2.execute("SELECT lastval()")
+                row = cur2.fetchone()
+                if row:
+                    wrapper.lastrowid = row.get("lastval") or list(row.values())[0]
+            except:
+                pass
+        return wrapper
+    def commit(self): self._conn.commit()
+    def rollback(self): self._conn.rollback()
+    def close(self): self._conn.close()
+    def cursor(self): return self._conn.cursor()
+    def __enter__(self): return self
+    def __exit__(self, *a):
+        if a[0]: self._conn.rollback()
+        else: self._conn.commit()
+        return False
+
 def get_db():
     if USE_PG:
         conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
         conn.autocommit = False
-        return conn
+        return _PGConnWrapper(conn)
     conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
-def init_db():
-    os.makedirs(DB_DIR, exist_ok=True)
-
-    with get_db() as conn:
-        with open(SQL_PATH, "r", encoding="utf-8") as f:
-            sql = f.read()
-
-        cur = conn.cursor()
-        cur.execute(sql)
-
-        cur.execute("""
-            DELETE FROM estoque
-            WHERE id NOT IN (
-                SELECT MIN(id)
-                FROM estoque
-                GROUP BY nome
-            )
-        """)
-
+def _exec_pg(conn, sql):
+    """Executa bloco SQL no PostgreSQL, ignorando erros de 'já existe'"""
+    import psycopg2 as _pg
+    cur = conn.cursor()
+    for stmt in sql.split(";"):
+        stmt = stmt.strip()
+        if not stmt or stmt.startswith("--"):
+            continue
         try:
-            cur.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_estoque_nome
-                ON estoque(nome)
-            """)
-        except:
-            pass
+            cur.execute(stmt)
+            conn.commit()
+        except _pg.errors.DuplicateTable:
+            conn.rollback()
+        except _pg.errors.DuplicateObject:
+            conn.rollback()
+        except _pg.errors.UniqueViolation:
+            conn.rollback()
+        except Exception as e:
+            conn.rollback()
+            logger.warning(f"init_db PG ignorou: {e}")
 
+def _pg_schema():
+    """Schema PostgreSQL — sem AUTOINCREMENT, sem PRAGMA, sem SQLite-specific"""
+    return """
+CREATE TABLE IF NOT EXISTS usuarios (
+    id         SERIAL PRIMARY KEY,
+    nome       TEXT NOT NULL,
+    email      TEXT NOT NULL UNIQUE,
+    senha_hash TEXT NOT NULL,
+    cargo      TEXT DEFAULT 'voluntario',
+    ativo      INTEGER DEFAULT 1,
+    criado_em  TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+    ultimo_acesso TEXT DEFAULT NULL
+);
+CREATE TABLE IF NOT EXISTS cultos (
+    id          SERIAL PRIMARY KEY,
+    data        TEXT NOT NULL,
+    hora        TEXT NOT NULL,
+    dia_semana  TEXT NOT NULL,
+    periodo     TEXT NOT NULL,
+    tipo_culto  TEXT DEFAULT 'Culto Regular',
+    responsavel TEXT NOT NULL,
+    presentes   INTEGER DEFAULT 0,
+    visitantes  INTEGER DEFAULT 0,
+    criancas    INTEGER DEFAULT 0,
+    observacoes TEXT DEFAULT '',
+    usuario_id  INTEGER REFERENCES usuarios(id),
+    editado_em  TEXT DEFAULT NULL,
+    editado_por TEXT DEFAULT NULL,
+    criado_em   TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE TABLE IF NOT EXISTS cultos_historico (
+    id          SERIAL PRIMARY KEY,
+    culto_id    INTEGER REFERENCES cultos(id) ON DELETE CASCADE,
+    campo       TEXT NOT NULL,
+    valor_antes TEXT DEFAULT '',
+    valor_depois TEXT DEFAULT '',
+    alterado_por TEXT DEFAULT '',
+    alterado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE TABLE IF NOT EXISTS visitantes (
+    id          SERIAL PRIMARY KEY,
+    culto_id    INTEGER REFERENCES cultos(id) ON DELETE SET NULL,
+    nome        TEXT NOT NULL,
+    idade       TEXT DEFAULT '',
+    telefone    TEXT NOT NULL,
+    endereco    TEXT DEFAULT '',
+    endereco_padronizado TEXT DEFAULT '',
+    cidade      TEXT DEFAULT '',
+    bairro      TEXT DEFAULT '',
+    cep         TEXT DEFAULT '',
+    lat         REAL DEFAULT NULL,
+    lng         REAL DEFAULT NULL,
+    como_conheceu TEXT DEFAULT '',
+    pedido_oracao TEXT DEFAULT '',
+    quer_visita INTEGER DEFAULT 0,
+    data_visita TEXT DEFAULT '',
+    hora_visita TEXT DEFAULT '',
+    observacao  TEXT DEFAULT '',
+    origem      TEXT DEFAULT 'manual',
+    criado_em   TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE TABLE IF NOT EXISTS checklists (
+    id             SERIAL PRIMARY KEY,
+    culto_id       INTEGER REFERENCES cultos(id) ON DELETE CASCADE,
+    categoria      TEXT NOT NULL,
+    item_key       TEXT NOT NULL,
+    item_descricao TEXT NOT NULL,
+    concluido      INTEGER DEFAULT 0,
+    responsavel    TEXT DEFAULT '',
+    criado_em      TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE TABLE IF NOT EXISTS itens_checklist_padrao (
+    id        SERIAL PRIMARY KEY,
+    categoria TEXT NOT NULL,
+    ordem     INTEGER DEFAULT 0,
+    descricao TEXT NOT NULL,
+    item_key  TEXT NOT NULL UNIQUE
+);
+CREATE TABLE IF NOT EXISTS estoque (
+    id                SERIAL PRIMARY KEY,
+    nome              TEXT NOT NULL UNIQUE,
+    categoria         TEXT DEFAULT 'Geral',
+    quantidade        INTEGER DEFAULT 0,
+    quantidade_minima INTEGER DEFAULT 0,
+    unidade           TEXT DEFAULT 'unidade',
+    descricao         TEXT DEFAULT '',
+    fixo              INTEGER DEFAULT 0,
+    criado_em         TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+    atualizado_em     TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE TABLE IF NOT EXISTS grupos_crescimento (
+    id        SERIAL PRIMARY KEY,
+    nome      TEXT NOT NULL,
+    lider     TEXT DEFAULT '',
+    endereco  TEXT NOT NULL,
+    bairro    TEXT DEFAULT '',
+    cidade    TEXT DEFAULT 'Alvorada',
+    setor     TEXT DEFAULT 'Verde',
+    cor_hex   TEXT DEFAULT '#22C55E',
+    lat       REAL DEFAULT NULL,
+    lng       REAL DEFAULT NULL,
+    ativo     INTEGER DEFAULT 1,
+    criado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE TABLE IF NOT EXISTS gc_direcionamentos (
+    id             SERIAL PRIMARY KEY,
+    visitante_id   INTEGER REFERENCES visitantes(id) ON DELETE SET NULL,
+    gc_id          INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL,
+    visitante_nome TEXT DEFAULT '',
+    gc_nome        TEXT DEFAULT '',
+    distancia_km   REAL DEFAULT NULL,
+    criado_em      TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE TABLE IF NOT EXISTS cameras (
+    id        SERIAL PRIMARY KEY,
+    nome      TEXT NOT NULL,
+    url       TEXT NOT NULL,
+    local     TEXT DEFAULT '',
+    ativa     INTEGER DEFAULT 1,
+    criado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+CREATE TABLE IF NOT EXISTS contagem_sessoes (
+    id              SERIAL PRIMARY KEY,
+    culto_id        INTEGER REFERENCES cultos(id) ON DELETE SET NULL,
+    camera_id       INTEGER REFERENCES cameras(id) ON DELETE SET NULL,
+    camera_nome     TEXT DEFAULT '',
+    iniciado_em     TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS'),
+    encerrado_em    TEXT DEFAULT NULL,
+    total_entradas  INTEGER DEFAULT 0,
+    total_saidas    INTEGER DEFAULT 0,
+    pico_simultaneo INTEGER DEFAULT 0,
+    status          TEXT DEFAULT 'ativa'
+);
+CREATE TABLE IF NOT EXISTS contagem_registros (
+    id            SERIAL PRIMARY KEY,
+    sessao_id     INTEGER REFERENCES contagem_sessoes(id) ON DELETE CASCADE,
+    track_id      INTEGER NOT NULL,
+    direcao       TEXT NOT NULL,
+    confianca     REAL DEFAULT 1.0,
+    registrado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+);
+"""
+
+def _pg_inserts():
+    """Dados iniciais para PostgreSQL"""
+    return [
+        ("INSERT INTO usuarios (nome,email,senha_hash,cargo) VALUES (%s,%s,%s,%s) ON CONFLICT (email) DO NOTHING",
+         ('Administrador','admin@igrejaaba.com','e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7','admin')),
+    ]
+
+_CHECKLIST_ITEMS = [
+    ('antes',1,'Verificar se tem copos no bebedouro','ant_copos'),
+    ('antes',2,'Equipe do estacionamento: usar coletes, distribuir cones','ant_estac'),
+    ('antes',3,'Ligar os ar-condicionados em dias de calor','ant_ar'),
+    ('antes',4,'Estacionamento organizado','ant_estac2'),
+    ('antes',5,'Usar crachá','ant_cracha'),
+    ('antes',6,'Varrer a frente da igreja e a área da cantina','ant_varrer'),
+    ('mesa_entrada',1,'Envelopes de dízimos e oferta','mesa_envelopes'),
+    ('mesa_entrada',2,'Fichas "Quero ser membro de um GC"','mesa_fichas_gc'),
+    ('mesa_entrada',3,'Fichas "Preciso de oração"','mesa_fichas_oracao'),
+    ('mesa_entrada',4,'Organizar os vales presentes dos visitantes','mesa_vales'),
+    ('banheiro',1,'Verificar papel higiênico','ban_papel_hig'),
+    ('banheiro',2,'Verificar papel toalha','ban_papel_toalha'),
+    ('banheiro',3,'Verificar sabonete líquido','ban_sabonete'),
+    ('banheiro',4,'Verificar lixeiras','ban_lixeiras'),
+    ('durante',1,'Distribuir envelopes na oferta','dur_envelopes'),
+    ('durante',2,'Levar água ao ministrador','dur_agua'),
+    ('durante',3,'Atenção nas situações diversas','dur_atencao'),
+    ('durante',4,'Contagem de presentes, visitantes e crianças','dur_contagem'),
+    ('durante',5,'Entregar vale presente','dur_vale'),
+    ('final',1,'Retirar lixo','fin_lixo'),
+    ('final',2,'Organizar cadeiras','fin_cadeiras'),
+    ('final',3,'Desligar ar-condicionado','fin_ar'),
+    ('final',4,'Verificar se todas as luzes estão apagadas','fin_luzes'),
+    ('final',5,'Verificar as torneiras dos banheiros','fin_torneiras'),
+    ('final',6,'Fechar portas','fin_portas'),
+    ('final',7,'Acionar alarme','fin_alarme'),
+    ('final',8,'Recolher cones e placas','fin_cones'),
+]
+
+_GCS = [
+    ('GC Infinito e Amém','','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E'),
+    ('GC Luz do Mundo','','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316'),
+    ('GC Conectados','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308'),
+    ('GC Conectado','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308'),
+    ('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444'),
+    ('GC Manálovers','','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444'),
+    ('GC Farol da Lagoa','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444'),
+    ('GC Master Fé','','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6'),
+    ('GC Maranata','','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7'),
+    ('GC Resgate da Cruz','','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7'),
+    ('GC Corujas','','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6'),
+]
+
+_ESTOQUE = [
+    ('Cálices de Santa Ceia — Individuais','Santa Ceia',0,50,'unidade','Cálices descartáveis individuais'),
+    ('Pão da Santa Ceia','Santa Ceia',0,10,'pacote','Pão para celebração'),
+    ('Suco de Uva da Santa Ceia','Santa Ceia',0,10,'garrafa','Suco de uva para celebração'),
+    ('Bandeja de Santa Ceia','Santa Ceia',0,5,'unidade','Bandejas para distribuição'),
+]
+
+def init_db():
+    if USE_PG:
+        _init_pg()
+    else:
+        _init_sqlite()
+
+def _init_pg():
+    """Inicializa banco PostgreSQL"""
+    try:
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        conn.autocommit = False
+        _exec_pg(conn, _pg_schema())
+        cur = conn.cursor()
+        # Admin padrão
+        cur.execute(
+            "INSERT INTO usuarios (nome,email,senha_hash,cargo) VALUES (%s,%s,%s,%s) ON CONFLICT (email) DO NOTHING",
+            ('Administrador','admin@igrejaaba.com','e86f78a8a3caf0b60d8e74e5942aa6d86dc150cd3c03338aef25b7d2d7e3acc7','admin')
+        )
+        # Checklist padrão
+        for item in _CHECKLIST_ITEMS:
+            cur.execute(
+                "INSERT INTO itens_checklist_padrao (categoria,ordem,descricao,item_key) VALUES (%s,%s,%s,%s) ON CONFLICT (item_key) DO NOTHING",
+                item
+            )
+        # GCs
+        for gc in _GCS:
+            cur.execute(
+                "INSERT INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                gc
+            )
+        # Estoque
+        for est in _ESTOQUE:
+            cur.execute(
+                "INSERT INTO estoque (nome,categoria,quantidade,quantidade_minima,unidade,descricao,fixo) VALUES (%s,%s,%s,%s,%s,%s,0) ON CONFLICT (nome) DO NOTHING",
+                est
+            )
+        # Câmera padrão
+        cur.execute(
+            "INSERT INTO cameras (nome,url,local) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+            ('Câmera Principal','0','Entrada Principal')
+        )
         conn.commit()
-        cur.close()
+        conn.close()
+        logger.info("PostgreSQL inicializado com sucesso!")
+    except Exception as e:
+        logger.error(f"Erro init PostgreSQL: {e}")
+        raise
 
-    logger.info(f"DB: {DB_PATH}")
+def _init_sqlite():
+    """Inicializa banco SQLite"""
+    os.makedirs(DB_DIR, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    with open(SQL_PATH,"r",encoding="utf-8") as sf:
+        conn.executescript(sf.read())
+    conn.execute("DELETE FROM estoque WHERE id NOT IN (SELECT MIN(id) FROM estoque GROUP BY nome)")
+    try:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_estoque_nome ON estoque(nome)")
+    except: pass
+    conn.commit()
+    conn.close()
+    logger.info(f"SQLite inicializado: {DB_PATH}")
 
-def hs(s):
-    return hashlib.sha256(s.encode()).hexdigest()
+
+
+
+def get_lastid(conn, table=None):
+    """Obtém o último ID inserido (PG usa lastval, SQLite usa lastrowid de outra forma)"""
+    if USE_PG:
+        try:
+            cur2 = conn.cursor()
+            cur2.execute("SELECT lastval()")
+            row = cur2.fetchone()
+            return row["lastval"] if row else None
+        except:
+            return None
+    return None  # SQLite usa cur.lastrowid diretamente
+
+def executar_insert(conn, sql, params):
+    """Executa INSERT e retorna o ID inserido (funciona em PG e SQLite)"""
+    if USE_PG:
+        # Adiciona RETURNING id se não tiver
+        sql_ret = sql.rstrip().rstrip(")").rstrip()
+        if "RETURNING" not in sql.upper():
+            # Precisamos usar cursor diretamente no PG
+            cur = conn.cursor()
+            cur.execute(qmark(sql), params)
+            # Tenta obter id via lastval
+            cur.execute("SELECT lastval()")
+            row = cur.fetchone()
+            return row["lastval"] if row else None
+        else:
+            cur = conn.cursor()
+            cur.execute(qmark(sql), params)
+            row = cur.fetchone()
+            return row["id"] if row else None
+    else:
+        cur = conn.execute(sql, params)
+        return cur.lastrowid
+
+def ph(n=1):
+    """Retorna placeholders corretos: %s para PG, ? para SQLite"""
+    if USE_PG:
+        return ",".join(["%s"]*n) if n>1 else "%s"
+    return ",".join(["?"]*n) if n>1 else "?"
+
+def qmark(sql):
+    """Converte ? para %s quando usando PostgreSQL"""
+    if USE_PG:
+        return sql.replace("?", "%s")
+    return sql
+
+def lastid(conn, cur_or_result, table=None):
+    """Retorna último ID inserido"""
+    if USE_PG:
+        r = cur_or_result.fetchone()
+        return r["id"] if r else None
+    return cur_or_result.lastrowid
+
+def hs(s): return hashlib.sha256(s.encode()).hexdigest()
 
 # ── Helpers ───────────────────────────────────────────────────
 DIAS = {0:"Segunda-feira",1:"Terça-feira",2:"Quarta-feira",
@@ -259,8 +619,7 @@ def login():
         session["usuario_cargo"] = u["cargo"]
         # Atualiza último acesso
         with get_db() as conn:
-            conn.execute("UPDATE usuarios SET ultimo_acesso=datetime('now','localtime') WHERE id=?",
-                         (u["id"],))
+            conn.execute(qmark("UPDATE usuarios SET ultimo_acesso=datetime('now','localtime') WHERE id=?"), (u["id"],))
             conn.commit()
         return jsonify({"ok":True,"nome":u["nome"],"cargo":u["cargo"]})
     except Exception as e:
@@ -339,7 +698,7 @@ def editar_usuario(uid):
         return jsonify({"erro":"Sem permissão"}),403
 
     with get_db() as conn:
-        alvo = conn.execute("SELECT * FROM usuarios WHERE id=?",(uid,)).fetchone()
+        alvo = conn.execute(qmark("SELECT * FROM usuarios WHERE id=?"), (uid,)).fetchone()
         if not alvo: return jsonify({"erro":"Usuário não encontrado"}),404
 
         # Ninguém (nem admin) pode mudar cargo de outro admin sem ser admin
@@ -361,14 +720,14 @@ def editar_usuario(uid):
                 return jsonify({"erro":"Senha deve ter ao menos uma letra maiúscula"}),400
             if not re.search(r'[0-9]', nova):
                 return jsonify({"erro":"Senha deve ter ao menos um número"}),400
-            conn.execute("UPDATE usuarios SET senha_hash=? WHERE id=?",(hs(nova),uid))
+            conn.execute(qmark("UPDATE usuarios SET senha_hash=? WHERE id=?"), (hs(nova),uid))
 
         if "nome" in d:
-            conn.execute("UPDATE usuarios SET nome=? WHERE id=?",(d["nome"],uid))
+            conn.execute(qmark("UPDATE usuarios SET nome=? WHERE id=?"), (d["nome"],uid))
         if "cargo" in d and cargo_atual == "admin":
-            conn.execute("UPDATE usuarios SET cargo=? WHERE id=?",(d["cargo"],uid))
+            conn.execute(qmark("UPDATE usuarios SET cargo=? WHERE id=?"), (d["cargo"],uid))
         if "ativo" in d and cargo_atual == "admin":
-            conn.execute("UPDATE usuarios SET ativo=? WHERE id=?",(int(d["ativo"]),uid))
+            conn.execute(qmark("UPDATE usuarios SET ativo=? WHERE id=?"), (int(d["ativo"]),uid))
         conn.commit()
 
     return jsonify({"ok":True})
@@ -379,7 +738,7 @@ def deletar_usuario(uid):
     if uid == session["usuario_id"]:
         return jsonify({"erro":"Não pode excluir a si mesmo"}),400
     with get_db() as conn:
-        alvo = conn.execute("SELECT cargo FROM usuarios WHERE id=?",(uid,)).fetchone()
+        alvo = conn.execute(qmark("SELECT cargo FROM usuarios WHERE id=?"), (uid,)).fetchone()
         if alvo and alvo["cargo"] == "admin":
             # Conta quantos admins existem
             total_admins = conn.execute(
@@ -387,7 +746,7 @@ def deletar_usuario(uid):
             ).fetchone()[0]
             if total_admins <= 1:
                 return jsonify({"erro":"Não é possível remover o único administrador"}),400
-        conn.execute("DELETE FROM usuarios WHERE id=?",(uid,)); conn.commit()
+        conn.execute(qmark("DELETE FROM usuarios WHERE id=?"), (uid,)); conn.commit()
     return jsonify({"ok":True})
 
 # ═══════════════════════════════════════════════════════════════
@@ -446,11 +805,11 @@ def criar_culto():
 @login_required
 def obter_culto(cid):
     with get_db() as conn:
-        c = conn.execute("SELECT * FROM v_cultos_detalhe WHERE id=?",(cid,)).fetchone()
+        c = conn.execute(qmark("SELECT * FROM v_cultos_detalhe WHERE id=?"), (cid,)).fetchone()
         if not c: return jsonify({"erro":"Culto não encontrado"}),404
-        chks= conn.execute("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id",(cid,)).fetchall()
-        vis = conn.execute("SELECT * FROM visitantes WHERE culto_id=? ORDER BY id",(cid,)).fetchall()
-        hist= conn.execute("SELECT * FROM cultos_historico WHERE culto_id=? ORDER BY alterado_em DESC LIMIT 20",(cid,)).fetchall()
+        chks= conn.execute(qmark("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id"), (cid,)).fetchall()
+        vis = conn.execute(qmark("SELECT * FROM visitantes WHERE culto_id=? ORDER BY id"), (cid,)).fetchall()
+        hist= conn.execute(qmark("SELECT * FROM cultos_historico WHERE culto_id=? ORDER BY alterado_em DESC LIMIT 20"), (cid,)).fetchall()
     row = dict(c); row["data_br"] = br(row["data"])
     return jsonify({
         "culto":      row,
@@ -467,7 +826,7 @@ def atualizar_culto(cid):
         return jsonify({"erro":"Apenas líderes e admins podem editar relatórios"}),403
     d = request.get_json(force=True) or {}
     with get_db() as conn:
-        antigo = conn.execute("SELECT * FROM cultos WHERE id=?",(cid,)).fetchone()
+        antigo = conn.execute(qmark("SELECT * FROM cultos WHERE id=?"), (cid,)).fetchone()
         if not antigo: return jsonify({"erro":"Culto não encontrado"}),404
 
         # Registra histórico de alterações
@@ -505,7 +864,7 @@ def atualizar_culto(cid):
 @role_required("admin","lider")
 def deletar_culto(cid):
     with get_db() as conn:
-        conn.execute("DELETE FROM cultos WHERE id=?",(cid,)); conn.commit()
+        conn.execute(qmark("DELETE FROM cultos WHERE id=?"), (cid,)); conn.commit()
     return jsonify({"ok":True})
 
 @app.route("/api/qrcode_fixo", methods=["GET"])
@@ -544,7 +903,7 @@ def atualizar_check(iid):
     d = request.get_json(force=True) or {}
     concluido = 1 if d.get("concluido") else 0
     with get_db() as conn:
-        conn.execute("UPDATE checklists SET concluido=? WHERE id=?",(concluido,iid))
+        conn.execute(qmark("UPDATE checklists SET concluido=? WHERE id=?"), (concluido,iid))
         conn.commit()
     return jsonify({"ok":True})
 
@@ -592,14 +951,14 @@ def listar_visitantes():
 @role_required("admin","lider")
 def deletar_visitante(vid):
     with get_db() as conn:
-        conn.execute("DELETE FROM visitantes WHERE id=?",(vid,)); conn.commit()
+        conn.execute(qmark("DELETE FROM visitantes WHERE id=?"), (vid,)); conn.commit()
     return jsonify({"ok":True})
 
 @app.route("/api/visitantes/<int:vid>/link", methods=["GET"])
 @login_required
 def link_visitante(vid):
     with get_db() as conn:
-        v = conn.execute("SELECT * FROM visitantes WHERE id=?",(vid,)).fetchone()
+        v = conn.execute(qmark("SELECT * FROM visitantes WHERE id=?"), (vid,)).fetchone()
     if not v: return jsonify({"erro":"Não encontrado"}),404
     v = dict(v)
     q = f"{v.get('endereco','')} {v.get('bairro','')} {v.get('cidade','')}".strip()
@@ -665,7 +1024,7 @@ def criar_estoque():
 def update_estoque(iid):
     d = request.get_json(force=True) or {}
     with get_db() as conn:
-        item = conn.execute("SELECT * FROM estoque WHERE id=?",(iid,)).fetchone()
+        item = conn.execute(qmark("SELECT * FROM estoque WHERE id=?"), (iid,)).fetchone()
         if not item: return jsonify({"erro":"Item não encontrado"}),404
         if is_admin():
             conn.execute(
@@ -688,11 +1047,11 @@ def update_estoque(iid):
 @role_required("admin")
 def del_estoque(iid):
     with get_db() as conn:
-        item = conn.execute("SELECT fixo FROM estoque WHERE id=?",(iid,)).fetchone()
+        item = conn.execute(qmark("SELECT fixo FROM estoque WHERE id=?"), (iid,)).fetchone()
         if not item: return jsonify({"erro":"Não encontrado"}),404
         if item["fixo"]:
             return jsonify({"erro":"Itens de Santa Ceia não podem ser excluídos"}),403
-        conn.execute("DELETE FROM estoque WHERE id=?",(iid,)); conn.commit()
+        conn.execute(qmark("DELETE FROM estoque WHERE id=?"), (iid,)); conn.commit()
     return jsonify({"ok":True})
 
 # ═══════════════════════════════════════════════════════════════
@@ -735,7 +1094,7 @@ def criar_gc():
 def atualizar_gc(gid):
     d = request.get_json(force=True) or {}
     with get_db() as conn:
-        gc = conn.execute("SELECT * FROM grupos_crescimento WHERE id=?",(gid,)).fetchone()
+        gc = conn.execute(qmark("SELECT * FROM grupos_crescimento WHERE id=?"), (gid,)).fetchone()
         if not gc: return jsonify({"erro":"GC não encontrado"}),404
         novo_end = d.get("endereco", gc["endereco"])
         novo_bai = d.get("bairro",   gc["bairro"])
@@ -758,7 +1117,7 @@ def atualizar_gc(gid):
 @role_required("admin")
 def del_gc(gid):
     with get_db() as conn:
-        conn.execute("UPDATE grupos_crescimento SET ativo=0 WHERE id=?",(gid,)); conn.commit()
+        conn.execute(qmark("UPDATE grupos_crescimento SET ativo=0 WHERE id=?"), (gid,)); conn.commit()
     return jsonify({"ok":True})
 
 @app.route("/api/gcs/geocodificar_todos", methods=["POST"])
@@ -773,7 +1132,7 @@ def geo_todos():
         for gc in gcs:
             lat,lng,_ = geocode_smart(f"{gc['endereco']}, {gc['bairro']}, {gc['cidade']}")
             if lat:
-                conn.execute("UPDATE grupos_crescimento SET lat=?,lng=? WHERE id=?",(lat,lng,gc["id"]))
+                conn.execute(qmark("UPDATE grupos_crescimento SET lat=?,lng=? WHERE id=?"), (lat,lng,gc["id"]))
                 ok += 1
             time.sleep(1.1)
         conn.commit()
@@ -824,8 +1183,7 @@ def direcionar():
             (d.get("visitante_id"),d.get("gc_id"),d.get("visitante_nome",""),d.get("gc_nome",""),d.get("distancia_km"))
         )
         if d.get("visitante_id"):
-            conn.execute("UPDATE visitantes SET observacao=? WHERE id=?",
-                         (f"Direcionado para: {d.get('gc_nome','')}", d.get("visitante_id")))
+            conn.execute(qmark("UPDATE visitantes SET observacao=? WHERE id=?"), (f"Direcionado para: {d.get('gc_nome','')}", d.get("visitante_id")))
         conn.commit()
     return jsonify({"ok":True})
 
@@ -1076,7 +1434,7 @@ def exportar_excel():
         cr  = [dict(r) for r in conn.execute(sql,p).fetchall()]
         rr  = dict(conn.execute("SELECT * FROM v_resumo_geral").fetchone() or {})
         er  = [dict(r) for r in conn.execute("SELECT * FROM estoque ORDER BY fixo DESC,categoria,nome").fetchall()]
-        cm  = {c["id"]:[dict(x) for x in conn.execute("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id",(c["id"],)).fetchall()] for c in cr}
+        cm  = {c["id"]:[dict(x) for x in conn.execute(qmark("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id"), (c["id"],)).fetchall()] for c in cr}
         gcs = [dict(r) for r in conn.execute("SELECT * FROM grupos_crescimento ORDER BY setor,nome").fetchall()]
         dirs= [dict(r) for r in conn.execute("SELECT * FROM gc_direcionamentos ORDER BY criado_em DESC").fetchall()]
 
@@ -1160,7 +1518,7 @@ def criar_camera():
     nome=d.get("nome","").strip(); url=d.get("url","").strip()
     if not nome: return jsonify({"erro":"Nome obrigatório"}),400
     with get_db() as conn:
-        cur=conn.execute("INSERT INTO cameras(nome,url,local) VALUES(?,?,?)",(nome,url,d.get("local","")))
+        cur=conn.execute(qmark("INSERT INTO cameras(nome,url,local) VALUES(?,?,?)"), (nome,url,d.get("local","")))
         conn.commit()
     return jsonify({"ok":True,"id":cur.lastrowid})
 
@@ -1168,7 +1526,7 @@ def criar_camera():
 @role_required("admin")
 def del_camera(cid):
     with get_db() as conn:
-        conn.execute("UPDATE cameras SET ativa=0 WHERE id=?",(cid,)); conn.commit()
+        conn.execute(qmark("UPDATE cameras SET ativa=0 WHERE id=?"), (cid,)); conn.commit()
     return jsonify({"ok":True})
 
 @app.route("/api/contagem/sessoes", methods=["GET"])
@@ -1184,8 +1542,7 @@ def listar_sessoes():
 def criar_sessao():
     d=request.get_json(force=True) or {}
     with get_db() as conn:
-        cur=conn.execute("INSERT INTO contagem_sessoes(culto_id,camera_id,camera_nome) VALUES(?,?,?)",
-            (d.get("culto_id"),d.get("camera_id"),d.get("camera_nome","")))
+        cur=conn.execute(qmark("INSERT INTO contagem_sessoes(culto_id,camera_id,camera_nome) VALUES(?,?,?)"), (d.get("culto_id"),d.get("camera_id"),d.get("camera_nome","")))
         conn.commit()
     return jsonify({"ok":True,"id":cur.lastrowid})
 
@@ -1193,7 +1550,7 @@ def criar_sessao():
 @login_required
 def encerrar_sessao(sid):
     with get_db() as conn:
-        conn.execute("UPDATE contagem_sessoes SET status='encerrada',encerrado_em=datetime('now','localtime') WHERE id=?",(sid,)); conn.commit()
+        conn.execute(qmark("UPDATE contagem_sessoes SET status='encerrada',encerrado_em=datetime('now','localtime') WHERE id=?"), (sid,)); conn.commit()
     return jsonify({"ok":True})
 
 @app.route("/api/contagem/registrar", methods=["POST"])
@@ -1204,9 +1561,9 @@ def registrar_passagem():
     if not sid or tid is None or not direcao:
         return jsonify({"erro":"sessao_id, track_id e direcao obrigatórios"}),400
     with get_db() as conn:
-        existe=conn.execute("SELECT id FROM contagem_registros WHERE sessao_id=? AND track_id=? AND direcao=?",(sid,tid,direcao)).fetchone()
+        existe=conn.execute(qmark("SELECT id FROM contagem_registros WHERE sessao_id=? AND track_id=? AND direcao=?"), (sid,tid,direcao)).fetchone()
         if existe: return jsonify({"ok":True,"duplicado":True})
-        conn.execute("INSERT INTO contagem_registros(sessao_id,track_id,direcao,confianca) VALUES(?,?,?,?)",(sid,tid,direcao,d.get("confianca",1.0)))
+        conn.execute(qmark("INSERT INTO contagem_registros(sessao_id,track_id,direcao,confianca) VALUES(?,?,?,?)"), (sid,tid,direcao,d.get("confianca",1.0)))
         col="total_entradas" if direcao=="entrada" else "total_saidas"
         conn.execute(f"UPDATE contagem_sessoes SET {col}={col}+1 WHERE id=?",(sid,))
         conn.commit()
@@ -1216,7 +1573,7 @@ def registrar_passagem():
 @login_required
 def tempo_real(sid):
     with get_db() as conn:
-        s=conn.execute("SELECT * FROM contagem_sessoes WHERE id=?",(sid,)).fetchone()
+        s=conn.execute(qmark("SELECT * FROM contagem_sessoes WHERE id=?"), (sid,)).fetchone()
         if not s: return jsonify({"erro":"Sessão não encontrada"}),404
     s=dict(s)
     return jsonify({"sessao_id":sid,"entradas":s["total_entradas"],"saidas":s["total_saidas"],
