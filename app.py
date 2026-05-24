@@ -526,7 +526,7 @@ def ph(n=1):
     if USE_PG:
         return ",".join(["%s"]*n) if n>1 else "%s"
     return ",".join(["?"]*n) if n>1 else "?"
-    
+
 def qmark(sql):
     """Converte ? para %s quando usando PostgreSQL"""
     if USE_PG:
@@ -569,40 +569,33 @@ def haversine(la1,lo1,la2,lo2):
 
 
 # ── Geocode melhorado com Nominatim ──────────────────────────
-def geocode_smart(query, cidade_fallback='Alvorada'):
-    """Geocode via Nominatim. Lat/lng pré-definidas nos GCs garantem fallback."""
-    import urllib.request as _ur, json as _js, time as _tm, re as _re
+GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "AIzaSyC6MJNveTAoroPrfDbBMqFl3jp-fEBfBwI")
+
+def geocode_smart(query, cidade_fallback="Alvorada"):
+    """Geocode via Google Maps API — preciso e confiável."""
+    import urllib.request as _ur, json as _js
     q = (query or "").strip()
     if not q: return None, None, ""
-    q = _re.sub(r'\bR\. ', 'Rua ', q)
-    q = _re.sub(r'\bAv\. ', 'Avenida ', q)
-    q = q.strip()
     cidade = cidade_fallback or "Alvorada"
-    strategies = [
-        f"{q}, {cidade}, Rio Grande do Sul, Brasil",
-        f"{q}, {cidade}, RS, Brasil",
-        f"{q}, Rio Grande do Sul, Brasil",
-        f"{q}, Brasil",
-    ]
-    headers = {"User-Agent": "IgrejaABA/6.0", "Accept-Language": "pt-BR"}
-    for strategy in strategies:
-        url = (f"https://nominatim.openstreetmap.org/search"
-               f"?q={urllib.parse.quote(strategy)}"
-               f"&format=json&limit=5&countrycodes=br")
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = _js.loads(resp.read())
-            if data:
-                best = data[0]
-                for item in data:
-                    dn = item.get("display_name","").lower()
-                    if "alvorada" in dn or "rio grande do sul" in dn:
-                        best = item; break
-                return float(best["lat"]), float(best["lon"]), best.get("display_name","")
-        except Exception as e:
-            logger.warning(f"Geocode [{strategy[:40]}]: {e}")
-        _tm.sleep(0.8)
+    # Monta query completa para o Google
+    full_q = f"{q}, {cidade}, RS, Brasil"
+    url = (f"https://maps.googleapis.com/maps/api/geocode/json"
+           f"?address={urllib.parse.quote(full_q)}"
+           f"&key={GOOGLE_MAPS_KEY}"
+           f"&language=pt-BR"
+           f"&region=br")
+    try:
+        req = _ur.Request(url)
+        with _ur.urlopen(req, timeout=10) as resp:
+            data = _js.loads(resp.read())
+        if data.get("status") == "OK" and data.get("results"):
+            r = data["results"][0]
+            loc = r["geometry"]["location"]
+            return float(loc["lat"]), float(loc["lng"]), r.get("formatted_address","")
+        else:
+            logger.warning(f"Google Geocode status: {data.get('status')} para: {full_q}")
+    except Exception as e:
+        logger.warning(f"Google Geocode erro: {e}")
     return None, None, ""
 
 # ── Auth decorators ───────────────────────────────────────────
@@ -1209,6 +1202,44 @@ def del_gc(gid):
     return jsonify({"ok":True})
 
 
+
+# ── Coordenadas dos bairros de Alvorada/RS (offline, sem API) ─────────────
+_BAIRROS = {
+    "jardim algarve":(-30.0240,-51.0808),"algarve":(-30.0240,-51.0808),
+    "porto verde":(-30.0330,-51.0760),"intersul":(-30.0195,-51.0720),
+    "jardim porto alegre":(-30.0280,-51.0742),"centro":(-30.0220,-51.0780),
+    "grajaú":(-30.0180,-51.0760),"grajau":(-30.0180,-51.0760),
+    "jardim presidente":(-30.0260,-51.0820),"bom princípio":(-30.0300,-51.0790),
+    "bom principio":(-30.0300,-51.0790),"são paulo":(-30.0250,-51.0835),
+    "sao paulo":(-30.0250,-51.0835),"niterói":(-30.0210,-51.0800),
+    "niteroi":(-30.0210,-51.0800),"nova alvorada":(-30.0350,-51.0800),
+    "parque amador":(-30.0370,-51.0780),"santa fé":(-30.0290,-51.0760),
+    "santa fe":(-30.0290,-51.0760),"morada do vale":(-30.0310,-51.0820),
+    "sete de setembro":(-30.0200,-51.0740),"universitário":(-30.0270,-51.0850),
+    "universitario":(-30.0270,-51.0850),"residencial":(-30.0320,-51.0790),
+    "são luís":(-30.0265,-51.0770),"sao luis":(-30.0265,-51.0770),
+    "jardim nova alvorada":(-30.0360,-51.0810),"nova":(-30.0350,-51.0800),
+}
+
+def geocode_por_bairro(texto):
+    """Retorna (lat, lng, bairro_nome) baseado no bairro detectado no texto."""
+    t = texto.lower().strip()
+    # Remove acentos para matching mais tolerante
+    import unicodedata
+    t_norm = ''.join(c for c in unicodedata.normalize('NFD',t) if unicodedata.category(c) != 'Mn')
+    for bairro, coords in _BAIRROS.items():
+        b_norm = ''.join(c for c in unicodedata.normalize('NFD',bairro) if unicodedata.category(c) != 'Mn')
+        if b_norm in t_norm:
+            return coords[0], coords[1], bairro.title()
+    # Tenta por palavras
+    words = t_norm.replace(","," ").replace("-"," ").split()
+    for bairro, coords in _BAIRROS.items():
+        b_norm = ''.join(c for c in unicodedata.normalize('NFD',bairro) if unicodedata.category(c) != 'Mn')
+        for w in words:
+            if len(w) >= 5 and w in b_norm:
+                return coords[0], coords[1], bairro.title()
+    return None, None, ""
+
 @app.route("/api/gcs/calcular_proximo", methods=["POST"])
 @login_required
 def calcular_gc():
@@ -1220,12 +1251,21 @@ def calcular_gc():
     if not q and not end:
         return jsonify({"erro":"Digite um endereço"}),400
     busca = q or f"{end}, {bai}, {cid}"
-    # Geocode via Nominatim
+    # 1. Tenta geocode externo (Nominatim)
     lat_v, lng_v, display_v = geocode_smart(busca, "Alvorada")
+
+    # 2. Se falhar, usa bairro detectado no texto (offline, sempre funciona)
+    if not lat_v:
+        lat_v, lng_v, bairro_det = geocode_por_bairro(busca)
+        if lat_v:
+            display_v = bairro_det
+            logger.info(f"Usando bairro detectado: {bairro_det}")
+
+    # 3. Se ainda falhar, retorna erro claro
     if not lat_v:
         return jsonify({
-            "erro": "Endereço não encontrado. Tente ser mais específico.",
-            "dica": "Ex: Rua das Flores, 123, Jardim Algarve"
+            "erro": "Bairro não reconhecido.",
+            "dica": "Digite o nome do bairro. Ex: Jardim Algarve, Porto Verde, Intersul, Centro"
         }), 422
     with get_db() as conn:
         gcs = conn.execute(
