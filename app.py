@@ -446,7 +446,7 @@ def _init_pg():
         for nome, (lat, lng) in _gc_coords.items():
             try:
                 cur.execute(
-                    "UPDATE grupos_crescimento SET lat=%s, lng=%s WHERE nome=%s AND (lat IS NULL OR lat=0)",
+                    "UPDATE grupos_crescimento SET lat=%s, lng=%s WHERE nome=%s",
                     (lat, lng, nome)
                 )
                 conn.commit()
@@ -1277,9 +1277,13 @@ def calcular_gc():
     for gc in gcs:
         dist = haversine(lat_v,lng_v,gc["lat"],gc["lng"])
         _o = urllib.parse.quote(display_v or busca)
-        _d = urllib.parse.quote(f"{gc['endereco']}, {gc['bairro']}, {gc['cidade']}, RS")
-        rota = f"https://www.google.com/maps/dir/?api=1&origin={_o}&destination={_d}&travelmode=driving"
-        results.append({**dict(gc),"distancia_km":round(dist,2),"rota_link":rota})
+        gc_end = gc['endereco'] + ", " + gc['bairro'] + ", " + gc['cidade'] + ", RS"
+        _d = urllib.parse.quote(gc_end)
+        rota = "https://www.google.com/maps/dir/?api=1&origin=" + _o + "&destination=" + _d + "&travelmode=driving"
+        gc_nome_enc = urllib.parse.quote(gc['nome'])
+        msg_wa = "Rota para " + gc['nome'] + "%0A" + "Endereco: " + gc_end + "%0ADistancia: " + str(round(dist,2)) + " km%0A%0AMaps: " + rota
+        wa_rota = "https://wa.me/?text=" + msg_wa
+        results.append({**dict(gc),"distancia_km":round(dist,2),"rota_link":rota,"wa_rota":wa_rota})
     results.sort(key=lambda x:x["distancia_km"])
     return jsonify({"ok":True,
                     "visitante":{"lat":lat_v,"lng":lng_v,"endereco":display_v or busca},

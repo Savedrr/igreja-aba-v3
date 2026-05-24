@@ -445,6 +445,7 @@ function renderizarResultadoGC(data){
       <div style="text-align:right">
         <div class="gc-km">${gc.distancia_km}<span> km</span></div>
         <button class="btn-sm blue" style="margin-top:4px;font-size:10px" onclick="copiarLink('${gc.rota_link}')">📋 Rota</button>
+        <a href="${gc.wa_rota||''}" target="_blank" style="text-decoration:none;display:block;margin-top:3px"><button class="btn-sm green" style="font-size:10px;background:#25D366;color:#fff;border:none;width:100%">📲 WhatsApp</button></a>
       </div>
     </div>`;
   });
