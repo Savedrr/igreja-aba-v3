@@ -455,7 +455,8 @@ def _init_pg():
         # Câmera: só insere se não existir nenhuma
         cur.execute("SELECT COUNT(*) as n FROM cameras")
         row = cur.fetchone()
-        if (row.get("n") if hasattr(row,"get") else row[0]) == 0:
+        n_cam = row["n"] if row and isinstance(row, dict) else (row[0] if row else 0)
+        if n_cam == 0:
             cur.execute(
                 "INSERT INTO cameras (nome,url,local) VALUES (%s,%s,%s)",
                 ('Câmera Principal','0','Entrada Principal')
@@ -818,10 +819,8 @@ def deletar_usuario(uid):
     with get_db() as conn:
         alvo = conn.execute(qmark("SELECT cargo FROM usuarios WHERE id=?"), (uid,)).fetchone()
         if alvo and alvo["cargo"] == "admin":
-            # Conta quantos admins existem
-            total_admins = conn.execute(
-                "SELECT COUNT(*) FROM usuarios WHERE cargo='admin' AND ativo=1"
-            ).fetchone()[0]
+            row = conn.execute(qmark("SELECT COUNT(*) as total FROM usuarios WHERE cargo=? AND ativo=1"), ("admin",)).fetchone()
+            total_admins = row["total"] if row else 0
             if total_admins <= 1:
                 return jsonify({"erro":"Não é possível remover o único administrador"}),400
         conn.execute(qmark("DELETE FROM usuarios WHERE id=?"), (uid,)); conn.commit()
