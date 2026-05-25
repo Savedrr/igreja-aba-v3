@@ -1,26 +1,7 @@
 # ⛪ IGREJA ABA — Sistema de Registro de Culto v3
 
----
 
-## 🔐 Login padrão
-| E-mail | Senha |
-|---|---|
-| admin@igrejaaba.com | Admin@123 |
-
----
-
-## 🚀 OPÇÃO 1 — Rodar localmente (VS Code)
-
-```bash
-pip install -r requirements.txt
-python app.py
-```
-Acesse: http://localhost:5000
-Celular (mesma rede): http://[SEU-IP]:5000
-
----
-
-## ☁️ OPÇÃO 2 — Deploy no Vercel (mais fácil)
+## ☁️ OPÇÃO 1 — Deploy no Vercel (mais fácil)
 
 ### ⚠️ Aviso importante sobre o Vercel
 O Vercel é **serverless** — cada requisição pode rodar em um servidor diferente.
@@ -80,7 +61,7 @@ usa versões compatíveis com Python 3.12.
 
 ---
 
-## ☁️ OPÇÃO 3 — Deploy no Render (recomendado para dados permanentes)
+## ☁️ OPÇÃO 2 — Deploy no Render (recomendado para dados permanentes)
 
 O Render permite montar um **disco persistente** — os dados nunca são perdidos.
 
