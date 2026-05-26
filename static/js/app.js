@@ -57,7 +57,7 @@ async function logout(){await fetch("/api/logout",{method:"POST"});window.locati
 
 // ── TABS ──────────────────────────────────────────────────────
 const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:"Visitantes",
-  gc:"GC Finder",estoque:"Estoque",ia:"IA Contagem",relatorios:"Relatórios",
+  gc:"Conecta GC",estoque:"Estoque",ia:"IA Contagem",relatorios:"Relatórios",
   resumo:"Resumo Geral",dashboard:"Dashboard",usuarios:"Usuários",logs:"Logs do Sistema"};
 
 function ativarTab(tab){
@@ -338,12 +338,40 @@ async function carregarVisitantes(){
       </div>
     </div>`).join("");
 }
+// Cache de visitantes para preenchimento automático
+let _visitantesCache = [];
+
 async function popularSelectVisitantes(){
   const r=await fetch("/api/visitantes"); const list=await r.json();
+  _visitantesCache = list;
   const sel=document.getElementById("gc_visitante_id"); if(!sel)return;
   const prev=sel.value; sel.innerHTML="<option value=''>— Sem vínculo —</option>";
-  list.forEach(v=>{const o=document.createElement("option");o.value=v.id;o.textContent=`${v.nome} — ${v.telefone}`;sel.appendChild(o);});
+  list.forEach(v=>{
+    const o=document.createElement("option");
+    o.value=v.id;
+    o.textContent=`${v.nome} — ${v.telefone}`;
+    // Guarda endereço no data attribute
+    o.dataset.endereco = [v.endereco_padronizado||v.endereco, v.bairro, v.cidade].filter(Boolean).join(", ");
+    o.dataset.nome = v.nome;
+    sel.appendChild(o);
+  });
   if(prev)sel.value=prev;
+}
+
+function aoSelecionarVisitanteGC(){
+  const sel=document.getElementById("gc_visitante_id");
+  const opt=sel.options[sel.selectedIndex];
+  if(!opt||!opt.value) return;
+  const end = opt.dataset.endereco||"";
+  const nome = opt.dataset.nome||"";
+  // Preenche campo de endereço automaticamente
+  const qField = document.getElementById("gc_query");
+  if(qField && end){
+    qField.value = end;
+    qField.style.background = "#f0fff4";
+    setTimeout(()=>qField.style.background="",1500);
+    toast(`Endereço de ${nome} preenchido automaticamente!`,"success");
+  }
 }
 async function deletarVisitante(id){
   if(!_isLider)return toast("Sem permissão para excluir.","error");
@@ -544,14 +572,23 @@ async function desativarGC(id,nome){
   toast("GC desativado.","info"); carregarGCs();
 }
 
+async function deletarDirecionamento(id){
+  if(!confirm("Excluir este direcionamento?"))return;
+  const r=await fetch(`/api/gcs/direcionamentos/${id}`,{method:"DELETE"});
+  const d=await r.json();
+  if(r.ok&&d.ok){toast("Direcionamento removido.","info");carregarDirecionamentos();}
+  else toast(d.erro||"Erro.","error");
+}
 async function carregarDirecionamentos(){
   const c=document.getElementById("gc_historico"); if(!c)return;
   const r=await fetch("/api/gcs/direcionamentos"); const list=await r.json();
   if(!list.length){c.innerHTML="<p style='color:#8ca0c0;font-size:13px;padding:14px'>Nenhum direcionamento ainda.</p>";return;}
-  c.innerHTML=`<div class="table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Visitante</th><th>GC Indicado</th><th>Distância</th></tr></thead>
+  c.innerHTML=`<div class="table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Visitante</th><th>GC Indicado</th><th>Distância</th><th></th></tr></thead>
     <tbody>${list.map(d=>`<tr><td>${d.criado_em?.substring(0,16)||""}</td><td><strong>${d.visitante_nome||"—"}</strong></td>
       <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${d.cor_hex||"#ccc"};margin-right:5px"></span>${d.gc_nome||"—"}</td>
-      <td>${d.distancia_km?d.distancia_km+" km":"—"}</td></tr>`).join("")}</tbody></table></div>`;
+      <td>${d.distancia_km?d.distancia_km+" km":"—"}</td>
+      <td>${_isLider?`<button class="btn-sm red" onclick="deletarDirecionamento(${d.id})">Excluir</button>`:""}</td>
+      </tr>`).join("")}</tbody></table></div>`;
 }
 
 // ══════════════════════════════════════════════════════════════

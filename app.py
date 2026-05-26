@@ -1312,12 +1312,15 @@ def direcionar():
                 gc_nome  = d.get("gc_nome","")
                 dist     = d.get("distancia_km","")
                 rota     = d.get("rota_link","")
-                msg = (f"Olá {gc_row['lider']}! 👋\n"
-                       f"Temos um visitante para o {gc_nome}.\n\n"
-                       f"👤 Nome: {vis_nome}\n"
-                       f"📏 Distância: {dist} km\n"
-                       f"🗺️ Rota: {rota}\n\n"
-                       f"Enviado pelo sistema Igreja ABA ✝️")
+                lider_nome = gc_row.get("lider","Lider") or "Lider"
+                msg = (
+                    "Ola " + lider_nome + "!\n"
+                    "Temos um visitante para o " + gc_nome + ".\n\n"
+                    "Nome do visitante: " + vis_nome + "\n"
+                    "Distancia: " + str(dist) + " km\n"
+                    "Rota no Maps: " + rota + "\n\n"
+                    "Enviado pelo sistema Igreja ABA"
+                )
                 whatsapp_lider = f"https://wa.me/{tel}?text={urllib.parse.quote(msg)}"
         conn.commit()
     return jsonify({"ok":True, "whatsapp_lider": whatsapp_lider})
@@ -1586,23 +1589,25 @@ def exportar_pdf():
 <meta charset="UTF-8">
 <title>Relatório — Igreja ABA</title>
 <style>
-  @page {{ size: A4 landscape; margin: 15mm; }}
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: Arial, sans-serif; font-size: 11px; color: #222; }}
-  .header {{ background: #0A2463; color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-radius: 6px; }}
-  .header h1 {{ font-size: 18px; letter-spacing: 2px; }}
-  .header p {{ font-size: 10px; opacity: .8; }}
-  .stats {{ display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }}
-  .stat {{ background: #EBF8FF; border: 1px solid #BEE3F8; border-radius: 6px; padding: 12px; text-align: center; }}
-  .stat .v {{ font-size: 24px; font-weight: bold; color: #0A2463; }}
-  .stat .l {{ font-size: 10px; color: #4A6080; text-transform: uppercase; letter-spacing: .5px; margin-top: 3px; }}
-  table {{ width: 100%; border-collapse: collapse; font-size: 10px; }}
-  thead th {{ background: #0A2463; color: #fff; padding: 8px; text-align: left; font-size: 10px; }}
+  body {{ font-family: Arial, sans-serif; font-size: 13px; color: #222; }}
+  .header {{ background: #0A2463; color: #fff; padding: 14px 16px; margin-bottom: 14px; border-radius: 6px; }}
+  .header h1 {{ font-size: 20px; letter-spacing: 2px; }}
+  .header p {{ font-size: 11px; opacity: .8; }}
+  .stats {{ display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; margin-bottom: 14px; }}
+  .stat {{ background: #EBF8FF; border: 1px solid #BEE3F8; border-radius: 6px; padding: 10px; text-align: center; }}
+  .stat .v {{ font-size: 22px; font-weight: bold; color: #0A2463; }}
+  .stat .l {{ font-size: 10px; color: #4A6080; text-transform: uppercase; margin-top: 2px; }}
+  .table-wrap {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 11px; min-width: 500px; }}
+  thead th {{ background: #0A2463; color: #fff; padding: 8px 6px; text-align: left; font-size: 10px; white-space: nowrap; }}
   tbody tr:nth-child(even) {{ background: #F8FAFF; }}
-  tbody td {{ padding: 7px 8px; border-bottom: 1px solid #EEF2F9; }}
+  tbody td {{ padding: 7px 6px; border-bottom: 1px solid #EEF2F9; }}
   .num {{ text-align: center; font-weight: bold; }}
-  .footer {{ margin-top: 16px; text-align: center; font-size: 9px; color: #8ca0c0; }}
-  @media print {{ button {{ display: none; }} }}
+  .footer {{ margin-top: 14px; text-align: center; font-size: 10px; color: #8ca0c0; }}
+  .btn-print {{ background:#0A2463;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;cursor:pointer;margin-bottom:12px;width:100%; }}
+  @media print {{ .btn-print {{ display: none; }} body {{ font-size: 10px; }} .stats {{ grid-template-columns: repeat(4,1fr); }} }}
+  @media (max-width: 600px) {{ .header {{ padding: 10px 12px; }} .header h1 {{ font-size: 16px; }} }}
 </style>
 </head>
 <body>
@@ -1629,17 +1634,18 @@ def exportar_pdf():
   <div class="stat"><div class="v">{total_c}</div><div class="l">Total Crianças</div></div>
 </div>
 
+<div class="table-wrap">
 <table>
   <thead>
     <tr>
-      <th>Data</th><th>Dia</th><th>Tipo</th><th>Período</th>
-      <th>Responsável</th><th>Presentes</th><th>Visitantes</th><th>Crianças</th>
+      <th>Data</th><th>Dia</th><th>Tipo</th><th>Per.</th>
+      <th>Responsável</th><th>Pres.</th><th>Visit.</th><th>Crian.</th>
     </tr>
   </thead>
   <tbody>
     {linhas_html}
     <tr style="background:#EBF8FF;font-weight:bold">
-      <td colspan="5">TOTAIS / MÉDIAS</td>
+      <td colspan="5">TOTAIS</td>
       <td class="num">{total_p} / {round(total_p/n,1)}</td>
       <td class="num">{total_v} / {round(total_v/n,1)}</td>
       <td class="num">{total_c} / {round(total_c/n,1)}</td>
@@ -1746,6 +1752,15 @@ def exportar_excel():
 # ═══════════════════════════════════════════════════════════════
 # IA CONTAGEM
 # ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/gcs/direcionamentos/<int:did>", methods=["DELETE"])
+@role_required("admin","lider")
+def deletar_direcionamento(did):
+    with get_db() as conn:
+        conn.execute(qmark("DELETE FROM gc_direcionamentos WHERE id=?"), (did,))
+        conn.commit()
+    return jsonify({"ok":True})
+
 @app.route("/api/cameras", methods=["GET"])
 @login_required
 def listar_cameras():
