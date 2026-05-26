@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<title>Confirmar Escala — Igreja ABA</title>
+<link rel="icon" href="/static/favicon.ico">
+<meta name="theme-color" content="#0A2463">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{min-height:100vh;background:linear-gradient(145deg,#061A3A,#0A2463 55%,#1B4FA8);
+  font-family:'Inter',sans-serif;padding:20px 16px 40px;}
+.card{background:#fff;border-radius:20px;max-width:460px;margin:0 auto;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.4);}
+.card-head{background:linear-gradient(135deg,#0A2463,#1B4FA8);padding:20px;text-align:center;}
+.card-head h1{font-size:20px;font-weight:800;color:#fff;letter-spacing:2px;}
+.card-head p{font-size:12px;color:rgba(255,255,255,.7);margin-top:3px;}
+.nome-box{background:#F8FAFF;border-bottom:1px solid #E2E8F0;padding:14px 20px;
+  text-align:center;font-size:16px;font-weight:700;color:#0A2463;}
+.body{padding:20px;}
+.loading{text-align:center;padding:30px;color:#94A3B8;}
+.item-card{border:1.5px solid #E2E8F0;border-radius:14px;padding:14px;margin-bottom:10px;transition:.2s;}
+.item-card.confirmado{border-color:#22C55E;background:#F0FFF4;}
+.item-card.recusado{border-color:#EF4444;background:#FFF5F5;}
+.item-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.item-data{background:#0A2463;color:#fff;border-radius:10px;padding:8px 12px;text-align:center;min-width:52px;}
+.item-data .dia{font-size:20px;font-weight:800;line-height:1;}
+.item-data .mes{font-size:9px;opacity:.7;text-transform:uppercase;}
+.item-info{flex:1;}
+.item-depto{font-weight:700;font-size:14px;color:#0A2463;}
+.item-per{font-size:12px;color:#64748B;margin-top:2px;}
+.status-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;}
+.s-pendente{background:#FEF3C7;color:#92400E;}
+.s-confirmado{background:#D1FAE5;color:#065F46;}
+.s-recusado{background:#FEE2E2;color:#991B1B;}
+.btns{display:flex;gap:7px;}
+.btn-conf{flex:1;padding:9px;border:none;border-radius:10px;font-size:13px;font-weight:700;
+  cursor:pointer;transition:.15s;}
+.btn-ok{background:#22C55E;color:#fff;}
+.btn-ok:hover{background:#16A34A;}
+.btn-no{background:#F1F5F9;color:#64748B;border:1px solid #E2E8F0;}
+.btn-no:hover{background:#FEE2E2;color:#991B1B;border-color:#FECACA;}
+.troca-box{margin-top:10px;display:none;}
+.troca-box textarea{width:100%;border:1.5px solid #E2E8F0;border-radius:10px;padding:10px;
+  font-size:13px;font-family:'Inter',sans-serif;resize:vertical;min-height:80px;outline:none;}
+.troca-box textarea:focus{border-color:#1B4FA8;}
+.btn-enviar{width:100%;padding:10px;background:#0A2463;color:#fff;border:none;
+  border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;margin-top:7px;}
+.divider{height:1px;background:#F1F5F9;margin:14px 0;}
+.footer{text-align:center;font-size:11px;color:#94A3B8;padding:14px 20px;}
+.sucesso-all{text-align:center;padding:30px 20px;}
+.sucesso-all .icon{font-size:50px;margin-bottom:12px;}
+.sucesso-all h2{font-size:18px;font-weight:800;color:#059669;margin-bottom:6px;}
+.sucesso-all p{font-size:14px;color:#64748B;}
+.resumo{background:#F8FAFF;border-radius:12px;padding:12px 14px;margin-top:14px;font-size:13px;}
+.resumo-line{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #E2E8F0;}
+.resumo-line:last-child{border-bottom:none;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-head">
+    <h1>IGREJA ABA</h1>
+    <p>Confirmação de Escala</p>
+  </div>
+  <div class="nome-box" id="nomeBox">Carregando...</div>
+  <div class="body" id="bodyEscala">
+    <div class="loading">Buscando sua escala...</div>
+  </div>
+  <div class="footer">Igreja ABA — Um Lar Para Pertencer</div>
+</div>
+
+<script>
+const TOKEN = "{{ token }}";
+const NOME  = decodeURIComponent("{{ nome }}");
+const MES   = "{{ mes }}";
+
+document.getElementById("nomeBox").textContent = NOME || "Voluntário";
+
+const MESES = ["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
+async function carregar(){
+  const r = await fetch(`/api/escala/confirmacoes/${TOKEN}?nome=${encodeURIComponent(NOME)}&mes=${MES}`);
+  const d = await r.json();
+  const body = document.getElementById("bodyEscala");
+  if(!d.escalas || !d.escalas.length){
+    body.innerHTML = `<div class="loading">
+      <div style="font-size:40px;margin-bottom:10px">📋</div>
+      <p style="color:#64748B">Nenhuma escala encontrada para você neste mês.</p>
+    </div>`; return;
+  }
+
+  // Resumo rápido
+  const conf = d.escalas.filter(e=>e.status==="confirmado").length;
+  const rec  = d.escalas.filter(e=>e.status==="recusado").length;
+  const pend = d.escalas.filter(e=>e.status==="pendente").length;
+  let html = `<p style="font-size:13px;color:#64748B;margin-bottom:14px">
+    Você está escalado <strong style="color:#0A2463">${d.escalas.length}</strong> vezes este mês.
+    Confirme ou solicite troca abaixo.
+  </p>`;
+
+  d.escalas.forEach(e=>{
+    const parts = e.data_br ? e.data_br.split("/") : ["??","??"];
+    const dia = parts[0]; const mesNum = parseInt(parts[1])||0;
+    html += `<div class="item-card ${e.status}" id="card-${e.id}">
+      <div class="item-top">
+        <div class="item-data">
+          <div class="dia">${dia}</div>
+          <div class="mes">${MESES[mesNum]||""}</div>
+        </div>
+        <div class="item-info">
+          <div class="item-depto">${e.departamento}</div>
+          <div class="item-per">${e.culto_periodo === "Manha" ? "☀️ Manhã" : "🌙 Noite"}</div>
+        </div>
+        <span class="status-badge s-${e.status}">${{pendente:"⏳ Pendente",confirmado:"✅ Confirmado",recusado:"❌ Recusado"}[e.status]||e.status}</span>
+      </div>
+      ${e.status==="pendente" ? `
+      <div class="btns">
+        <button class="btn-conf btn-ok" onclick="responder(${e.id},'confirmado')">✅ Confirmar presença</button>
+        <button class="btn-conf btn-no" onclick="mostrarTroca(${e.id})">🔄 Solicitar troca</button>
+      </div>
+      <div class="troca-box" id="troca-${e.id}">
+        <textarea placeholder="Explique o motivo e sugira quem pode te substituir ou qual data você consegue...
+Ex: Estarei viajando neste dia. Sugiro trocar com Ana Silva ou posso fazer no dia 15/06." id="txt-${e.id}"></textarea>
+        <button class="btn-enviar" onclick="responder(${e.id},'recusado')">Enviar solicitação de troca</button>
+      </div>` : e.sugestao_troca ? `
+      <div style="background:#FFF5F5;border-radius:8px;padding:8px 10px;font-size:12px;color:#991B1B;margin-top:6px">
+        <strong>Sugestão de troca:</strong> ${e.sugestao_troca}
+      </div>` : ""}
+    </div>`;
+  });
+
+  if(conf > 0 || rec > 0){
+    html += `<div class="resumo">
+      <div style="font-weight:700;color:#0A2463;font-size:13px;margin-bottom:8px">Seu resumo</div>
+      <div class="resumo-line"><span>Confirmados</span><span style="color:#059669;font-weight:700">${conf}</span></div>
+      <div class="resumo-line"><span>Troca solicitada</span><span style="color:#DC2626;font-weight:700">${rec}</span></div>
+      <div class="resumo-line"><span>Aguardando resposta</span><span style="color:#D97706;font-weight:700">${pend}</span></div>
+    </div>`;
+  }
+
+  body.innerHTML = html;
+}
+
+function mostrarTroca(id){
+  const box = document.getElementById(`troca-${id}`);
+  box.style.display = box.style.display==="block" ? "none" : "block";
+  if(box.style.display==="block") document.getElementById(`txt-${id}`)?.focus();
+}
+
+async function responder(id, status){
+  const sugestao = document.getElementById(`txt-${id}`)?.value?.trim()||"";
+  if(status==="recusado" && !sugestao){
+    alert("Por favor, explique o motivo e sugira uma troca."); return;
+  }
+  const r = await fetch(`/api/escala/responder/${id}`,{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({status, sugestao_troca: sugestao})
+  });
+  const d = await r.json();
+  if(r.ok && d.ok){
+    const card = document.getElementById(`card-${id}`);
+    if(card){
+      card.className = `item-card ${status}`;
+      const badgeEl = card.querySelector(".status-badge");
+      if(badgeEl){
+        badgeEl.className = `status-badge s-${status}`;
+        badgeEl.textContent = status==="confirmado" ? "✅ Confirmado" : "❌ Recusado";
+      }
+      const btnsEl = card.querySelector(".btns");
+      const trocaEl = card.querySelector(".troca-box");
+      if(btnsEl) btnsEl.remove();
+      if(trocaEl) trocaEl.remove();
+      if(status==="recusado" && sugestao){
+        card.insertAdjacentHTML("beforeend",
+          `<div style="background:#FFF5F5;border-radius:8px;padding:8px 10px;font-size:12px;color:#991B1B;margin-top:6px">
+            <strong>Sua sugestão:</strong> ${sugestao}
+          </div>`);
+      }
+    }
+  }
+}
+
+carregar();
+</script>
+</body>
+</html>
