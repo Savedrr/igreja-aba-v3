@@ -24,13 +24,17 @@
 <!-- SIDEBAR -->
 <nav class="sidebar" id="sidebar">
   <div class="sidebar-brand">
-    <div class="brand-logo">
-      <svg viewBox="0 0 100 100" fill="none">
-        <circle cx="50" cy="50" r="48" fill="black"/>
-        <rect x="22" y="16" width="56" height="64" fill="white"/>
-        <rect x="38" y="16" width="12" height="10" fill="black"/>
-        <rect x="36" y="54" width="28" height="6" fill="black"/>
-        <rect x="43" y="48" width="14" height="20" fill="black"/>
+    <div class="brand-logo" style="width:46px;height:46px;background:#000;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+      <svg viewBox="0 0 100 100" fill="none" style="width:30px;height:30px">
+        <!-- Retângulo branco principal (corpo do símbolo) -->
+        <rect x="18" y="14" width="64" height="72" fill="white"/>
+        <!-- Entalhe preto no topo centro -->
+        <rect x="38" y="14" width="24" height="14" fill="black"/>
+        <!-- Cruz preta na parte inferior do retângulo -->
+        <!-- Braço vertical -->
+        <rect x="44" y="52" width="12" height="28" fill="black"/>
+        <!-- Braço horizontal -->
+        <rect x="32" y="62" width="36" height="12" fill="black"/>
       </svg>
     </div>
     <div>
@@ -457,6 +461,41 @@
             <tbody id="bodyRelatorio"><tr><td colspan="10" style="text-align:center;padding:28px;color:#8ca0c0">Clique em Filtrar</td></tr></tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══ DASHBOARD GC ════════════════════════════════════════ -->
+  <div class="tab-content" id="tab-dash_gc">
+    <div class="page-header">
+      <div><h1 class="page-title">Dashboard GC</h1><p class="page-sub">Relatórios semanais dos Grupos de Crescimento</p></div>
+      <div class="page-header-right">
+        <a href="/relatorio-gc" target="_blank"><button class="btn-secondary">📋 Abrir Formulário</button></a>
+        <button class="btn-outline" onclick="carregarDashGC()">🔄 Atualizar</button>
+      </div>
+    </div>
+    <div class="info-box" style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:13px">🔗 Link para líderes:</span>
+      <strong id="linkRelatorioGC" style="color:#0A2463;font-size:13px;word-break:break-all"></strong>
+      <button class="btn-sm blue" onclick="copiarLinkRelatorio()">📋 Copiar</button>
+    </div>
+    <div class="stats-grid" style="margin-bottom:18px">
+      <div class="stat-card blue"><div class="stat-icon">📋</div><div class="stat-value" id="dg_relatorios">0</div><div class="stat-label">Relatórios</div></div>
+      <div class="stat-card green"><div class="stat-icon">👥</div><div class="stat-value" id="dg_membros">0</div><div class="stat-label">Total Membros</div></div>
+      <div class="stat-card"><div class="stat-icon">🙋</div><div class="stat-value" id="dg_visitantes">0</div><div class="stat-label">Visitantes</div></div>
+      <div class="stat-card purple"><div class="stat-icon">🌱</div><div class="stat-value" id="dg_lideres">0</div><div class="stat-label">Em Treinamento</div></div>
+    </div>
+    <div class="form-card" style="margin-bottom:16px">
+      <div class="form-section">
+        <div class="section-title">📊 Por GC</div>
+        <div id="dash_gc_por_gc"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg><p>Nenhum relatório ainda.<br>Compartilhe o link com os líderes.</p></div></div>
+      </div>
+    </div>
+    <div class="form-card">
+      <div class="form-section">
+        <div class="section-title">📅 Últimos Relatórios</div>
+        <div id="dash_gc_ultimos"><div class="loading-msg">Carregando...</div></div>
       </div>
     </div>
   </div>

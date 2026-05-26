@@ -1035,11 +1035,25 @@ async function delCamera(id){
 
 
 // ── DASHBOARD GC ──────────────────────────────────────────────
+function copiarLinkRelatorio(){
+  const url = window.location.origin + "/relatorio-gc";
+  copiarLink(url);
+}
+
 async function carregarDashGC(){
+  // Mostra link do formulário
+  const linkEl = document.getElementById("linkRelatorioGC");
+  if(linkEl) linkEl.textContent = window.location.origin + "/relatorio-gc";
+
   try{
     const r = await fetch("/api/relatorios_gc/dashboard");
+    if(!r.ok){
+      // Sem permissão ou erro
+      document.getElementById("dash_gc_por_gc").innerHTML =
+        `<div class="permission-alert">❌ Erro ao carregar. Tente recarregar a página.</div>`;
+      return;
+    }
     const d = await r.json();
-    if(!r.ok) return;
 
     // Stats
     const t = d.totais||{};
