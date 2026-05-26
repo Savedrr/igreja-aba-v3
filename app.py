@@ -1539,13 +1539,12 @@ def resumo():
 @app.route("/api/exportar_pdf", methods=["GET"])
 @role_required("lider","admin")
 def exportar_pdf():
-    """Gera PDF real usando HTML→bytes via reportlab ou fallback HTML"""
     ini = request.args.get("data_ini","")
     fim = request.args.get("data_fim","")
     per = request.args.get("periodo","")
     tpc = request.args.get("tipo_culto","")
 
-    sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos WHERE 1=1"; p=[]
+    sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes FROM cultos WHERE 1=1"; p=[]
     if ini: sql+=" AND data>=?"; p.append(ini)
     if fim: sql+=" AND data<=?"; p.append(fim)
     if per: sql+=" AND periodo=?"; p.append(per)
@@ -1553,115 +1552,153 @@ def exportar_pdf():
     sql+=" ORDER BY data ASC"
 
     with get_db() as conn:
-        cultos  = [dict(r) for r in conn.execute(sql,p).fetchall()]
-        resumo  = dict((conn.execute("""SELECT COUNT(*) as total_cultos,
-               COALESCE(SUM(presentes),0) as total_presentes,
-               COALESCE(SUM(visitantes),0) as total_visitantes,
-               COALESCE(SUM(criancas),0) as total_criancas,
-               ROUND(CAST(AVG(presentes) AS NUMERIC),1) as media_presentes,
-               ROUND(CAST(AVG(visitantes) AS NUMERIC),1) as media_visitantes,
-               ROUND(CAST(AVG(criancas) AS NUMERIC),1) as media_criancas
-               FROM cultos""").fetchone() if USE_PG else conn.execute("SELECT * FROM v_resumo_geral").fetchone()) or {})
+        cultos = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
 
     total_p = sum(c["presentes"]  for c in cultos)
     total_v = sum(c["visitantes"] for c in cultos)
     total_c = sum(c["criancas"]   for c in cultos)
     n = max(len(cultos),1)
+    media_p = round(total_p/n,1)
+    media_v = round(total_v/n,1)
 
-    # Gera HTML que o navegador pode imprimir como PDF
-    linhas_html = ""
+    # Cards de culto — um por linha, estilo mobile
+    cards_html = ""
     for c in cultos:
-        linhas_html += f"""
-        <tr>
-          <td>{br(c['data'])}</td>
-          <td>{c['dia_semana']}</td>
-          <td>{c['tipo_culto'] or 'Culto Regular'}</td>
-          <td>{c['periodo']}</td>
-          <td>{c['responsavel']}</td>
-          <td class="num">{c['presentes']}</td>
-          <td class="num">{c['visitantes']}</td>
-          <td class="num">{c['criancas']}</td>
-        </tr>"""
+        periodo_cor = {"Manhã":"#F59E0B","Tarde":"#3B82F6","Noite":"#6366F1"}.get(c["periodo"],"#64748B")
+        cards_html += f"""
+        <div class="culto-card">
+          <div class="culto-header">
+            <div class="culto-data">
+              <div class="culto-dia-num">{c["data"].split("-")[2] if c.get("data") else ""}</div>
+              <div class="culto-mes">{["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][int(c["data"].split("-")[1])] if c.get("data") else ""}</div>
+            </div>
+            <div class="culto-info">
+              <div class="culto-semana">{c["dia_semana"]}</div>
+              <div class="culto-tipo">{c["tipo_culto"] or "Culto Regular"}</div>
+              <div class="culto-resp">{c["responsavel"]}</div>
+            </div>
+            <span class="periodo-badge" style="background:{periodo_cor}">{c["periodo"]}</span>
+          </div>
+          <div class="culto-nums">
+            <div class="cn"><div class="cn-v">{c["presentes"]}</div><div class="cn-l">Presentes</div></div>
+            <div class="cn"><div class="cn-v" style="color:#059669">{c["visitantes"]}</div><div class="cn-l">Visitantes</div></div>
+            <div class="cn"><div class="cn-v" style="color:#7C3AED">{c["criancas"]}</div><div class="cn-l">Criancas</div></div>
+          </div>
+        </div>"""
+
+    filtro_txt = ""
+    if ini or fim: filtro_txt = f" | Periodo: {br(ini) if ini else '...'} ate {br(fim) if fim else '...'}"
+    if per: filtro_txt += f" | {per}"
 
     html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Relatório — Igreja ABA</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Relatorio Igreja ABA</title>
 <style>
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: Arial, sans-serif; font-size: 13px; color: #222; }}
-  .header {{ background: #0A2463; color: #fff; padding: 14px 16px; margin-bottom: 14px; border-radius: 6px; }}
-  .header h1 {{ font-size: 20px; letter-spacing: 2px; }}
-  .header p {{ font-size: 11px; opacity: .8; }}
-  .stats {{ display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; margin-bottom: 14px; }}
-  .stat {{ background: #EBF8FF; border: 1px solid #BEE3F8; border-radius: 6px; padding: 10px; text-align: center; }}
-  .stat .v {{ font-size: 22px; font-weight: bold; color: #0A2463; }}
-  .stat .l {{ font-size: 10px; color: #4A6080; text-transform: uppercase; margin-top: 2px; }}
-  .table-wrap {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
-  table {{ width: 100%; border-collapse: collapse; font-size: 11px; min-width: 500px; }}
-  thead th {{ background: #0A2463; color: #fff; padding: 8px 6px; text-align: left; font-size: 10px; white-space: nowrap; }}
-  tbody tr:nth-child(even) {{ background: #F8FAFF; }}
-  tbody td {{ padding: 7px 6px; border-bottom: 1px solid #EEF2F9; }}
-  .num {{ text-align: center; font-weight: bold; }}
-  .footer {{ margin-top: 14px; text-align: center; font-size: 10px; color: #8ca0c0; }}
-  .btn-print {{ background:#0A2463;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;cursor:pointer;margin-bottom:12px;width:100%; }}
-  @media print {{ .btn-print {{ display: none; }} body {{ font-size: 10px; }} .stats {{ grid-template-columns: repeat(4,1fr); }} }}
-  @media (max-width: 600px) {{ .header {{ padding: 10px 12px; }} .header h1 {{ font-size: 16px; }} }}
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#F1F5F9;color:#1E293B;padding:0;}}
+.btn-print{{display:block;width:calc(100% - 32px);margin:16px auto 0;padding:14px;background:#0A2463;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;letter-spacing:.5px;cursor:pointer;}}
+.hint{{text-align:center;font-size:11px;color:#94A3B8;margin:6px 16px 14px;}}
+.header{{background:linear-gradient(135deg,#0A2463,#1B4FA8);color:#fff;padding:20px 16px 16px;margin:0 0 16px;}}
+.header-top{{display:flex;align-items:center;gap:12px;margin-bottom:10px;}}
+.logo-circle{{width:44px;height:44px;background:rgba(255,255,255,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;flex-shrink:0;}}
+.header h1{{font-size:22px;letter-spacing:3px;font-weight:900;}}
+.header .sub{{font-size:11px;opacity:.7;letter-spacing:1px;}}
+.header-meta{{font-size:11px;opacity:.6;margin-top:4px;}}
+.stats{{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 16px;}}
+.stat{{background:#fff;border-radius:14px;padding:14px 12px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.08);}}
+.stat.blue{{background:linear-gradient(135deg,#0A2463,#1B4FA8);}}
+.stat.green{{background:linear-gradient(135deg,#065F46,#059669);}}
+.stat .sv{{font-size:28px;font-weight:800;color:#0A2463;line-height:1;}}
+.stat.blue .sv,.stat.green .sv{{color:#fff;}}
+.stat .sl{{font-size:10px;color:#64748B;text-transform:uppercase;letter-spacing:.8px;margin-top:4px;font-weight:600;}}
+.stat.blue .sl,.stat.green .sl{{color:rgba(255,255,255,.75);}}
+.section-title{{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#64748B;padding:0 16px 8px;}}
+.culto-card{{background:#fff;border-radius:14px;margin:0 16px 10px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.08);}}
+.culto-header{{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;}}
+.culto-data{{background:#F1F5F9;border-radius:10px;padding:8px 10px;text-align:center;min-width:46px;}}
+.culto-dia-num{{font-size:22px;font-weight:800;color:#0A2463;line-height:1;}}
+.culto-mes{{font-size:10px;color:#64748B;text-transform:uppercase;font-weight:600;}}
+.culto-info{{flex:1;}}
+.culto-semana{{font-size:12px;color:#64748B;}}
+.culto-tipo{{font-size:14px;font-weight:700;color:#0A2463;}}
+.culto-resp{{font-size:12px;color:#64748B;margin-top:2px;}}
+.periodo-badge{{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;color:#fff;white-space:nowrap;height:fit-content;margin-top:2px;}}
+.culto-nums{{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#F8FAFF;border-radius:10px;padding:10px;}}
+.cn{{text-align:center;}}
+.cn-v{{font-size:20px;font-weight:800;color:#0A2463;line-height:1;}}
+.cn-l{{font-size:9px;color:#94A3B8;text-transform:uppercase;margin-top:2px;font-weight:600;}}
+.totais-card{{background:linear-gradient(135deg,#0A2463,#1B4FA8);border-radius:14px;margin:0 16px 16px;padding:14px;color:#fff;}}
+.totais-title{{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;opacity:.7;margin-bottom:10px;}}
+.totais-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}}
+.tg{{text-align:center;}}
+.tg-v{{font-size:22px;font-weight:800;}}
+.tg-l{{font-size:9px;opacity:.7;text-transform:uppercase;letter-spacing:.5px;}}
+.footer{{text-align:center;font-size:10px;color:#94A3B8;padding:16px;}}
+@media print{{
+  .btn-print,.hint{{display:none;}}
+  body{{background:#fff;}}
+  .culto-card,.stat,.totais-card{{box-shadow:none;border:1px solid #E2E8F0;}}
+}}
 </style>
 </head>
 <body>
-<div style="text-align:right;margin-bottom:8px">
-  <button onclick="window.focus();setTimeout(()=>window.print(),300)" style="background:#0A2463;color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:13px;cursor:pointer;margin-bottom:8px">📥 Salvar PDF</button>
-  <p style="font-size:11px;color:#888;margin-top:4px">Na tela de impressão, escolha <strong>Salvar como PDF</strong></p>
-</div>
+<button class="btn-print" onclick="window.print()">Salvar como PDF</button>
+<p class="hint">No celular: toque nos 3 pontos e escolha "Imprimir"</p>
+
 <div class="header">
-  <div>
-    <h1>IGREJA ABA</h1>
-    <p>Um Lar Para Pertencer</p>
+  <div class="header-top">
+    <div class="logo-circle">A</div>
+    <div>
+      <h1>IGREJA ABA</h1>
+      <div class="sub">UM LAR PARA PERTENCER</div>
+    </div>
   </div>
-  <div style="text-align:right">
-    <div style="font-size:14px;font-weight:bold">Relatório de Cultos</div>
-    <div style="font-size:10px;opacity:.8">Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
-    {f'<div style="font-size:10px;opacity:.8">Período: {br(ini)} a {br(fim)}</div>' if ini or fim else ''}
-  </div>
+  <div class="header-meta">Relatorio de Cultos &nbsp;|&nbsp; Gerado em {datetime.now().strftime("%d/%m/%Y %H:%M")}{filtro_txt}</div>
 </div>
 
 <div class="stats">
-  <div class="stat"><div class="v">{len(cultos)}</div><div class="l">Cultos</div></div>
-  <div class="stat"><div class="v">{total_p}</div><div class="l">Total Presentes</div></div>
-  <div class="stat"><div class="v">{total_v}</div><div class="l">Total Visitantes</div></div>
-  <div class="stat"><div class="v">{total_c}</div><div class="l">Total Crianças</div></div>
+  <div class="stat blue">
+    <div class="sv">{len(cultos)}</div>
+    <div class="sl">Cultos</div>
+  </div>
+  <div class="stat green">
+    <div class="sv">{total_p}</div>
+    <div class="sl">Presentes</div>
+  </div>
+  <div class="stat">
+    <div class="sv" style="color:#059669">{total_v}</div>
+    <div class="sl">Visitantes</div>
+  </div>
+  <div class="stat">
+    <div class="sv" style="color:#7C3AED">{total_c}</div>
+    <div class="sl">Criancas</div>
+  </div>
 </div>
 
-<div class="table-wrap">
-<table>
-  <thead>
-    <tr>
-      <th>Data</th><th>Dia</th><th>Tipo</th><th>Per.</th>
-      <th>Responsável</th><th>Pres.</th><th>Visit.</th><th>Crian.</th>
-    </tr>
-  </thead>
-  <tbody>
-    {linhas_html}
-    <tr style="background:#EBF8FF;font-weight:bold">
-      <td colspan="5">TOTAIS</td>
-      <td class="num">{total_p} / {round(total_p/n,1)}</td>
-      <td class="num">{total_v} / {round(total_v/n,1)}</td>
-      <td class="num">{total_c} / {round(total_c/n,1)}</td>
-    </tr>
-  </tbody>
-</table>
-<div class="footer">Igreja ABA — Um Lar Para Pertencer &nbsp;·&nbsp; Relatório gerado automaticamente</div>
+<div class="section-title">Registros ({len(cultos)} cultos)</div>
+{cards_html}
+
+<div class="totais-card">
+  <div class="totais-title">Totais & Medias</div>
+  <div class="totais-grid">
+    <div class="tg"><div class="tg-v">{total_p}</div><div class="tg-l">Total Pres.</div></div>
+    <div class="tg"><div class="tg-v">{total_v}</div><div class="tg-l">Total Visit.</div></div>
+    <div class="tg"><div class="tg-v">{total_c}</div><div class="tg-l">Total Crian.</div></div>
+    <div class="tg"><div class="tg-v">{media_p}</div><div class="tg-l">Media Pres.</div></div>
+    <div class="tg"><div class="tg-v">{media_v}</div><div class="tg-l">Media Visit.</div></div>
+    <div class="tg"><div class="tg-v">{n}</div><div class="tg-l">Cultos</div></div>
+  </div>
+</div>
+
+<div class="footer">Igreja ABA - Um Lar Para Pertencer</div>
 </body></html>"""
 
     resp = make_response(html)
     resp.headers["Content-Type"] = "text/html; charset=utf-8"
     return resp
-
-# ═══════════════════════════════════════════════════════════════
-# EXCEL
-# ═══════════════════════════════════════════════════════════════
 @app.route("/api/exportar_excel", methods=["GET"])
 @role_required("lider","admin")
 def exportar_excel():
