@@ -58,7 +58,7 @@ async function logout(){await fetch("/api/logout",{method:"POST"});window.locati
 // ── TABS ──────────────────────────────────────────────────────
 const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:"Visitantes",
   gc:"Conecta GC",estoque:"Estoque",ia:"IA Contagem",relatorios:"Relatórios",
-  resumo:"Resumo Geral",dashboard:"Dashboard",usuarios:"Usuários",logs:"Logs do Sistema"};
+  resumo:"Resumo Geral",dash_gc:"Dashboard GC",dashboard:"Dashboard",usuarios:"Usuários",logs:"Logs do Sistema"};
 
 function ativarTab(tab){
   document.querySelectorAll(".tab-content").forEach(t=>t.classList.remove("active"));
@@ -67,6 +67,7 @@ function ativarTab(tab){
   document.querySelector(`[data-tab="${tab}"]`)?.classList.add("active");
   document.getElementById("topbarTitle").textContent=TAB_TITLES[tab]||tab;
   if(tab==="resumo")carregarResumo();
+  if(tab==="dash_gc")carregarDashGC();
   if(tab==="visitantes"){carregarVisitantes();popularSelectVisitantes();}
   if(tab==="usuarios"&&_isAdmin)carregarUsuarios();
   if(tab==="gc"){carregarGCs();carregarDirecionamentos();popularSelectVisitantes();}
@@ -1032,6 +1033,69 @@ async function delCamera(id){
 // ── LOGS ──────────────────────────────────────────────────────
 
 
+
+// ── DASHBOARD GC ──────────────────────────────────────────────
+async function carregarDashGC(){
+  try{
+    const r = await fetch("/api/relatorios_gc/dashboard");
+    const d = await r.json();
+    if(!r.ok) return;
+
+    // Stats
+    const t = d.totais||{};
+    document.getElementById("dg_relatorios").textContent = t.total_relatorios||0;
+    document.getElementById("dg_membros").textContent    = t.total_membros||0;
+    document.getElementById("dg_visitantes").textContent = t.total_visitantes||0;
+    document.getElementById("dg_lideres").textContent    = t.total_lideres_trein||0;
+
+    // Por GC
+    const porGC = document.getElementById("dash_gc_por_gc");
+    if(d.por_gc && d.por_gc.length){
+      const maxMem = Math.max(...d.por_gc.map(g=>g.total_membros),1);
+      porGC.innerHTML = d.por_gc.map(g=>`
+        <div style="padding:10px 0;border-bottom:1px solid #EEF2F9;display:flex;align-items:center;gap:12px">
+          <div style="min-width:160px;font-weight:700;font-size:13px;color:#0A2463">${g.gc_nome}</div>
+          <div style="flex:1;background:#EEF2F9;border-radius:6px;height:10px;overflow:hidden">
+            <div style="height:100%;width:${Math.round(g.total_membros/maxMem*100)}%;background:linear-gradient(90deg,#1B4FA8,#56B4D3);border-radius:6px"></div>
+          </div>
+          <div style="text-align:right;min-width:100px;font-size:12px">
+            <span style="font-weight:700;color:#0A2463">${g.total_membros}</span> membros<br>
+            <span style="color:#059669;font-weight:600">${g.total_visitantes}</span> visit.
+          </div>
+          <div style="font-size:10px;color:#8ca0c0;min-width:60px;text-align:right">${g.total_reunioes} reun.<br>Ult: ${g.ultima_reuniao?g.ultima_reuniao.substring(0,10).split("-").reverse().join("/"):"—"}</div>
+        </div>`).join("");
+    }else{
+      porGC.innerHTML = '<p style="color:#8ca0c0;font-size:13px;padding:14px">Nenhum relatório enviado ainda.<br><a href="/relatorio-gc" target="_blank" style="color:#1B4FA8">👉 Abrir formulário de GC</a></p>';
+    }
+
+    // Últimos
+    const ult = document.getElementById("dash_gc_ultimos");
+    if(d.ultimos && d.ultimos.length){
+      ult.innerHTML = `<table class="data-table">
+        <thead><tr><th>Data</th><th>GC</th><th>Líder</th><th>Membros</th><th>Visit.</th><th>Trein.</th><th>Obs</th><th></th></tr></thead>
+        <tbody>${d.ultimos.map(r=>`<tr>
+          <td><strong>${r.dia_br||r.dia}</strong></td>
+          <td>${r.gc_nome}</td>
+          <td style="font-size:11px;color:#4A6080">${r.lider_nome}</td>
+          <td><strong style="color:#0A2463">${r.membros_presentes}</strong></td>
+          <td><strong style="color:#059669">${r.visitantes}</strong></td>
+          <td>${r.lider_treinamento?'<span style="color:#7C3AED;font-weight:700">✓ Sim</span>':'Não'}</td>
+          <td style="font-size:11px;color:#4A6080;max-width:150px;overflow:hidden;text-overflow:ellipsis">${r.observacoes||'—'}</td>
+          <td>${_isLider?`<button class="btn-sm red" onclick="delRelatorioGC(${r.id})" style="font-size:10px">✕</button>`:''}</td>
+        </tr>`).join("")}</tbody></table>`;
+    }else{
+      ult.innerHTML = '<p style="color:#8ca0c0;padding:14px;font-size:13px">Sem relatórios ainda.</p>';
+    }
+  }catch(e){ console.error("Erro dashboard GC",e); }
+}
+
+async function delRelatorioGC(id){
+  if(!confirm("Excluir este relatório?"))return;
+  const r = await fetch(`/api/relatorios_gc/${id}`,{method:"DELETE"});
+  const d = await r.json();
+  if(r.ok&&d.ok){toast("Relatório removido.","info");carregarDashGC();}
+  else toast(d.erro||"Erro.","error");
+}
 // ── UTIL ──────────────────────────────────────────────────────
 function esc(s){return String(s||"").replace(/'/g,"&#39;").replace(/"/g,"&quot;");}
 function toggleSidebar(force){

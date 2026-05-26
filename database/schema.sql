@@ -152,6 +152,22 @@ CREATE TABLE IF NOT EXISTS contagem_registros (
 );
 
 
+
+CREATE TABLE IF NOT EXISTS relatorios_gc (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    gc_id               INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL,
+    gc_nome             TEXT    NOT NULL,
+    lider_nome          TEXT    NOT NULL,
+    anfitriao           TEXT    DEFAULT '',
+    dia                 TEXT    NOT NULL,
+    membros_presentes   INTEGER DEFAULT 0,
+    visitantes          INTEGER DEFAULT 0,
+    lider_treinamento   INTEGER DEFAULT 0,
+    nome_lider_trein    TEXT    DEFAULT '',
+    observacoes         TEXT    DEFAULT '',
+    criado_em           TEXT    DEFAULT (datetime('now','localtime'))
+);
+
 -- ═══════════════════════════════════════
 -- DADOS INICIAIS
 -- ═══════════════════════════════════════

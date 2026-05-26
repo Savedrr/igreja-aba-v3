@@ -347,6 +347,20 @@ def _pg_migrations(conn):
     """Adiciona colunas/tabelas que podem faltar em bancos antigos (safe ALTER TABLE)"""
     migrations = [
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_acesso TEXT DEFAULT NULL",
+        """CREATE TABLE IF NOT EXISTS relatorios_gc (
+            id                SERIAL PRIMARY KEY,
+            gc_id             INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL,
+            gc_nome           TEXT NOT NULL,
+            lider_nome        TEXT NOT NULL,
+            anfitriao         TEXT DEFAULT '',
+            dia               TEXT NOT NULL,
+            membros_presentes INTEGER DEFAULT 0,
+            visitantes        INTEGER DEFAULT 0,
+            lider_treinamento INTEGER DEFAULT 0,
+            nome_lider_trein  TEXT DEFAULT '',
+            observacoes       TEXT DEFAULT '',
+            criado_em         TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
+        )""",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS lider TEXT DEFAULT ''",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS telefone_lider TEXT DEFAULT ''",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto Regular'",
@@ -1926,6 +1940,133 @@ def tempo_real(sid):
                     "dentro_agora":max(0,s["total_entradas"]-s["total_saidas"]),"status":s["status"]})
 
 
+
+
+# ═══════════════════════════════════════════════════════════════
+# RELATÓRIOS DE GC
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/relatorio-gc")
+def pagina_relatorio_gc():
+    """Página de login exclusiva para líderes de GC"""
+    return render_template("relatorio_gc.html")
+
+@app.route("/api/relatorios_gc", methods=["POST"])
+def criar_relatorio_gc():
+    """Cria relatório semanal de GC — acesso por PIN do líder"""
+    d = request.get_json(force=True) or {}
+    gc_nome    = d.get("gc_nome","").strip()
+    lider_nome = d.get("lider_nome","").strip()
+    dia        = d.get("dia","").strip()
+    if not gc_nome or not lider_nome or not dia:
+        return jsonify({"erro":"GC, líder e dia são obrigatórios"}),400
+
+    # Busca gc_id pelo nome
+    with get_db() as conn:
+        gc = conn.execute(qmark("SELECT id FROM grupos_crescimento WHERE nome=?"), (gc_nome,)).fetchone()
+        gc_id = gc["id"] if gc else None
+
+        conn.execute(
+            qmark("""INSERT INTO relatorios_gc
+                (gc_id,gc_nome,lider_nome,anfitriao,dia,membros_presentes,
+                 visitantes,lider_treinamento,nome_lider_trein,observacoes)
+                VALUES(?,?,?,?,?,?,?,?,?,?)"""),
+            (gc_id, gc_nome, lider_nome,
+             d.get("anfitriao",""),
+             dia,
+             int(d.get("membros_presentes",0)),
+             int(d.get("visitantes",0)),
+             1 if d.get("lider_treinamento") else 0,
+             d.get("nome_lider_trein",""),
+             d.get("observacoes",""))
+        )
+        conn.commit()
+    return jsonify({"ok":True, "msg":"Relatório enviado com sucesso!"})
+
+@app.route("/api/relatorios_gc", methods=["GET"])
+@role_required("admin","lider")
+def listar_relatorios_gc():
+    """Lista relatórios de GC — apenas admin e lider do sistema"""
+    ini = request.args.get("data_ini","")
+    fim = request.args.get("data_fim","")
+    gc  = request.args.get("gc_nome","")
+    sql = "SELECT * FROM relatorios_gc WHERE 1=1"; p=[]
+    if ini: sql+=" AND dia>=?"; p.append(ini)
+    if fim: sql+=" AND dia<=?"; p.append(fim)
+    if gc:  sql+=" AND gc_nome=?"; p.append(gc)
+    sql+=" ORDER BY dia DESC, criado_em DESC"
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+    for r in rows:
+        r["dia_br"] = br(r["dia"]) if r.get("dia") else ""
+    return jsonify(rows)
+
+@app.route("/api/relatorios_gc/dashboard", methods=["GET"])
+@role_required("admin","lider")
+def dashboard_gc():
+    """Dashboard consolidado dos relatórios de GC"""
+    with get_db() as conn:
+        # Total por GC
+        por_gc = [dict(r) for r in conn.execute("""
+            SELECT gc_nome,
+                   COUNT(*) as total_reunioes,
+                   COALESCE(SUM(membros_presentes),0) as total_membros,
+                   COALESCE(SUM(visitantes),0) as total_visitantes,
+                   COALESCE(ROUND(CAST(AVG(membros_presentes) AS NUMERIC),1),0) as media_membros,
+                   COALESCE(ROUND(CAST(AVG(visitantes) AS NUMERIC),1),0) as media_visitantes,
+                   MAX(dia) as ultima_reuniao
+            FROM relatorios_gc
+            GROUP BY gc_nome ORDER BY total_membros DESC
+        """ if USE_PG else """
+            SELECT gc_nome,
+                   COUNT(*) as total_reunioes,
+                   COALESCE(SUM(membros_presentes),0) as total_membros,
+                   COALESCE(SUM(visitantes),0) as total_visitantes,
+                   ROUND(AVG(membros_presentes),1) as media_membros,
+                   ROUND(AVG(visitantes),1) as media_visitantes,
+                   MAX(dia) as ultima_reuniao
+            FROM relatorios_gc
+            GROUP BY gc_nome ORDER BY total_membros DESC
+        """).fetchall()]
+
+        # Totais gerais
+        totais = dict(conn.execute("""
+            SELECT COUNT(*) as total_relatorios,
+                   COALESCE(SUM(membros_presentes),0) as total_membros,
+                   COALESCE(SUM(visitantes),0) as total_visitantes,
+                   COALESCE(SUM(lider_treinamento),0) as total_lideres_trein
+            FROM relatorios_gc
+        """).fetchone() or {})
+
+        # Últimos 10 relatórios
+        ultimos = [dict(r) for r in conn.execute(
+            "SELECT * FROM relatorios_gc ORDER BY dia DESC, criado_em DESC LIMIT 10"
+        ).fetchall()]
+
+    def safe(v):
+        if v is None: return 0
+        try: return float(v) if "." in str(v) else int(v)
+        except: return 0
+
+    totais = {k: safe(v) if k!="gc_nome" else v for k,v in totais.items()}
+    por_gc_clean = [{k: safe(v) if k not in ("gc_nome","ultima_reuniao") else v for k,v in g.items()} for g in por_gc]
+
+    for r in ultimos:
+        r["dia_br"] = br(r["dia"]) if r.get("dia") else ""
+
+    return jsonify({
+        "totais":   totais,
+        "por_gc":   por_gc_clean,
+        "ultimos":  ultimos
+    })
+
+@app.route("/api/relatorios_gc/<int:rid>", methods=["DELETE"])
+@role_required("admin","lider")
+def deletar_relatorio_gc(rid):
+    with get_db() as conn:
+        conn.execute(qmark("DELETE FROM relatorios_gc WHERE id=?"), (rid,))
+        conn.commit()
+    return jsonify({"ok":True})
 
 # ═══════════════════════════════════════════════════════════════
 # INIT
