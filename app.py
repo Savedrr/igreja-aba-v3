@@ -316,19 +316,20 @@ _CHECKLIST_ITEMS = [
 ]
 
 _GCS = [
-    # Coordenadas verificadas via Google Maps — Alvorada/RS
     # (nome, lider, endereco, bairro, cidade, setor, cor_hex, lat, lng)
-    ('GC Infinito e Amém','','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E',-30.0228,-51.0812),
-    ('GC Luz do Mundo','','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316',-30.0235,-51.0798),
-    ('GC Conectados','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308',-30.0310,-51.0768),
-    ('GC Conectado','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308',-30.0195,-51.0720),
-    ('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0242,-51.0805),
-    ('GC Manálovers','','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0260,-51.0815),
-    ('GC Farol da Lagoa','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444',-30.0197,-51.0722),
-    ('GC Master Fé','','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6',-30.0280,-51.0742),
-    ('GC Maranata','','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0248,-51.0800),
-    ('GC Resgate da Cruz','','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0265,-51.0820),
-    ('GC Corujas','','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6',-30.0338,-51.0758),
+    ('GC Conectados - Intersul','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308',-30.0195,-51.072),
+    ('GC Conectados - Jardim Algarve','Gomes e Marilu','Rua Hermínio Machado, 475','Jardim Algarve','Alvorada','Amarelo','#EAB308',-30.0301,-51.0826),
+    ('GC Conectados - Porto Verde','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308',-29.9745,-51.0823),
+    ('GC Corujas','Dinho e Andressa','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6',-30.0404,-51.0751),
+    ('GC Master Fé','Eduardo e Vanessa','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6',-30.0243,-51.0766),
+    ('GC Caraá','Nubia e Matheus','Rua Hermínio Machado, 574','Rio dos Sinos','Caraá','Laranja','#F97316',-30.031,-51.0827),
+    ('GC Luz do Mundo','Adriel e Paola','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316',-30.0287,-51.0853),
+    ('GC Maranata','Oriton e Eliane','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0292,-51.0813),
+    ('GC Resgate da Cruz','Regis e Gilda','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0309,-51.0838),
+    ('GC Infinito e Amém','Gabriel e Bruna','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E',-30.0344,-51.0859),
+    ('GC Farol da Lagoa','Vanessa e Lucas','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444',-30.0199,-51.0719),
+    ('GC Manálovers','Juliana e Luiz','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0324,-51.0872),
+    ('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0248,-51.0811)
 ]
 
 _ESTOQUE = [
@@ -417,10 +418,20 @@ def _init_pg():
             )
         # GCs
         for gc in _GCS:
-            cur.execute(
-                "INSERT INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (nome) DO NOTHING",
-                gc
-            )
+            try:
+                cur.execute(
+                    """INSERT INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (nome) DO UPDATE SET
+                         lider=EXCLUDED.lider, endereco=EXCLUDED.endereco,
+                         bairro=EXCLUDED.bairro, cidade=EXCLUDED.cidade,
+                         setor=EXCLUDED.setor, cor_hex=EXCLUDED.cor_hex,
+                         lat=EXCLUDED.lat, lng=EXCLUDED.lng""",
+                    gc
+                )
+            except Exception as e:
+                conn.rollback()
+                logger.warning(f"Insert GC {gc[0]}: {e}")
         # Estoque
         for est in _ESTOQUE:
             cur.execute(
@@ -431,17 +442,19 @@ def _init_pg():
 
         # Atualiza coordenadas fixas dos GCs conhecidos
         _gc_coords = {
-            'GC Infinito e Amém':  (-30.0344258,-51.08599221),
-            'GC Luz do Mundo':     (-30.0287205,-51.0853365),
-            'GC Conectados':       (-30.0364173,-51.0764339),
-            'GC Conectados Intersul': (-30.0199558,-51.0719866),
-            'GC Palavra Viva':     (-30.032484,-51.081181),
-            'GC Manálovers':       (-30.0324553,-51.0872635),
-            'GC Farol da Lagoa':   (-30.0199558,-51.0719866),
-            'GC Master Fé':        (-30.0243709,-51.0766738),
-            'GC Maranata':         (-30.0292309,-51.0813237),
-            'GC Resgate da Cruz':  (-30.0309295,-51.0838007),
-            'GC Corujas':          (-30.0404527,-51.0751355),
+            'GC Conectados - Intersul': (-30.0195, -51.072),
+            'GC Conectados - Jardim Algarve': (-30.0301, -51.0826),
+            'GC Conectados - Porto Verde': (-29.9745, -51.0823),
+            'GC Corujas': (-30.0404, -51.0751),
+            'GC Master Fé': (-30.0243, -51.0766),
+            'GC Caraá': (-30.031, -51.0827),
+            'GC Luz do Mundo': (-30.0287, -51.0853),
+            'GC Maranata': (-30.0292, -51.0813),
+            'GC Resgate da Cruz': (-30.0309, -51.0838),
+            'GC Infinito e Amém': (-30.0344, -51.0859),
+            'GC Farol da Lagoa': (-30.0199, -51.0719),
+            'GC Manálovers': (-30.0324, -51.0872),
+            'GC Palavra Viva': (-30.0248, -51.0811)
         }
         for nome, (lat, lng) in _gc_coords.items():
             try:
