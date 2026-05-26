@@ -392,6 +392,13 @@ async function gerarLinks(id){
 // ══════════════════════════════════════════════════════════════
 // GC FINDER
 // ══════════════════════════════════════════════════════════════
+async function resetarGCs(){
+  if(!confirm("Isso vai APAGAR todos os GCs do banco e reinserir a lista padrão.\nOs direcionamentos também serão apagados.\n\nConfirmar?"))return;
+  const r=await fetch("/api/gcs/resetar",{method:"POST"});
+  const d=await r.json();
+  if(r.ok&&d.ok){toast(`✅ ${d.msg}`,"success");carregarGCs();carregarDirecionamentos();}
+  else toast(d.erro||"Erro.","error");
+}
 async function carregarGCs(){
   const c=document.getElementById("gc_lista"); if(!c)return;
   c.innerHTML="<div class='loading-msg'>Carregando...</div>";

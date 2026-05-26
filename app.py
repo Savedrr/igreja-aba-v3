@@ -442,18 +442,18 @@ def _init_pg():
 
         # Atualiza coordenadas fixas dos GCs conhecidos
         _gc_coords = {
-            'GC Conectados - Intersul': (-30.0195, -51.072),
+            'GC Conectados - Intersul': (-29.9758, -51.0812),
             'GC Conectados - Jardim Algarve': (-30.0301, -51.0826),
             'GC Conectados - Porto Verde': (-29.9745, -51.0823),
             'GC Corujas': (-30.0404, -51.0751),
-            'GC Master Fé': (-30.0243, -51.0766),
-            'GC Caraá': (-30.031, -51.0827),
+            'GC Master Fe': (-30.0243, -51.0766),
+            'GC Caraa': (-30.031, -51.0827),
             'GC Luz do Mundo': (-30.0287, -51.0853),
             'GC Maranata': (-30.0292, -51.0813),
             'GC Resgate da Cruz': (-30.0309, -51.0838),
-            'GC Infinito e Amém': (-30.0344, -51.0859),
+            'GC Infinito e Amem': (-30.0344, -51.0859),
             'GC Farol da Lagoa': (-30.0199, -51.0719),
-            'GC Manálovers': (-30.0324, -51.0872),
+            'GC Manalovrs': (-30.0324, -51.0872),
             'GC Palavra Viva': (-30.0248, -51.0811)
         }
         for nome, (lat, lng) in _gc_coords.items():
@@ -1810,6 +1810,45 @@ def deletar_direcionamento(did):
         conn.execute(qmark("DELETE FROM gc_direcionamentos WHERE id=?"), (did,))
         conn.commit()
     return jsonify({"ok":True})
+
+
+@app.route("/api/gcs/resetar", methods=["POST"])
+@role_required("admin")
+def resetar_gcs():
+    """Apaga todos os GCs e reinsere a lista padrão — resolve duplicatas e dados errados"""
+    with get_db() as conn:
+        try:
+            conn.execute("DELETE FROM gc_direcionamentos")
+            conn.execute("DELETE FROM grupos_crescimento")
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Erro ao limpar GCs: {e}")
+            return jsonify({"erro": str(e)}), 500
+    if USE_PG:
+        _init_pg_gcs()
+    else:
+        _init_sqlite_gcs()
+    return jsonify({"ok": True, "msg": f"{len(_GCS)} GCs reinseridos"})
+
+def _init_pg_gcs():
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
+    for gc in _GCS:
+        cur.execute(
+            qmark("INSERT INTO grupos_crescimento(nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES(?,?,?,?,?,?,?,?,?)"),
+            gc
+        )
+    conn.commit(); conn.close()
+
+def _init_sqlite_gcs():
+    conn = sqlite3.connect(DB_PATH)
+    for gc in _GCS:
+        conn.execute(
+            "INSERT OR IGNORE INTO grupos_crescimento(nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES(?,?,?,?,?,?,?,?,?)",
+            gc
+        )
+    conn.commit(); conn.close()
 
 @app.route("/api/cameras", methods=["GET"])
 @login_required

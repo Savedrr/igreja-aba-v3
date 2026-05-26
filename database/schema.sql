@@ -199,19 +199,20 @@ INSERT OR IGNORE INTO estoque (nome,categoria,quantidade,quantidade_minima,unida
 ('Bandeja de Santa Ceia','Santa Ceia',0,5,'unidade','Bandejas para distribuição',0);
 
 -- GCs
-INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Conectados - Intersul','','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308',-30.0195,-51.072);
-INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Conectados - Jardim Algarve','Gomes e Marilu','Rua Hermínio Machado, 475','Jardim Algarve','Alvorada','Amarelo','#EAB308',-30.0301,-51.0826);
-INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Conectados - Porto Verde','','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308',-29.9745,-51.0823);
+INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Conectados - Intersul','Gustavo e Souza','Av. Borges de Medeiros, 196','Intersul','Alvorada','Amarelo','#EAB308',-29.9758,-51.0812);
+INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Conectados - Jardim Algarve','Gomes e Marilu','Rua Herminio Machado, 475','Jardim Algarve','Alvorada','Amarelo','#EAB308',-30.0301,-51.0826);
+INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Conectados - Porto Verde','Damasceno e Maria','Rua Beija-flores, 371','Porto Verde','Alvorada','Amarelo','#EAB308',-29.9745,-51.0823);
 INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Corujas','Dinho e Andressa','Rua Corujas, 552','Porto Verde','Alvorada','Azul','#3B82F6',-30.0404,-51.0751);
-INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Master Fé','Eduardo e Vanessa','Rua Gonçalves de Magalhães, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6',-30.0243,-51.0766);
-INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Caraá','Nubia e Matheus','Rua Hermínio Machado, 574','Rio dos Sinos','Caraá','Laranja','#F97316',-30.031,-51.0827);
+INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Master Fe','Eduardo e Vanessa','Rua Goncalves de Magalhaes, 806','Jardim Porto Alegre','Alvorada','Azul','#3B82F6',-30.0243,-51.0766);
+INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Caraa','Nubia e Matheus','Rua Herminio Machado, 574','Rio dos Sinos','Caraa','Laranja','#F97316',-30.031,-51.0827);
 INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Luz do Mundo','Adriel e Paola','Rua Alameda, 97','Jardim Algarve','Alvorada','Laranja','#F97316',-30.0287,-51.0853);
 INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Maranata','Oriton e Eliane','Rua Pedro Claudio Monassa, 380','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0292,-51.0813);
 INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Resgate da Cruz','Regis e Gilda','Av. Elmira Pereira Silveira, 327','Jardim Algarve','Alvorada','Roxo','#A855F7',-30.0309,-51.0838);
-INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Infinito e Amém','Gabriel e Bruna','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E',-30.0344,-51.0859);
+INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Infinito e Amem','Gabriel e Bruna','Rua Cento e Trinta e Nove, 84','Jardim Algarve','Alvorada','Verde','#22C55E',-30.0344,-51.0859);
 INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Farol da Lagoa','Vanessa e Lucas','Av. Borges de Medeiros, 196','Intersul','Alvorada','Vermelho','#EF4444',-30.0199,-51.0719);
-INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Manálovers','Juliana e Luiz','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0324,-51.0872);
-INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Palavra Viva','','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0248,-51.0811);
+INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Manalovrs','Juliana e Luiz','Rua Flaviano Morais Monroe, 556','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0324,-51.0872);
+INSERT OR IGNORE INTO grupos_crescimento (nome,lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES ('GC Palavra Viva','Vinicius e Marcia','Rua Trinta e Quatro, 318','Jardim Algarve','Alvorada','Vermelho','#EF4444',-30.0248,-51.0811);
+
 
 
 -- Câmera padrão
