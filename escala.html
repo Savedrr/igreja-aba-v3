@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Escala — Igreja ABA</title>
+<link rel="icon" href="/static/favicon.ico">
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#0A2463">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;background:#F1F5F9;color:#1E293B;min-height:100vh;}
+.header{background:linear-gradient(135deg,#0A2463,#1B4FA8);color:#fff;padding:16px 20px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:100;}
+.header h1{font-size:18px;font-weight:800;letter-spacing:2px;}
+.header p{font-size:11px;opacity:.7;}
+.controles{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.sel{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;
+  border-radius:8px;padding:7px 10px;font-size:13px;font-family:'Inter',sans-serif;cursor:pointer;}
+.sel option{background:#0A2463;}
+.btn-hdr{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:#fff;
+  border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;transition:.2s;}
+.btn-hdr:hover{background:rgba(255,255,255,.3);}
+.btn-save{background:#22C55E;border:none;color:#fff;border-radius:8px;padding:7px 16px;
+  font-size:13px;font-weight:700;cursor:pointer;transition:.2s;}
+.btn-save:hover{background:#16A34A;}
+.content{padding:16px;max-width:1200px;margin:0 auto;}
+.escala-table{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;margin-bottom:16px;}
+.escala-header{background:#0A2463;color:#fff;padding:12px 16px;
+  display:grid;font-size:12px;font-weight:700;letter-spacing:.5px;}
+.escala-row{display:grid;border-bottom:1px solid #F1F5F9;transition:.12s;}
+.escala-row:last-child{border-bottom:none;}
+.escala-row:hover{background:#FAFBFF;}
+.depto-cell{padding:10px 14px;display:flex;align-items:center;gap:8px;
+  background:#F8FAFF;border-right:2px solid #E2E8F0;min-width:0;}
+.depto-nome{font-size:13px;font-weight:700;color:#0A2463;white-space:nowrap;}
+.resp-cell{padding:6px 8px;border-right:1px solid #F1F5F9;}
+.resp-input{width:100%;border:none;background:transparent;font-size:12px;color:#374151;
+  font-family:'Inter',sans-serif;padding:4px 6px;border-radius:6px;outline:none;transition:.15s;}
+.resp-input:focus{background:#EBF5FF;color:#0A2463;}
+.resp-input.preenchido{font-weight:600;color:#0A2463;}
+.periodo-label{background:linear-gradient(135deg,#0A2463,#1B4FA8);color:#fff;
+  padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;}
+.date-col{text-align:center;font-size:11px;}
+.date-num{font-size:16px;font-weight:800;color:#0A2463;display:block;}
+.date-dia{font-size:9px;color:#94A3B8;text-transform:uppercase;}
+.toast{position:fixed;bottom:20px;right:20px;background:#0A2463;color:#fff;
+  padding:11px 18px;border-radius:10px;font-size:13px;font-weight:600;
+  opacity:0;transform:translateY(10px);transition:.25s;z-index:999;pointer-events:none;}
+.toast.show{opacity:1;transform:translateY(0);}
+.loader{text-align:center;padding:40px;color:#94A3B8;font-size:14px;}
+.empty{text-align:center;padding:40px;color:#94A3B8;}
+.legenda{background:#fff;border-radius:12px;padding:12px 16px;margin-bottom:16px;
+  display:flex;gap:16px;align-items:center;flex-wrap:wrap;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.legenda span{font-size:12px;color:#64748B;}
+.tag-manha{background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;}
+.tag-noite{background:#EDE9FE;color:#4C1D95;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;}
+@media(max-width:600px){
+  .content{padding:8px;}
+  .depto-nome{font-size:11px;}
+  .resp-input{font-size:11px;}
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>⚡ ESCALA — IGREJA ABA</h1>
+    <p id="subtitulo">Carregando...</p>
+  </div>
+  <div class="controles">
+    <input type="month" class="sel" id="mesSel" onchange="carregarEscala()">
+    <select class="sel" id="periodoSel" onchange="carregarEscala()">
+      <option value="">Todos os períodos</option>
+      <option value="Manhã">☀️ Manhã</option>
+      <option value="Noite">🌙 Noite</option>
+    </select>
+    <button class="btn-save" onclick="salvarTudo()" id="btnSalvar">💾 Salvar Escala</button>
+  </div>
+</div>
+
+<div class="content">
+  <div class="legenda">
+    <span><strong>Como usar:</strong></span>
+    <span>1. Selecione o mês e período</span>
+    <span>2. Preencha os nomes nos campos</span>
+    <span>3. Clique em <strong>Salvar Escala</strong></span>
+    <span class="tag-manha">Manhã = Domingos</span>
+    <span class="tag-noite">Noite = Domingos e Quartas</span>
+  </div>
+  <div id="escalaCont"><div class="loader">📋 Selecione um mês para começar...</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let _deptos = [];
+let _datas  = [];
+let _itens  = {};  // key: "deptoId_data_periodo" → responsavel
+
+// ── Init ──────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+  // Mês atual por padrão
+  const hoje = new Date();
+  document.getElementById("mesSel").value =
+    hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");
+  await carregarDeptos();
+  await carregarEscala();
+});
+
+async function carregarDeptos(){
+  try{
+    const r = await fetch("/api/departamentos");
+    _deptos = await r.json();
+  }catch(e){ console.error(e); }
+}
+
+async function carregarEscala(){
+  const mes = document.getElementById("mesSel").value;
+  const per = document.getElementById("periodoSel").value;
+  if(!mes) return;
+
+  document.getElementById("escalaCont").innerHTML = '<div class="loader">⏳ Carregando escala...</div>';
+  document.getElementById("subtitulo").textContent = `Escala de ${mes}`;
+
+  try{
+    // Busca datas e itens existentes
+    const [rDatas, rItens] = await Promise.all([
+      fetch(`/api/escala/datas?mes=${mes}`),
+      fetch(`/api/escala?mes=${mes}${per?"&periodo="+encodeURIComponent(per):""}`)
+    ]);
+    _datas = await rDatas.json();
+    const itensList = await rItens.json();
+
+    // Filtra por período se selecionado
+    const datasFilter = per ? _datas.filter(d=>d.periodo===per) : _datas;
+
+    // Mapeia itens existentes
+    _itens = {};
+    itensList.forEach(i => {
+      _itens[`${i.departamento_id}_${i.culto_data}_${i.culto_periodo}`] = i.responsavel||"";
+    });
+
+    if(!datasFilter.length){
+      document.getElementById("escalaCont").innerHTML =
+        '<div class="empty">📅 Nenhuma data de culto neste período.<br>Selecione outro mês.</div>';
+      return;
+    }
+
+    // Agrupa por período
+    const periodos = {};
+    datasFilter.forEach(d => {
+      if(!periodos[d.periodo]) periodos[d.periodo] = [];
+      periodos[d.periodo].push(d);
+    });
+
+    let html = "";
+
+    for(const [periodo, datas] of Object.entries(periodos)){
+      const corPer = periodo === "Manhã" ? "#F59E0B" : "#6366F1";
+      const bgPer  = periodo === "Manhã" ? "#FFFBEB" : "#F5F3FF";
+
+      // Cabeçalho das datas
+      const colsWidth = `180px repeat(${datas.length}, 1fr)`;
+      html += `<div class="escala-table">
+        <div style="background:${corPer};padding:10px 16px;display:flex;align-items:center;gap:8px">
+          <span style="font-size:16px">${periodo==="Manhã"?"☀️":"🌙"}</span>
+          <span style="font-size:13px;font-weight:800;color:#fff;letter-spacing:1px">DOMINGO — ${periodo.toUpperCase()}</span>
+        </div>
+        <div class="escala-header" style="grid-template-columns:${colsWidth};background:#1E293B">
+          <div style="color:rgba(255,255,255,.6);font-size:11px">DEPARTAMENTO</div>
+          ${datas.map(d=>`<div class="date-col" style="text-align:center">
+            <span class="date-num">${d.data_br}</span>
+            <span class="date-dia">${d.dia_semana.substring(0,3)}</span>
+          </div>`).join("")}
+        </div>`;
+
+      _deptos.forEach(dep => {
+        html += `<div class="escala-row" style="grid-template-columns:${colsWidth}">
+          <div class="depto-cell">
+            <span style="font-size:16px">${dep.icone||"👥"}</span>
+            <span class="depto-nome">${dep.nome}</span>
+          </div>
+          ${datas.map(d => {
+            const key = `${dep.id}_${d.data}_${d.periodo}`;
+            const val = _itens[key]||"";
+            return `<div class="resp-cell">
+              <input class="resp-input${val?" preenchido":""}"
+                data-key="${key}"
+                data-depid="${dep.id}"
+                data-data="${d.data}"
+                data-periodo="${d.periodo}"
+                value="${val}"
+                placeholder="—"
+                oninput="onInput(this)">
+            </div>`;
+          }).join("")}
+        </div>`;
+      });
+
+      html += "</div>";
+    }
+
+    document.getElementById("escalaCont").innerHTML = html;
+    document.getElementById("subtitulo").textContent =
+      `${datasFilter.length} cultos em ${mes}`;
+
+  }catch(e){
+    console.error(e);
+    document.getElementById("escalaCont").innerHTML =
+      '<div class="empty">❌ Erro ao carregar. Tente novamente.</div>';
+  }
+}
+
+function onInput(el){
+  el.classList.toggle("preenchido", !!el.value.trim());
+  _itens[el.dataset.key] = el.value.trim();
+}
+
+async function salvarTudo(){
+  const btn = document.getElementById("btnSalvar");
+  btn.textContent = "⏳ Salvando..."; btn.disabled=true;
+
+  // Coleta todos os inputs
+  const inputs = document.querySelectorAll(".resp-input");
+  const lote = [];
+  inputs.forEach(inp => {
+    lote.push({
+      departamento_id: parseInt(inp.dataset.depid),
+      culto_data:      inp.dataset.data,
+      culto_periodo:   inp.dataset.periodo,
+      responsavel:     inp.value.trim()
+    });
+  });
+
+  try{
+    const r = await fetch("/api/escala/lote", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(lote)
+    });
+    const d = await r.json();
+    if(r.ok && d.ok){
+      toast(`✅ Escala salva! ${d.salvos} itens registrados.`);
+    }else{
+      toast("❌ Erro ao salvar: "+(d.erro||""), true);
+    }
+  }catch(e){ toast("❌ Erro de conexão", true); }
+
+  btn.textContent="💾 Salvar Escala"; btn.disabled=false;
+}
+
+function toast(msg, err=false){
+  const el=document.getElementById("toast");
+  el.textContent=msg;
+  el.style.background=err?"#DC2626":"#0A2463";
+  el.classList.add("show");
+  setTimeout(()=>el.classList.remove("show"),3500);
+}
+</script>
+</body>
+</html>
