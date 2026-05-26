@@ -719,6 +719,15 @@ def can_edit():
 def is_admin():
     return session.get("usuario_cargo") == "admin"
 
+def get_depto_usuario():
+    """Retorna departamento_id do usuário logado. None = acesso total (admin/lider)"""
+    cargo = session.get("usuario_cargo","")
+    if cargo == "lider_depto":
+        return session.get("usuario_departamento_id")
+    return None  # admin e lider veem tudo
+
+
+
 # ── Erros ─────────────────────────────────────────────────────
 @app.errorhandler(500)
 def e500(e): return jsonify({"erro":"Erro interno","d":str(e)}),500
@@ -780,6 +789,7 @@ def login():
         session["usuario_id"]    = u["id"]
         session["usuario_nome"]  = u["nome"]
         session["usuario_cargo"] = u["cargo"]
+        session["usuario_departamento_id"] = u.get("departamento_id") if isinstance(u, dict) else None
         # Atualiza último acesso
         with get_db() as conn:
             try:
@@ -804,11 +814,21 @@ def logout():
 def me():
     if "usuario_id" not in session:
         return jsonify({"autenticado":False})
+    depto_id = session.get("usuario_departamento_id")
+    depto_nome = ""
+    if depto_id:
+        try:
+            with get_db() as conn:
+                dep = conn.execute(qmark("SELECT nome,icone FROM departamentos WHERE id=?"), (depto_id,)).fetchone()
+                if dep: depto_nome = dep["icone"] + " " + dep["nome"]
+        except: pass
     return jsonify({
         "autenticado": True,
-        "id":    session["usuario_id"],
-        "nome":  session["usuario_nome"],
-        "cargo": session["usuario_cargo"]
+        "id":              session["usuario_id"],
+        "nome":            session["usuario_nome"],
+        "cargo":           session["usuario_cargo"],
+        "departamento_id": depto_id,
+        "departamento_nome": depto_nome
     })
 
 # ═══════════════════════════════════════════════════════════════
@@ -819,7 +839,11 @@ def me():
 def listar_usuarios():
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id,nome,email,cargo,ativo,criado_em FROM usuarios ORDER BY nome"
+            """SELECT u.id,u.nome,u.email,u.cargo,u.ativo,u.criado_em,u.departamento_id,
+               COALESCE(d.icone||' '||d.nome,'') as departamento_nome
+               FROM usuarios u
+               LEFT JOIN departamentos d ON d.id=u.departamento_id
+               ORDER BY u.nome"""
         ).fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -842,7 +866,7 @@ def criar_usuario():
         return jsonify({"erro":"Senha deve ter ao menos uma letra maiúscula"}),400
     if not re.search(r'[0-9]', senha):
         return jsonify({"erro":"Senha deve ter ao menos um número"}),400
-    if cargo not in ("voluntario","lider","admin"):
+    if cargo not in ("voluntario","lider","admin","lider_depto"):
         return jsonify({"erro":"Cargo inválido"}),400
     try:
         with get_db() as conn:
@@ -2014,9 +2038,34 @@ def tempo_real(sid):
 @app.route("/api/voluntarios", methods=["GET"])
 @login_required
 def listar_voluntarios():
+    depto_filtro = get_depto_usuario()
+    todos = request.args.get("todos","")
+    if todos and not depto_filtro:
+        depto_filtro = None
+    with get_db() as conn:
+        if depto_filtro:
+            rows = [dict(r) for r in conn.execute(
+                qmark("""SELECT v.*, COALESCE(d.icone||' '||d.nome,'') as departamento_nome
+                         FROM voluntarios v LEFT JOIN departamentos d ON d.id=v.departamento_id
+                         WHERE v.ativo=1 AND v.departamento_id=? ORDER BY v.nome"""),
+                (depto_filtro,)
+            ).fetchall()]
+        else:
+            rows = [dict(r) for r in conn.execute(
+                """SELECT v.*, COALESCE(d.icone||' '||d.nome,'') as departamento_nome
+                   FROM voluntarios v LEFT JOIN departamentos d ON d.id=v.departamento_id
+                   WHERE v.ativo=1 ORDER BY d.ordem, v.nome"""
+            ).fetchall()]
+    return jsonify(rows)
+
+
+@app.route("/api/voluntarios/por_departamento/<int:did>", methods=["GET"])
+@login_required
+def voluntarios_por_depto(did):
     with get_db() as conn:
         rows = [dict(r) for r in conn.execute(
-            "SELECT * FROM voluntarios WHERE ativo=1 ORDER BY nome"
+            qmark("SELECT id,nome,telefone FROM voluntarios WHERE ativo=1 AND departamento_id=? ORDER BY nome"),
+            (did,)
         ).fetchall()]
     return jsonify(rows)
 
@@ -2028,10 +2077,11 @@ def criar_voluntario():
     tel  = d.get("telefone","").strip()
     if not nome or not tel:
         return jsonify({"erro":"Nome e telefone são obrigatórios"}),400
+    depto_id = d.get("departamento_id") or get_depto_usuario()
     with get_db() as conn:
         cur = conn.execute(
-            qmark("INSERT INTO voluntarios(nome,telefone,departamentos) VALUES(?,?,?)"),
-            (nome, tel, d.get("departamentos",""))
+            qmark("INSERT INTO voluntarios(nome,telefone,departamentos,departamento_id) VALUES(?,?,?,?)"),
+            (nome, tel, d.get("departamentos",""), depto_id)
         )
         conn.commit()
     return jsonify({"ok":True,"id":cur.lastrowid})
@@ -2262,8 +2312,18 @@ def pagina_escala():
 @app.route("/api/departamentos", methods=["GET"])
 @login_required
 def listar_departamentos():
+    depto_filtro = get_depto_usuario()
+    todos = request.args.get("todos","")  # admin pode pedir todos para cadastrar usuário
+    if todos and is_admin():
+        depto_filtro = None
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM departamentos WHERE ativo=1 ORDER BY ordem,nome").fetchall()
+        if depto_filtro:
+            rows = conn.execute(
+                qmark("SELECT * FROM departamentos WHERE ativo=1 AND id=? ORDER BY ordem,nome"),
+                (depto_filtro,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM departamentos WHERE ativo=1 ORDER BY ordem,nome").fetchall()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/departamentos", methods=["POST"])
@@ -2345,6 +2405,10 @@ def escala_publica():
 def salvar_escala_item():
     d = request.get_json(force=True) or {}
     did  = d.get("departamento_id")
+    # Lider de departamento só pode salvar no próprio departamento
+    depto_filtro = get_depto_usuario()
+    if depto_filtro and str(did) != str(depto_filtro):
+        return jsonify({"erro":"Sem permissão para editar este departamento"}),403
     data = d.get("culto_data","").strip()
     per  = d.get("culto_periodo","").strip()
     resp = d.get("responsavel","").strip()
@@ -2375,9 +2439,13 @@ def salvar_escala_lote():
     """Salva múltiplos itens de uma vez"""
     itens = request.get_json(force=True) or []
     if not isinstance(itens, list): return jsonify({"erro":"Lista esperada"}),400
+    depto_filtro = get_depto_usuario()
     salvos = 0
     with get_db() as conn:
         for d in itens:
+            # Lider_depto só salva no próprio departamento
+            if depto_filtro and str(d.get("departamento_id")) != str(depto_filtro):
+                continue
             did  = d.get("departamento_id")
             data = d.get("culto_data","").strip()
             per  = d.get("culto_periodo","").strip()
