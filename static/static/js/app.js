@@ -42,8 +42,9 @@ async function verificarAuth(){
   document.getElementById("navUsuarios").style.display=_isAdmin?"":"none";
   const _nl=document.getElementById("navLogs"); if(_nl)_nl.style.display="none";
   // Voluntário não vê botão de criar usuário
-  // Não preenche responsável automaticamente — usuário digita
-  // Campo responsável fica em branco para o usuário preencher
+  if(d.cargo==="voluntario"){
+    document.getElementById("responsavel").value=d.nome;
+  }
   // Mostra aba usuários para admin
   if(_isAdmin){carregarUsuarios();}
   // Voluntário: oculta abas restritas no menu
@@ -1148,6 +1149,7 @@ async function salvarVoluntario(){
   }else toast(d.erro||"Erro.","error");
 }
 
+<<<<<<< HEAD:static/js/app.js
 async function vincularUsuario(volId, volNome){
   // Busca lista de usuários sem vínculo
   const r = await fetch("/api/usuarios"); const users = await r.json();
@@ -1183,6 +1185,8 @@ async function confirmarVinculo(volId){
   else toast(d.erro||"Erro.","error");
 }
 
+=======
+>>>>>>> 5aadd4afcfa45b1869a68182db4d34ed22851c18:static/static/js/app.js
 async function delVoluntario(id){
   if(!confirm("Remover voluntário?"))return;
   await fetch(`/api/voluntarios/${id}`,{method:"DELETE"});
@@ -1190,13 +1194,15 @@ async function delVoluntario(id){
 }
 
 // ── PUBLICAR ESCALA ─────────────────────────────────────────
-
-
-
-
-function marcarEnviado(el){
-  const btn = el.querySelector("button");
-  if(btn){ btn.textContent="✅ Enviado"; btn.style.background="#059669"; }
+async function publicarEscala(){
+  const mes = document.getElementById("escala_mes")?.value;
+  if(!mes)return toast("Selecione um mês.","error");
+  if(!confirm(`Publicar a escala de ${mes}?\nApós publicar, os voluntários poderão confirmar via WhatsApp.`))return;
+  const r = await fetch("/api/escala/publicar",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({mes})});
+  const d = await r.json();
+  if(r.ok&&d.ok){toast("✅ Escala publicada!","success");verificarStatusEscala();}
+  else toast(d.erro||"Erro.","error");
 }
 
 async function reabrirEscala(){
@@ -1280,264 +1286,6 @@ async function verConfirmacoes(){
     </div>`;
   abrirModal(`Respostas da escala — ${mes}`, html, "wide");
 }
-
-// ── EDITOR DE ESCALA INLINE ────────────────────────────────
-let _escalaDados = {};     // key: deptoId_data_periodo → nome
-let _escalaDatas = [];     // datas do mês
-let _escalaDeptos = [];    // departamentos
-let _escalaVolsMap = {};   // deptoId → [voluntarios]
-
-async function abrirEditorEscala(){
-  const mes = document.getElementById("escala_mes")?.value;
-  if(!mes){ toast("Selecione um mês primeiro.","error"); return; }
-
-  // Carrega dados em paralelo
-  const [rDatas, rItens, rDeptos] = await Promise.all([
-    fetch(`/api/escala/datas?mes=${mes}`),
-    fetch(`/api/escala?mes=${mes}`),
-    fetch("/api/departamentos")
-  ]);
-  _escalaDatas  = await rDatas.json();
-  const itens   = await rItens.json();
-  _escalaDeptos = await rDeptos.json();
-
-  // Monta mapa de itens existentes
-  _escalaDados = {};
-  itens.forEach(i => {
-    _escalaDados[`${i.departamento_id}_${i.culto_data}_${i.culto_periodo}`] = i.responsavel||"";
-  });
-
-  // Carrega voluntários de cada depto
-  _escalaVolsMap = {};
-  await Promise.all(_escalaDeptos.map(async dep => {
-    const rv = await fetch(`/api/voluntarios/por_departamento/${dep.id}`);
-    _escalaVolsMap[dep.id] = await rv.json();
-  }));
-
-  const per = document.getElementById("escala_periodo")?.value||"";
-  const datasF = per ? _escalaDatas.filter(d=>d.periodo===per) : _escalaDatas;
-
-  if(!datasF.length){
-    toast("Nenhuma data de culto neste mês.","info"); return;
-  }
-
-  // Gera HTML do editor
-  const MESES = ["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-  let html = `
-    <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <span style="font-size:13px;color:#4A6080">Editando escala de <strong style="color:#0A2463">${mes}</strong></span>
-      <button class="btn-secondary" style="background:#22C55E;margin-left:auto"
-        onclick="salvarEscalaModal('${mes}')">💾 Salvar Tudo</button>
-    </div>`;
-
-  for(const dep of _escalaDeptos){
-    const vols = _escalaVolsMap[dep.id]||[];
-    html += `<div style="margin-bottom:14px;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden">
-      <div style="background:#F8FAFF;padding:9px 14px;border-bottom:1px solid #E2E8F0;
-        display:flex;align-items:center;gap:8px">
-        <span style="font-size:16px">${dep.icone||"👥"}</span>
-        <span style="font-weight:700;font-size:13px;color:#0A2463">${dep.nome}</span>
-        <span style="font-size:11px;color:#8ca0c0;margin-left:auto">${vols.length} voluntários</span>
-      </div>
-      <div style="padding:10px 12px;display:grid;gap:8px">`;
-
-    datasF.forEach(d => {
-      const key = `${dep.id}_${d.data}_${d.periodo}`;
-      const val = _escalaDados[key]||"";
-      const perEmoji = d.periodo==="Manhã"?"☀️":"🌙";
-      const mesNum = parseInt(d.data.split("-")[1])||0;
-      html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;
-        border-bottom:1px solid #F8FAFF">
-        <div style="background:#0A2463;color:#fff;border-radius:7px;padding:4px 7px;
-          text-align:center;min-width:42px;flex-shrink:0">
-          <div style="font-size:14px;font-weight:800;line-height:1">${d.data_br.split("/")[0]}</div>
-          <div style="font-size:8px;opacity:.7">${MESES[mesNum]||""}</div>
-        </div>
-        <span style="font-size:11px;color:#64748B;min-width:55px">${perEmoji} ${d.periodo}</span>
-        <select style="flex:1;padding:7px 10px;border:1.5px solid #D1D5DB;border-radius:8px;
-          font-size:12px;font-family:var(--font-sans,inherit);background:#fff;outline:none;
-          -webkit-appearance:none;cursor:pointer;${val?"border-color:#1B4FA8;background:#EBF5FF;font-weight:600":""};"
-          data-key="${key}" data-data="${d.data}" data-periodo="${d.periodo}" data-depid="${dep.id}"
-          onchange="onChangeEscalaSelect(this)">
-          <option value="">— Selecionar —</option>
-          ${vols.map(v=>`<option value="${v.nome}" ${val===v.nome?"selected":""}>${v.nome}</option>`).join("")}
-        </select>
-        <div id="conf_modal_${key}" style="font-size:10px;color:#DC2626;display:none;min-width:80px">⚠️ Conflito</div>
-      </div>`;
-    });
-
-    html += `</div></div>`;
-  }
-
-  abrirModal(`✏️ Escala — ${mes}`, html, "wide");
-}
-
-async function onChangeEscalaSelect(sel){
-  const key    = sel.dataset.key;
-  const nome   = sel.value;
-  const data   = sel.dataset.data;
-  const periodo= sel.dataset.periodo;
-  const depId  = parseInt(sel.dataset.depid);
-  _escalaDados[key] = nome;
-  sel.style.borderColor = nome ? "#1B4FA8" : "#D1D5DB";
-  sel.style.background  = nome ? "#EBF5FF" : "#fff";
-  sel.style.fontWeight  = nome ? "600" : "400";
-  const confEl = document.getElementById(`conf_modal_${key}`);
-  if(confEl) confEl.style.display = "none";
-
-  if(nome){
-    try{
-      const r = await fetch("/api/escala/verificar_conflito",{
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({nome,culto_data:data,culto_periodo:periodo,departamento_id:depId})
-      });
-      const d = await r.json();
-      if(d.conflito && confEl){
-        confEl.textContent = "⚠️ Já escalado em outro depto";
-        confEl.title = d.mensagem;
-        confEl.style.display = "block";
-      }
-    }catch(e){}
-  }
-}
-
-async function salvarEscalaModal(mes){
-  const sels = document.querySelectorAll("[data-key]");
-  const lote = [];
-  sels.forEach(sel => {
-    if(!sel.dataset.depid) return;
-    lote.push({
-      departamento_id: parseInt(sel.dataset.depid),
-      culto_data:      sel.dataset.data,
-      culto_periodo:   sel.dataset.periodo,
-      responsavel:     sel.value||""
-    });
-  });
-
-  const r = await fetch("/api/escala/lote",{
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify(lote)
-  });
-  const d = await r.json();
-  if(r.ok && d.ok){
-    toast(`✅ Escala salva! ${d.salvos} itens.`,"success");
-    fecharModal();
-    carregarVisualizacaoEscala();
-  } else {
-    toast(d.erro||"Erro ao salvar.","error");
-  }
-}
-
-// ── PUBLICAR + NOTIFICAR TODOS ─────────────────────────────
-async function publicarEscala(){
-  const mes = document.getElementById("escala_mes")?.value;
-  if(!mes) return toast("Selecione um mês.","error");
-  if(!confirm(`Publicar escala de ${mes} e notificar os voluntários via WhatsApp?`)) return;
-
-  const btn = document.getElementById("btnPublicar");
-  if(btn){ btn.innerHTML="⏳ Publicando..."; btn.disabled=true; }
-
-  try{
-    // 1. Publica
-    const rp = await fetch("/api/escala/publicar",{
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({mes})
-    });
-    const dp = await rp.json();
-    if(!rp.ok||!dp.ok){ toast(dp.erro||"Erro ao publicar.","error"); return; }
-
-    verificarStatusEscala();
-
-    // 2. Gera notificações
-    const rn = await fetch("/api/escala/notificar",{
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({mes})
-    });
-    const dn = await rn.json();
-
-    if(!rn.ok||!dn.ok){
-      toast("Escala publicada! Erro ao gerar notificações.","info"); return;
-    }
-
-    const comTel = (dn.notificacoes||[]).filter(n=>n.wa_link);
-    const semTel = (dn.notificacoes||[]).filter(n=>!n.wa_link);
-
-    if(!comTel.length){
-      toast("Escala publicada! Cadastre WhatsApp nos voluntários para notificar.","info");
-      return;
-    }
-
-    // 3. Abre modal com todos os links prontos
-    window._waLinks = comTel.map(n=>n.wa_link);
-
-    const lista = comTel.map((n,i)=>`
-      <div id="wai${i}" style="display:flex;align-items:center;gap:9px;padding:9px 0;
-        border-bottom:1px solid #EEF2F9">
-        <div style="width:32px;height:32px;border-radius:50%;
-          background:linear-gradient(135deg,#0A2463,#56B4D3);
-          display:flex;align-items:center;justify-content:center;
-          font-weight:700;color:#fff;font-size:13px;flex-shrink:0">
-          ${n.nome.charAt(0).toUpperCase()}
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:13px">${n.nome}</div>
-          <div style="font-size:11px;color:#8ca0c0">${n.qtd_escalas} escala(s)</div>
-        </div>
-        <a href="${n.wa_link}" target="_blank" style="text-decoration:none"
-          onclick="marcarEnviado(${i})">
-          <button class="btn-sm green" id="waBtn${i}"
-            style="background:#25D366;color:#fff;border:none;padding:6px 12px;
-            border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
-            📲 Enviar
-          </button>
-        </a>
-      </div>`).join("");
-
-    const semTelMsg = semTel.length ?
-      `<div style="background:#FEF3C7;border-radius:8px;padding:8px 12px;
-        font-size:12px;color:#92400E;margin-top:8px">
-        ⚠️ Sem WhatsApp: ${semTel.map(n=>n.nome).join(", ")}
-      </div>` : "";
-
-    abrirModal(`📲 Notificar ${comTel.length} voluntário(s)`, `
-      <div style="background:#EBF5FF;border-radius:9px;padding:10px 14px;
-        margin-bottom:14px;font-size:13px;color:#0A2463">
-        ✅ Escala <strong>publicada</strong>! Clique em <strong>"Abrir todos"</strong>
-        para enviar para todos ao mesmo tempo.
-      </div>
-      <div style="margin-bottom:12px">
-        <button onclick="enviarTodos()" style="width:100%;padding:11px;
-          background:#25D366;border:none;border-radius:10px;color:#fff;
-          font-size:14px;font-weight:700;cursor:pointer">
-          📲 Abrir todos de uma vez (${comTel.length})
-        </button>
-      </div>
-      <div style="max-height:50vh;overflow-y:auto">${lista}</div>
-      ${semTelMsg}`, "wide");
-
-    toast(`✅ Publicada! ${comTel.length} voluntários para notificar.`,"success");
-
-  }catch(e){
-    toast("Erro de conexão.","error");
-    console.error(e);
-  }
-  if(btn){ btn.innerHTML="✅ Publicar"; btn.disabled=false; }
-}
-
-function enviarTodos(){
-  if(!window._waLinks||!window._waLinks.length) return;
-  window._waLinks.forEach((link,i) => {
-    setTimeout(() => window.open(link,"_blank"), i*800);
-  });
-  // Marca todos como enviados visualmente
-  window._waLinks.forEach((_,i) => {
-    const btn = document.getElementById(`waBtn${i}`);
-    if(btn){ btn.textContent="✅ Enviado"; btn.style.background="#059669"; }
-  });
-  toast(`📲 Abrindo ${window._waLinks.length} conversas...`,"info");
-}
-
-
 // ── ESCALAS ────────────────────────────────────────────────
 async function carregarVisualizacaoEscala(){
   const mes = document.getElementById("escala_mes")?.value;

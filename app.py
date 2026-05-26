@@ -2176,10 +2176,25 @@ def status_escala(mes):
 @app.route("/api/escala/notificar", methods=["POST"])
 @role_required("admin","lider")
 def notificar_voluntarios():
-    """Gera links WhatsApp para notificar cada voluntário escalado no mês"""
+    """Gera links WhatsApp para notificar TODOS os voluntários de uma vez"""
     d = request.get_json(force=True) or {}
     mes = d.get("mes","").strip()
+    publicar_primeiro = d.get("publicar", False)
     if not mes: return jsonify({"erro":"Mês obrigatório"}),400
+    # Publica automaticamente ao notificar se solicitado
+    if publicar_primeiro:
+        try:
+            with get_db() as conn:
+                existe = conn.execute(qmark("SELECT id FROM escala_publicacoes WHERE mes=?"), (mes,)).fetchone()
+                if existe:
+                    conn.execute(qmark("UPDATE escala_publicacoes SET status='publicada',publicado_em=?,publicado_por=? WHERE mes=?"),
+                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), session.get("usuario_nome","?"), mes))
+                else:
+                    conn.execute(qmark("INSERT INTO escala_publicacoes(mes,status,publicado_em,publicado_por) VALUES(?,?,?,?)"),
+                        (mes,"publicada",datetime.now().strftime('%Y-%m-%d %H:%M:%S'),session.get("usuario_nome","?")))
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Erro ao publicar: {e}")
 
     with get_db() as conn:
         # Busca todos os itens do mês com responsável preenchido

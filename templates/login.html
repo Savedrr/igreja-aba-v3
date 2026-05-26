@@ -260,8 +260,24 @@
 
   <div class="err-box" id="errBox"></div>
 
- <!--<p class="footer-hint">admin@igrejaaba.com &nbsp;·&nbsp; Admin@123</p>
-</div> --><!-- IGNORE: CREDENCIAIS DE TESTE -->
+  <!-- Dica voluntário -->
+  <div style="margin-top:18px;text-align:center">
+    <button type="button" onclick="toggleDicaVol()" style="background:none;border:none;
+      color:rgba(255,255,255,.35);font-size:12px;cursor:pointer;padding:4px 8px;
+      text-decoration:underline;text-underline-offset:3px;">
+      Sou voluntário — como faço login?
+    </button>
+  </div>
+  <div id="dicaVol" style="display:none;margin-top:10px;background:rgba(86,180,211,.1);
+    border:1px solid rgba(86,180,211,.25);border-radius:12px;padding:12px 14px;
+    font-size:12px;color:rgba(255,255,255,.75);line-height:1.7">
+    <strong style="color:#56B4D3;display:block;margin-bottom:4px">👋 Acesso de voluntário</strong>
+    Use o <strong>email e senha</strong> criados pelo seu coordenador.<br>
+    Ao entrar, você verá apenas a sua escala pessoal.
+    <br><br>
+    Não tem acesso? Peça ao coordenador para criar seu login em <strong>Usuários</strong>.
+  </div>
+</div>
 
 <script>
   // Registra Service Worker para PWA
@@ -333,6 +349,11 @@
       btn.innerHTML = 'Entrar';
       btn.disabled  = false;
     }
+  }
+
+  function toggleDicaVol() {
+    var d = document.getElementById('dicaVol');
+    d.style.display = d.style.display === 'block' ? 'none' : 'block';
   }
 
   function mostrarErro(msg) {
