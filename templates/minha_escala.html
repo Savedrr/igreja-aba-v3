@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<title>Minha Escala — Igreja ABA</title>
+<link rel="icon" href="/static/favicon.ico">
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#0A2463">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;background:#F1F5F9;min-height:100vh;min-height:100dvh;}
+
+/* Header */
+.header{background:linear-gradient(135deg,#0A2463,#1B4FA8);padding:16px;
+  position:sticky;top:0;z-index:10;}
+.header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
+.header h1{font-size:18px;font-weight:800;color:#fff;letter-spacing:1px;}
+.header p{font-size:12px;color:rgba(255,255,255,.65);}
+.btn-logout{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);
+  color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;}
+
+/* Mês selector */
+.mes-bar{background:#fff;padding:12px 16px;border-bottom:1px solid #E2E8F0;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.mes-bar input{border:1px solid #D1D5DB;border-radius:8px;padding:7px 10px;
+  font-size:13px;font-family:'Inter',sans-serif;}
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 16px;}
+.stat{background:#fff;border-radius:12px;padding:12px;text-align:center;
+  border:1px solid #E2E8F0;}
+.stat .v{font-size:22px;font-weight:800;color:#0A2463;line-height:1;}
+.stat .l{font-size:10px;color:#94A3B8;text-transform:uppercase;margin-top:3px;font-weight:600;}
+
+/* Cards da escala */
+.section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;
+  color:#64748B;padding:8px 16px 4px;}
+.escala-card{margin:0 12px 8px;background:#fff;border-radius:14px;
+  border:1.5px solid #E2E8F0;overflow:hidden;transition:.2s;}
+.escala-card.confirmado{border-color:#22C55E;background:#F0FFF4;}
+.escala-card.recusado{border-color:#EF4444;background:#FFF5F5;}
+.card-top{padding:12px 14px;display:flex;align-items:center;gap:12px;}
+.data-box{background:#0A2463;color:#fff;border-radius:10px;padding:8px 10px;
+  text-align:center;min-width:48px;flex-shrink:0;}
+.data-box .dia{font-size:20px;font-weight:800;line-height:1;}
+.data-box .mes{font-size:9px;opacity:.7;text-transform:uppercase;}
+.card-info{flex:1;min-width:0;}
+.depto-name{font-size:14px;font-weight:700;color:#0A2463;}
+.depto-sub{font-size:12px;color:#64748B;margin-top:2px;}
+.status-chip{padding:3px 9px;border-radius:12px;font-size:10px;font-weight:700;
+  white-space:nowrap;flex-shrink:0;}
+.s-pendente{background:#FEF3C7;color:#92400E;}
+.s-confirmado{background:#D1FAE5;color:#065F46;}
+.s-recusado{background:#FEE2E2;color:#991B1B;}
+.card-actions{padding:0 14px 12px;display:flex;gap:7px;}
+.btn-action{flex:1;padding:9px;border-radius:10px;border:none;font-size:13px;
+  font-weight:700;cursor:pointer;transition:.15s;font-family:'Inter',sans-serif;}
+.btn-confirm{background:#22C55E;color:#fff;}
+.btn-confirm:hover{background:#16A34A;}
+.btn-decline{background:#F1F5F9;color:#64748B;border:1px solid #E2E8F0;}
+.btn-decline:hover{background:#FEE2E2;color:#991B1B;border-color:#FECACA;}
+.troca-box{padding:0 14px 12px;display:none;}
+.troca-box textarea{width:100%;border:1.5px solid #E2E8F0;border-radius:10px;
+  padding:9px;font-size:12px;font-family:'Inter',sans-serif;resize:vertical;
+  min-height:75px;outline:none;}
+.troca-box textarea:focus{border-color:#1B4FA8;}
+.btn-enviar-troca{width:100%;padding:9px;background:#0A2463;color:#fff;border:none;
+  border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;margin-top:6px;}
+
+/* Vazio */
+.empty{text-align:center;padding:40px 20px;}
+.empty-icon{font-size:48px;margin-bottom:10px;}
+.empty p{font-size:14px;color:#94A3B8;}
+
+/* Loading */
+.loading{text-align:center;padding:30px;color:#94A3B8;font-size:13px;}
+
+/* Toast */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(8px);
+  background:#0A2463;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;
+  font-weight:600;opacity:0;transition:.25s;z-index:999;pointer-events:none;white-space:nowrap;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast.ok{background:#059669;}
+.toast.err{background:#DC2626;}
+
+.footer{text-align:center;padding:20px;font-size:11px;color:#94A3B8;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div>
+      <h1>Minha Escala</h1>
+      <p id="nomeVol">Igreja ABA</p>
+    </div>
+    <button class="btn-logout" onclick="sair()">Sair</button>
+  </div>
+</div>
+
+<div class="mes-bar">
+  <label style="font-size:12px;font-weight:600;color:#374151">Mês:</label>
+  <input type="month" id="mesSel" onchange="carregar()">
+</div>
+
+<div class="stats-row">
+  <div class="stat"><div class="v" id="st_total">0</div><div class="l">Total</div></div>
+  <div class="stat"><div class="v" id="st_conf" style="color:#059669">0</div><div class="l">Confirmados</div></div>
+  <div class="stat"><div class="v" id="st_pend" style="color:#D97706">0</div><div class="l">Pendentes</div></div>
+</div>
+
+<div id="mainContent"><div class="loading">Carregando sua escala...</div></div>
+
+<div class="footer">Igreja ABA — Um Lar Para Pertencer</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const MESES = ["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+let _itens = [];
+
+async function init(){
+  const r = await fetch("/api/me");
+  const me = await r.json();
+  if(!me.autenticado || me.cargo !== "voluntario_escala"){
+    window.location.href="/"; return;
+  }
+  document.getElementById("nomeVol").textContent = me.nome;
+
+  const hoje = new Date();
+  document.getElementById("mesSel").value =
+    hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");
+  await carregar();
+}
+
+async function carregar(){
+  const mes = document.getElementById("mesSel").value;
+  document.getElementById("mainContent").innerHTML = '<div class="loading">Carregando...</div>';
+  const r = await fetch(`/api/escala/minha?mes=${mes}`);
+  const d = await r.json();
+  if(d.erro && !d.itens?.length){
+    document.getElementById("mainContent").innerHTML =
+      `<div class="empty"><div class="empty-icon">📋</div><p>${d.erro}</p></div>`;
+    return;
+  }
+  _itens = d.itens||[];
+  renderizar();
+}
+
+function renderizar(){
+  const conf  = _itens.filter(i=>i.status_confirmacao==="confirmado").length;
+  const pend  = _itens.filter(i=>i.status_confirmacao==="pendente").length;
+  document.getElementById("st_total").textContent = _itens.length;
+  document.getElementById("st_conf").textContent  = conf;
+  document.getElementById("st_pend").textContent  = pend;
+
+  if(!_itens.length){
+    document.getElementById("mainContent").innerHTML =
+      `<div class="empty"><div class="empty-icon">✨</div>
+       <p>Você não está escalado este mês.</p></div>`;
+    return;
+  }
+
+  // Agrupa por mês/semana
+  let html = '<div style="padding-bottom:20px">';
+  _itens.forEach((item,i)=>{
+    const status = item.status_confirmacao||"pendente";
+    const parts  = item.data_br ? item.data_br.split("/") : ["??","??"];
+    const dia    = parts[0];
+    const mesNum = parseInt(parts[1])||0;
+    const perEmoji = item.culto_periodo==="Manhã"?"☀️":"🌙";
+    const chipClass= `status-chip s-${status}`;
+    const chipText = {pendente:"⏳ Pendente",confirmado:"✅ Confirmado",recusado:"❌ Troca"}[status]||status;
+
+    html += `<div class="escala-card ${status}" id="card${i}">
+      <div class="card-top">
+        <div class="data-box">
+          <div class="dia">${dia}</div>
+          <div class="mes">${MESES[mesNum]||""}</div>
+        </div>
+        <div class="card-info">
+          <div class="depto-name">${item.depto_icone||""} ${item.depto_nome}</div>
+          <div class="depto-sub">${perEmoji} ${item.culto_periodo}</div>
+        </div>
+        <span class="${chipClass}" id="chip${i}">${chipText}</span>
+      </div>
+      ${status==="pendente" ? `
+      <div class="card-actions" id="btns${i}">
+        <button class="btn-action btn-confirm" onclick="confirmar(${i})">✅ Confirmar</button>
+        <button class="btn-action btn-decline" onclick="mostrarTroca(${i})">🔄 Solicitar troca</button>
+      </div>
+      <div class="troca-box" id="troca${i}">
+        <textarea placeholder="Explique o motivo e sugira alguém para te substituir...
+Ex: Estarei viajando. O irmão João pode me cobrir." id="txt${i}"></textarea>
+        <button class="btn-enviar-troca" onclick="enviarTroca(${i})">Enviar solicitação</button>
+      </div>` : status==="recusado" && item.sugestao_troca ? `
+      <div style="padding:0 14px 12px;font-size:12px;color:#991B1B;background:transparent">
+        <strong>Sua sugestão:</strong> ${item.sugestao_troca}
+      </div>` : ""}
+    </div>`;
+  });
+  html += "</div>";
+  document.getElementById("mainContent").innerHTML = html;
+}
+
+async function confirmar(idx){
+  const item = _itens[idx];
+  const r = await fetch(`/api/escala/responder/${item.id}`,{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({status:"confirmado",sugestao_troca:""})
+  });
+  const d = await r.json();
+  if(r.ok&&d.ok){
+    _itens[idx].status_confirmacao = "confirmado";
+    document.getElementById(`card${idx}`).className = "escala-card confirmado";
+    document.getElementById(`chip${idx}`).className = "status-chip s-confirmado";
+    document.getElementById(`chip${idx}`).textContent = "✅ Confirmado";
+    const btns = document.getElementById(`btns${idx}`);
+    if(btns) btns.remove();
+    toast("Presença confirmada!","ok");
+  } else toast("Erro ao confirmar.","err");
+}
+
+function mostrarTroca(idx){
+  const box = document.getElementById(`troca${idx}`);
+  box.style.display = box.style.display==="block" ? "none" : "block";
+  if(box.style.display==="block") document.getElementById(`txt${idx}`)?.focus();
+}
+
+async function enviarTroca(idx){
+  const item    = _itens[idx];
+  const sugestao= document.getElementById(`txt${idx}`)?.value.trim()||"";
+  if(!sugestao){ toast("Explique o motivo e sugira alguém.","err"); return; }
+  const r = await fetch(`/api/escala/responder/${item.id}`,{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({status:"recusado", sugestao_troca:sugestao})
+  });
+  const d = await r.json();
+  if(r.ok&&d.ok){
+    _itens[idx].status_confirmacao = "recusado";
+    _itens[idx].sugestao_troca = sugestao;
+    renderizar();
+    toast("Solicitação de troca enviada!","ok");
+  } else toast("Erro ao enviar.","err");
+}
+
+async function sair(){
+  await fetch("/api/logout",{method:"POST"});
+  window.location.href="/";
+}
+
+function toast(msg,tipo=""){
+  const el=document.getElementById("toast");
+  el.textContent=msg; el.className=`toast show ${tipo}`;
+  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove("show"),3000);
+}
+
+init();
+</script>
+</body>
+</html>

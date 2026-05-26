@@ -27,10 +27,12 @@ document.addEventListener("DOMContentLoaded",async()=>{
 async function verificarAuth(){
   const r=await fetch("/api/me"); const d=await r.json();
   if(!d.autenticado){window.location.href="/";return;}
-  _cargo=d.cargo; _isAdmin=(d.cargo==="admin"); _isLider=(d.cargo==="lider"||d.cargo==="admin");
+  _cargo=d.cargo; _isAdmin=(d.cargo==="admin"); _isLider=(d.cargo==="lider"||d.cargo==="admin"||d.cargo==="lider_depto");
+  window._deptoId = d.departamento_id||null;
+  window._deptoNome = d.departamento_nome||"";
   document.getElementById("userName").textContent=d.nome;
-  const roleLabel={"admin":"Administrador","lider":"Líder","voluntario":"Voluntário"};
-  const roleClass={"admin":"role-admin","lider":"role-lider","voluntario":"role-voluntario"};
+  const roleLabel={"admin":"Administrador","lider":"Líder","voluntario":"Voluntário","lider_depto":"Líder de Depto"};
+  const roleClass={"admin":"role-admin","lider":"role-lider","voluntario":"role-voluntario","lider_depto":"role-lider"};
   document.getElementById("userRole").textContent=roleLabel[d.cargo]||d.cargo;
   document.getElementById("userAvatar").textContent=d.nome.charAt(0).toUpperCase();
   // Badge de cargo no sidebar
@@ -47,10 +49,22 @@ async function verificarAuth(){
   if(_isAdmin){carregarUsuarios();}
   // Voluntário: oculta abas restritas no menu
   if(d.cargo==="voluntario"){
-    ["gc","estoque","dashboard","relatorios","resumo","ia","usuarios","logs"].forEach(tab=>{
+    ["gc","estoque","dashboard","relatorios","resumo","ia","usuarios","logs","escalas","dash_gc"].forEach(tab=>{
       const nav=document.querySelector(`[data-tab="${tab}"]`);
       if(nav)nav.closest("li").style.display="none";
     });
+  }
+  // Lider de departamento: vê só a aba de escalas
+  if(d.cargo==="lider_depto"){
+    ["registro","checklist","visitantes","gc","estoque","dashboard","relatorios","resumo","ia","usuarios","logs","dash_gc"].forEach(tab=>{
+      const nav=document.querySelector(`[data-tab="${tab}"]`);
+      if(nav)nav.closest("li").style.display="none";
+    });
+    // Mostra badge do departamento no sidebar
+    const sub=document.querySelector(".brand-sub");
+    if(sub&&window._deptoNome)sub.textContent=window._deptoNome;
+    // Vai direto para escalas
+    setTimeout(()=>ativarTab("escalas"),300);
   }
 }
 async function logout(){await fetch("/api/logout",{method:"POST"});window.location.href="/";}
@@ -58,7 +72,7 @@ async function logout(){await fetch("/api/logout",{method:"POST"});window.locati
 // ── TABS ──────────────────────────────────────────────────────
 const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:"Visitantes",
   gc:"Conecta GC",estoque:"Estoque",ia:"IA Contagem",relatorios:"Relatórios",
-  resumo:"Resumo Geral",dash_gc:"Dashboard GC",dashboard:"Dashboard",usuarios:"Usuários",logs:"Logs do Sistema"};
+  resumo:"Resumo Geral",escalas:"Escalas",dash_gc:"Dashboard GC",dashboard:"Dashboard",usuarios:"Usuários",logs:"Logs do Sistema"};
 
 function ativarTab(tab){
   document.querySelectorAll(".tab-content").forEach(t=>t.classList.remove("active"));
@@ -68,6 +82,7 @@ function ativarTab(tab){
   document.getElementById("topbarTitle").textContent=TAB_TITLES[tab]||tab;
   if(tab==="resumo")carregarResumo();
   if(tab==="dash_gc")carregarDashGC();
+  if(tab==="escalas"){const hoje=new Date();document.getElementById("escala_mes").value=hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");carregarVisualizacaoEscala();carregarVoluntarios();}
   if(tab==="visitantes"){carregarVisitantes();popularSelectVisitantes();}
   if(tab==="usuarios"&&_isAdmin)carregarUsuarios();
   if(tab==="gc"){carregarGCs();carregarDirecionamentos();popularSelectVisitantes();}
@@ -890,15 +905,39 @@ async function carregarResumo(){
 }
 
 // ── USUÁRIOS (admin) ──────────────────────────────────────────
+
+// ── CARGO LIDER_DEPTO — campo de departamento ──────────────
+function toggleDeptoField(){
+  const cargo = document.getElementById("nu_cargo")?.value;
+  const wrap  = document.getElementById("nu_depto_wrap");
+  if(!wrap) return;
+  wrap.style.display = cargo==="lider_depto" ? "block" : "none";
+  if(cargo==="lider_depto") carregarDeptosSelect();
+}
+
+async function carregarDeptosSelect(){
+  const sel = document.getElementById("nu_depto_id"); if(!sel) return;
+  if(sel.options.length > 1) return; // já carregado
+  const r = await fetch("/api/departamentos?todos=1");
+  const list = await r.json();
+  sel.innerHTML = '<option value="">— Selecione o departamento —</option>';
+  list.forEach(d=>{
+    const o = document.createElement("option");
+    o.value = d.id; o.textContent = (d.icone||"") + " " + d.nome;
+    sel.appendChild(o);
+  });
+}
 async function criarUsuario(){
   const nome =document.getElementById("nu_nome").value.trim();
   const email=document.getElementById("nu_email").value.trim().toLowerCase();
   const senha=document.getElementById("nu_senha").value;
   const conf =document.getElementById("nu_conf_senha").value;
   const cargo=document.getElementById("nu_cargo").value;
+  const deptoId=document.getElementById("nu_depto_id")?.value||null;
   if(!nome||!email||!senha)return toast("Preencha todos os campos.","error");
+  if(cargo==="lider_depto"&&!deptoId)return toast("Selecione o departamento do líder.","error");
   const r=await fetch("/api/usuarios",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({nome,email,senha,confirmar_senha:conf,cargo})});
+    body:JSON.stringify({nome,email,senha,confirmar_senha:conf,cargo,departamento_id:deptoId?parseInt(deptoId):null})});
   const d=await r.json();
   if(r.ok&&d.ok){toast("✅ Usuário criado!","success");["nu_nome","nu_email","nu_senha","nu_conf_senha"].forEach(id=>document.getElementById(id).value="");carregarUsuarios();}
   else toast(d.erro||"Erro ao criar usuário.","error");
@@ -913,7 +952,7 @@ async function carregarUsuarios(){
     <div class="usuario-card">
       <div class="usuario-av">${u.nome.charAt(0).toUpperCase()}</div>
       <div style="flex:1;min-width:0">
-        <div class="usuario-nome">${u.nome}<span class="badge-role ${RC[u.cargo]||""}">${RL[u.cargo]||u.cargo}</span>${!u.ativo?'<span class="badge-role" style="background:#E53E3E">Inativo</span>':""}</div>
+        <div class="usuario-nome">${u.nome}<span class="badge-role ${RC[u.cargo]||""}">${RL[u.cargo]||u.cargo}</span>${u.departamento_nome?`<span style="font-size:10px;color:#4A6080;margin-left:4px">${u.departamento_nome}</span>`:""}${!u.ativo?'<span class="badge-role" style="background:#E53E3E">Inativo</span>':""}</div>
         <div class="usuario-email">${u.email}</div>
         ${u.ultimo_acesso?`<div style="font-size:10px;color:#8ca0c0">Último acesso: ${u.ultimo_acesso?.substring(0,16)||"—"}</div>`:""}
       </div>
@@ -1034,6 +1073,326 @@ async function delCamera(id){
 
 
 
+
+
+// ── VOLUNTÁRIOS ────────────────────────────────────────────
+async function carregarVoluntarios(){
+  const c = document.getElementById("lista_voluntarios"); if(!c)return;
+  // Carrega departamentos para o select do formulário
+  const rd = await fetch("/api/departamentos?todos=1");
+  const deptos = await rd.json();
+  const selDep = document.getElementById("vol_depto_id");
+  if(selDep && selDep.options.length <= 1){
+    selDep.innerHTML = '<option value="">— Selecione o departamento —</option>';
+    deptos.forEach(d=>{
+      const o=document.createElement("option");
+      o.value=d.id; o.textContent=(d.icone||"")+" "+d.nome;
+      selDep.appendChild(o);
+    });
+  }
+
+  const r = await fetch("/api/voluntarios?todos=1");
+  const list = await r.json();
+  if(!list.length){c.innerHTML='<p style="color:#8ca0c0;font-size:13px;padding:10px">Nenhum voluntário cadastrado ainda.</p>';return;}
+
+  // Agrupa por departamento
+  const grupos = {};
+  list.forEach(v=>{
+    const key = v.departamento_nome||"Sem departamento";
+    if(!grupos[key]) grupos[key]=[];
+    grupos[key].push(v);
+  });
+
+  let html = "";
+  for(const [depNome, vols] of Object.entries(grupos)){
+    html += `<div style="margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;
+        color:#0A2463;border-bottom:2px solid #EBF5FF;padding-bottom:5px;margin-bottom:8px">${depNome} (${vols.length})</div>`;
+    vols.forEach(v=>{
+      html += `<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid #F1F5F9">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0A2463,#56B4D3);
+          display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px;flex-shrink:0">${v.nome.charAt(0).toUpperCase()}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:13px;color:#0A2463">${v.nome}</div>
+          <div style="font-size:11px;color:#8ca0c0;display:flex;align-items:center;gap:6px">
+            <span>📱 ${v.telefone}</span>
+            ${v.departamentos?`<span style="color:#4A6080">· ${v.departamentos}</span>`:""}
+            <a href="https://wa.me/55${v.telefone.replace(/\D/g,'')}" target="_blank"
+              style="color:#22C55E;font-weight:600;font-size:10px;text-decoration:none">WhatsApp</a>
+          </div>
+        </div>
+        ${_isLider?`<button class="btn-sm red" onclick="delVoluntario(${v.id})" style="font-size:10px">✕</button>`:""}
+      </div>`;
+    });
+    html += "</div>";
+  }
+  c.innerHTML = html;
+}
+
+async function salvarVoluntario(){
+  const nome    = document.getElementById("vol_nome")?.value.trim();
+  const tel     = document.getElementById("vol_tel")?.value.trim();
+  const dep     = document.getElementById("vol_dep")?.value.trim()||"";
+  const deptoId = document.getElementById("vol_depto_id")?.value||null;
+  if(!nome||!tel)return toast("Nome e telefone são obrigatórios.","error");
+  if(!deptoId)return toast("Selecione o departamento do voluntário.","error");
+  const r = await fetch("/api/voluntarios",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({nome,telefone:tel,departamentos:dep,departamento_id:parseInt(deptoId)})});
+  const d = await r.json();
+  if(r.ok&&d.ok){
+    toast("✅ Voluntário adicionado!","success");
+    document.getElementById("vol_nome").value="";
+    document.getElementById("vol_tel").value="";
+    if(document.getElementById("vol_dep"))document.getElementById("vol_dep").value="";
+    if(document.getElementById("vol_depto_id"))document.getElementById("vol_depto_id").value="";
+    carregarVoluntarios();
+  }else toast(d.erro||"Erro.","error");
+}
+
+async function vincularUsuario(volId, volNome){
+  // Busca lista de usuários sem vínculo
+  const r = await fetch("/api/usuarios"); const users = await r.json();
+  const opts = users.filter(u=>u.cargo==="voluntario_escala"||!u.cargo_vinculado)
+    .map(u=>`<option value="${u.id}">${u.nome} (${u.email})</option>`).join("");
+  abrirModal(`🔗 Vincular Login — ${volNome}`,`
+    <div class="info-box" style="margin-bottom:12px">
+      Vincule um usuário com cargo <strong>Voluntário Escala</strong> a este voluntário.<br>
+      Ele poderá fazer login e ver a própria escala em <strong>/minha-escala</strong>.
+    </div>
+    <div class="field-group">
+      <label>Usuário para vincular</label>
+      <select class="field-input" id="sel_usuario_vinc">
+        <option value="">— Selecione o usuário —</option>
+        ${opts}
+      </select>
+    </div>
+    <button class="btn-primary-lg" onclick="confirmarVinculo(${volId})" style="margin-top:12px;padding:12px">
+      🔗 Vincular
+    </button>`);
+}
+
+async function confirmarVinculo(volId){
+  const uid = document.getElementById("sel_usuario_vinc")?.value;
+  if(!uid) return toast("Selecione um usuário.","error");
+  const url = `/api/voluntarios/${volId}/vincular_usuario`;
+  const r = await fetch(url,{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({usuario_id:parseInt(uid)})
+  });
+  const d = await r.json();
+  if(r.ok&&d.ok){toast("✅ Usuário vinculado!","success");fecharModal();carregarVoluntarios();}
+  else toast(d.erro||"Erro.","error");
+}
+
+async function delVoluntario(id){
+  if(!confirm("Remover voluntário?"))return;
+  await fetch(`/api/voluntarios/${id}`,{method:"DELETE"});
+  toast("Removido.","info"); carregarVoluntarios();
+}
+
+// ── PUBLICAR ESCALA ─────────────────────────────────────────
+async function publicarEscala(){
+  const mes = document.getElementById("escala_mes")?.value;
+  if(!mes)return toast("Selecione um mês.","error");
+  if(!confirm(`Publicar a escala de ${mes}?\nApós publicar, os voluntários poderão confirmar via WhatsApp.`))return;
+  const r = await fetch("/api/escala/publicar",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({mes})});
+  const d = await r.json();
+  if(r.ok&&d.ok){toast("✅ Escala publicada!","success");verificarStatusEscala();}
+  else toast(d.erro||"Erro.","error");
+}
+
+async function reabrirEscala(){
+  const mes = document.getElementById("escala_mes")?.value;
+  if(!confirm("Reabrir a escala para edição?"))return;
+  const r = await fetch("/api/escala/reabrir",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({mes})});
+  const d = await r.json();
+  if(r.ok&&d.ok){toast("✅ Escala reaberta para edição.","info");verificarStatusEscala();}
+}
+
+async function verificarStatusEscala(){
+  const mes = document.getElementById("escala_mes")?.value; if(!mes)return;
+  const r = await fetch(`/api/escala/status/${mes}`); const d = await r.json();
+  const publicada = d.status==="publicada";
+  const statusEl = document.getElementById("escala_status_badge");
+  const btnPub   = document.getElementById("btnPublicar");
+  const btnReab  = document.getElementById("btnReabrir");
+  if(statusEl){
+    statusEl.textContent = publicada ? "✅ Publicada" : "✏️ Rascunho";
+    statusEl.style.background = publicada ? "#D1FAE5" : "#FEF3C7";
+    statusEl.style.color = publicada ? "#065F46" : "#92400E";
+  }
+  if(btnPub)  btnPub.style.display  = publicada ? "none" : "";
+  if(btnReab) btnReab.style.display = publicada ? "" : "none";
+}
+
+// ── NOTIFICAR VIA WHATSAPP ──────────────────────────────────
+async function notificarVoluntarios(){
+  const mes = document.getElementById("escala_mes")?.value;
+  if(!mes)return toast("Selecione um mês.","error");
+  const btn = document.getElementById("btnNotificar");
+  btn.innerHTML='<span class="spinner"></span>Gerando links...'; btn.disabled=true;
+  const r = await fetch("/api/escala/notificar",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({mes})});
+  const d = await r.json();
+  btn.innerHTML="📲 Notificar via WhatsApp"; btn.disabled=false;
+  if(!r.ok||!d.ok)return toast(d.erro||"Erro ao gerar notificações.","error");
+  // Abre modal com lista de links
+  const linhas = d.notificacoes.map(n=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #EEF2F9">
+      <div style="width:34px;height:34px;border-radius:50%;background:${n.tem_telefone?"linear-gradient(135deg,#0A2463,#56B4D3)":"#F1F5F9"};
+        display:flex;align-items:center;justify-content:center;font-weight:700;color:${n.tem_telefone?"#fff":"#94A3B8"};font-size:14px;flex-shrink:0">${n.nome.charAt(0).toUpperCase()}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13px;color:#0A2463">${n.nome}</div>
+        <div style="font-size:11px;color:#8ca0c0">${n.qtd_escalas} escala(s) · ${n.tem_telefone?n.telefone:"sem telefone cadastrado"}</div>
+      </div>
+      ${n.wa_link?`<a href="${n.wa_link}" target="_blank" style="text-decoration:none">
+        <button class="btn-sm green" style="background:#25D366;color:#fff;border:none;padding:5px 12px">📲 Enviar</button>
+      </a>`:`<span style="font-size:10px;color:#EF4444">Sem telefone</span>`}
+    </div>`).join("");
+  abrirModal(`📲 Notificar ${d.total} voluntário(s)`,`
+    <div class="info-box" style="margin-bottom:12px">Clique em <strong>Enviar</strong> para abrir o WhatsApp com a mensagem pronta. O voluntário receberá o link de confirmação.</div>
+    <div style="max-height:60vh;overflow-y:auto">${linhas}</div>`,"wide");
+}
+
+// ── CONFIRMAÇÕES ────────────────────────────────────────────
+async function verConfirmacoes(){
+  const mes = document.getElementById("escala_mes")?.value||"";
+  const r = await fetch(`/api/escala/confirmacoes_admin?mes=${mes}`);
+  const list = await r.json();
+  if(!list.length){toast("Nenhuma resposta ainda.","info");return;}
+  const pend = list.filter(c=>c.status==="pendente").length;
+  const conf = list.filter(c=>c.status==="confirmado").length;
+  const rec  = list.filter(c=>c.status==="recusado").length;
+  const html = `
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">✅ ${conf} confirmados</span>
+      <span style="background:#FEE2E2;color:#991B1B;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">❌ ${rec} trocas</span>
+      <span style="background:#FEF3C7;color:#92400E;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">⏳ ${pend} pendentes</span>
+    </div>
+    <div style="max-height:55vh;overflow-y:auto">
+      ${list.map(c=>`<div style="padding:9px 0;border-bottom:1px solid #EEF2F9;display:flex;align-items:flex-start;gap:10px">
+        <span style="padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:${c.status==="confirmado"?"#D1FAE5":c.status==="recusado"?"#FEE2E2":"#FEF3C7"};color:${c.status==="confirmado"?"#065F46":c.status==="recusado"?"#991B1B":"#92400E"};flex-shrink:0">${c.status}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:13px">${c.voluntario_nome}</div>
+          <div style="font-size:11px;color:#8ca0c0">${c.data_br} · ${c.culto_periodo} · ${c.departamento}</div>
+          ${c.sugestao_troca?`<div style="font-size:11px;color:#991B1B;margin-top:3px;font-style:italic">↪ ${c.sugestao_troca}</div>`:""}
+        </div>
+      </div>`).join("")}
+    </div>`;
+  abrirModal(`Respostas da escala — ${mes}`, html, "wide");
+}
+// ── ESCALAS ────────────────────────────────────────────────
+async function carregarVisualizacaoEscala(){
+  const mes = document.getElementById("escala_mes")?.value;
+  const per = document.getElementById("escala_periodo")?.value||"";
+  verificarStatusEscala();
+  // Se lider_depto, mostra nome do departamento como título
+  if(_cargo==="lider_depto"&&window._deptoNome){
+    const tit=document.querySelector("#tab-escalas .page-title");
+    if(tit)tit.innerHTML=`Minha Escala <span style="font-size:14px;font-weight:400;color:#4A6080">${window._deptoNome}</span>`;
+  }
+  const cont = document.getElementById("escala_visualizacao");
+  if(!mes){cont.innerHTML='<div class="loading-msg">Selecione um mês.</div>';return;}
+  cont.innerHTML='<div class="loading-msg">Carregando escala...</div>';
+  try{
+    const [rDatas,rItens,rDeptos] = await Promise.all([
+      fetch(`/api/escala/datas?mes=${mes}`),
+      fetch(`/api/escala?mes=${mes}${per?"&periodo="+encodeURIComponent(per):""}`),
+      fetch("/api/departamentos")
+    ]);
+    const datas  = await rDatas.json();
+    const itens  = await rItens.json();
+    const deptos = await rDeptos.json();
+    const datasF = per ? datas.filter(d=>d.periodo===per) : datas;
+    if(!datasF.length){cont.innerHTML='<div class="empty-state"><p>Nenhum culto neste mês.</p></div>';return;}
+
+    // Monta mapa de itens
+    const mapa = {};
+    itens.forEach(i=>mapa[`${i.departamento_id}_${i.culto_data}_${i.culto_periodo}`]=i.responsavel||"");
+
+    // Agrupa por período
+    const periodos={};
+    datasF.forEach(d=>{if(!periodos[d.periodo])periodos[d.periodo]=[];periodos[d.periodo].push(d);});
+
+    let html="";
+    for(const [periodo,datasP] of Object.entries(periodos)){
+      const corPer=periodo==="Manhã"?"#F59E0B":"#6366F1";
+      const cols=`160px repeat(${datasP.length},1fr)`;
+      html+=`<div class="form-card" style="margin-bottom:14px;overflow:hidden">
+        <div style="background:${corPer};padding:9px 14px;display:flex;align-items:center;gap:7px">
+          <span style="font-size:15px">${periodo==="Manhã"?"☀️":"🌙"}</span>
+          <span style="font-size:13px;font-weight:800;color:#fff">DOMINGO — ${periodo.toUpperCase()}</span>
+        </div>
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+          <table style="width:100%;border-collapse:collapse;min-width:400px;font-size:12px">
+            <thead><tr style="background:#1E293B">
+              <th style="color:rgba(255,255,255,.6);font-size:10px;padding:8px 12px;text-align:left;font-weight:600;white-space:nowrap">DEPARTAMENTO</th>
+              ${datasP.map(d=>`<th style="color:#fff;font-size:11px;padding:8px;text-align:center;font-weight:700">
+                <div style="font-size:15px;font-weight:800">${d.data_br}</div>
+                <div style="font-size:9px;opacity:.6">${d.dia_semana.substring(0,3).toUpperCase()}</div>
+              </th>`).join("")}
+            </tr></thead>
+            <tbody>
+              ${deptos.map((dep,idx)=>`<tr style="border-bottom:1px solid #F1F5F9;background:${idx%2===0?"#fff":"#FAFBFF"}">
+                <td style="padding:9px 12px;border-right:2px solid #E2E8F0">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:14px">${dep.icone||"👥"}</span>
+                    <span style="font-weight:700;color:#0A2463;font-size:12px">${dep.nome}</span>
+                  </div>
+                </td>
+                ${datasP.map(d=>{
+                  const v=mapa[`${dep.id}_${d.data}_${d.periodo}`]||"";
+                  return`<td style="padding:7px 8px;text-align:center;border-right:1px solid #F1F5F9">
+                    <span style="font-size:12px;${v?"font-weight:600;color:#0A2463":"color:#CBD5E1"}">${v||"—"}</span>
+                  </td>`;
+                }).join("")}
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    }
+    cont.innerHTML=html;
+    // Carrega lista de deptos
+    renderListaDeptos(deptos);
+  }catch(e){cont.innerHTML='<div class="permission-alert">❌ Erro ao carregar escala.</div>';}
+}
+
+function renderListaDeptos(deptos){
+  const el=document.getElementById("lista_deptos"); if(!el)return;
+  if(!deptos||!deptos.length){el.innerHTML='<p style="color:#8ca0c0;font-size:13px">Nenhum departamento.</p>';return;}
+  el.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:6px">
+    ${deptos.map(d=>`<span style="background:#EBF5FF;color:#0A2463;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px">
+      ${d.icone||"👥"} ${d.nome}
+      ${_isAdmin?`<button style="background:none;border:none;cursor:pointer;color:#94A3B8;font-size:12px;padding:0 2px" onclick="delDepto(${d.id},'${d.nome.replace(/'/g,"\'")}')">✕</button>`:""}
+    </span>`).join("")}
+  </div>`;
+}
+
+async function adicionarDepto(){
+  const nome=document.getElementById("novo_depto")?.value.trim();
+  const icone=document.getElementById("novo_depto_icone")?.value.trim()||"👥";
+  if(!nome)return toast("Digite o nome do departamento.","error");
+  const r=await fetch("/api/departamentos",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({nome,icone})});
+  const d=await r.json();
+  if(r.ok&&d.ok){
+    toast("✅ Departamento adicionado!","success");
+    document.getElementById("novo_depto").value="";
+    document.getElementById("novo_depto_icone").value="";
+    carregarVisualizacaoEscala();
+  }else toast(d.erro||"Erro.","error");
+}
+
+async function delDepto(id,nome){
+  if(!confirm(`Remover "${nome}"?`))return;
+  const r=await fetch(`/api/departamentos/${id}`,{method:"DELETE"});
+  const d=await r.json();
+  if(r.ok&&d.ok){toast("Departamento removido.","info");carregarVisualizacaoEscala();}
+  else toast(d.erro||"Erro.","error");
+}
 // ── DASHBOARD GC ──────────────────────────────────────────────
 function copiarLinkRelatorio(){
   const url = window.location.origin + "/relatorio-gc";

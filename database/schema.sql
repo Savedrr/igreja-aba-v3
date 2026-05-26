@@ -168,6 +168,75 @@ CREATE TABLE IF NOT EXISTS relatorios_gc (
     criado_em           TEXT    DEFAULT (datetime('now','localtime'))
 );
 
+
+CREATE TABLE IF NOT EXISTS departamentos (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome      TEXT NOT NULL UNIQUE,
+    icone     TEXT DEFAULT '👥',
+    ordem     INTEGER DEFAULT 0,
+    ativo     INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS escala_itens (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    departamento_id INTEGER REFERENCES departamentos(id) ON DELETE CASCADE,
+    culto_data      TEXT NOT NULL,
+    culto_periodo   TEXT NOT NULL,  -- Manhã | Noite | Tarde
+    responsavel     TEXT DEFAULT '',
+    observacao      TEXT DEFAULT '',
+    criado_em       TEXT DEFAULT (datetime('now','localtime')),
+    atualizado_em   TEXT DEFAULT (datetime('now','localtime'))
+);
+
+-- Departamentos padrão
+INSERT OR IGNORE INTO departamentos (nome,icone,ordem) VALUES
+('Recepção','🤝',1),
+('Estacionamento','🚗',2),
+('Mídia / Stores','📱',3),
+('Som e Iluminação','🎛️',4),
+('Louvor','🎵',5),
+('Abertura','🎤',6),
+('Oração','🙏',7),
+('Ministração','✝️',8),
+('Oferta','💛',9),
+('Encerramento','🏁',10),
+('Kids','👶',11),
+('Pré-Teens','🧒',12),
+('Cantina','☕',13);
+
+
+CREATE TABLE IF NOT EXISTS voluntarios (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome        TEXT    NOT NULL,
+    telefone    TEXT    NOT NULL,
+    departamentos TEXT  DEFAULT '',
+    ativo       INTEGER DEFAULT 1,
+    criado_em   TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS escala_publicacoes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    mes         TEXT    NOT NULL UNIQUE,
+    status      TEXT    DEFAULT 'rascunho',
+    publicado_em TEXT   DEFAULT NULL,
+    publicado_por TEXT  DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS escala_confirmacoes (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    voluntario_id   INTEGER REFERENCES voluntarios(id) ON DELETE CASCADE,
+    voluntario_nome TEXT    DEFAULT '',
+    culto_data      TEXT    NOT NULL,
+    culto_periodo   TEXT    NOT NULL,
+    departamento    TEXT    NOT NULL,
+    status          TEXT    DEFAULT 'pendente',
+    sugestao_troca  TEXT    DEFAULT '',
+    token           TEXT    NOT NULL UNIQUE,
+    notificado_em   TEXT    DEFAULT NULL,
+    respondido_em   TEXT    DEFAULT NULL,
+    criado_em       TEXT    DEFAULT (datetime('now','localtime'))
+);
+
 -- ═══════════════════════════════════════
 -- DADOS INICIAIS
 -- ═══════════════════════════════════════

@@ -362,6 +362,33 @@ def _pg_migrations(conn):
             criado_em         TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
         )""",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS lider TEXT DEFAULT ''",
+        """CREATE TABLE IF NOT EXISTS voluntarios (
+            id SERIAL PRIMARY KEY, nome TEXT NOT NULL, telefone TEXT NOT NULL,
+            departamentos TEXT DEFAULT '', ativo INTEGER DEFAULT 1,
+            criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
+        """CREATE TABLE IF NOT EXISTS escala_publicacoes (
+            id SERIAL PRIMARY KEY, mes TEXT NOT NULL UNIQUE,
+            status TEXT DEFAULT 'rascunho', publicado_em TEXT DEFAULT NULL,
+            publicado_por TEXT DEFAULT '')""",
+        """CREATE TABLE IF NOT EXISTS escala_confirmacoes (
+            id SERIAL PRIMARY KEY,
+            voluntario_id INTEGER REFERENCES voluntarios(id) ON DELETE CASCADE,
+            voluntario_nome TEXT DEFAULT '', culto_data TEXT NOT NULL,
+            culto_periodo TEXT NOT NULL, departamento TEXT NOT NULL,
+            status TEXT DEFAULT 'pendente', sugestao_troca TEXT DEFAULT '',
+            token TEXT NOT NULL UNIQUE, notificado_em TEXT DEFAULT NULL,
+            respondido_em TEXT DEFAULT NULL,
+            criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
+        """CREATE TABLE IF NOT EXISTS departamentos (
+            id SERIAL PRIMARY KEY, nome TEXT NOT NULL UNIQUE,
+            icone TEXT DEFAULT '👥', ordem INTEGER DEFAULT 0, ativo INTEGER DEFAULT 1)""",
+        """CREATE TABLE IF NOT EXISTS escala_itens (
+            id SERIAL PRIMARY KEY,
+            departamento_id INTEGER REFERENCES departamentos(id) ON DELETE CASCADE,
+            culto_data TEXT NOT NULL, culto_periodo TEXT NOT NULL,
+            responsavel TEXT DEFAULT '', observacao TEXT DEFAULT '',
+            criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            atualizado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS telefone_lider TEXT DEFAULT ''",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto Regular'",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_em TEXT DEFAULT NULL",
@@ -378,6 +405,33 @@ def _pg_migrations(conn):
         "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS lat REAL DEFAULT NULL",
         "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS lng REAL DEFAULT NULL",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS lider TEXT DEFAULT ''",
+        """CREATE TABLE IF NOT EXISTS voluntarios (
+            id SERIAL PRIMARY KEY, nome TEXT NOT NULL, telefone TEXT NOT NULL,
+            departamentos TEXT DEFAULT '', ativo INTEGER DEFAULT 1,
+            criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
+        """CREATE TABLE IF NOT EXISTS escala_publicacoes (
+            id SERIAL PRIMARY KEY, mes TEXT NOT NULL UNIQUE,
+            status TEXT DEFAULT 'rascunho', publicado_em TEXT DEFAULT NULL,
+            publicado_por TEXT DEFAULT '')""",
+        """CREATE TABLE IF NOT EXISTS escala_confirmacoes (
+            id SERIAL PRIMARY KEY,
+            voluntario_id INTEGER REFERENCES voluntarios(id) ON DELETE CASCADE,
+            voluntario_nome TEXT DEFAULT '', culto_data TEXT NOT NULL,
+            culto_periodo TEXT NOT NULL, departamento TEXT NOT NULL,
+            status TEXT DEFAULT 'pendente', sugestao_troca TEXT DEFAULT '',
+            token TEXT NOT NULL UNIQUE, notificado_em TEXT DEFAULT NULL,
+            respondido_em TEXT DEFAULT NULL,
+            criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
+        """CREATE TABLE IF NOT EXISTS departamentos (
+            id SERIAL PRIMARY KEY, nome TEXT NOT NULL UNIQUE,
+            icone TEXT DEFAULT '👥', ordem INTEGER DEFAULT 0, ativo INTEGER DEFAULT 1)""",
+        """CREATE TABLE IF NOT EXISTS escala_itens (
+            id SERIAL PRIMARY KEY,
+            departamento_id INTEGER REFERENCES departamentos(id) ON DELETE CASCADE,
+            culto_data TEXT NOT NULL, culto_periodo TEXT NOT NULL,
+            responsavel TEXT DEFAULT '', observacao TEXT DEFAULT '',
+            criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            atualizado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS telefone_lider TEXT DEFAULT ''",
         "ALTER TABLE estoque ADD COLUMN IF NOT EXISTS atualizado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')",
     ]
@@ -476,6 +530,15 @@ def _init_pg():
                     "UPDATE grupos_crescimento SET lat=%s, lng=%s WHERE nome=%s",
                     (lat, lng, nome)
                 )
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+
+        # Seed departamentos
+        _departs = [('Recepção', '🤝', 1), ('Estacionamento', '🚗', 2), ('Mídia / Stores', '📱', 3), ('Som e Iluminação', '🎛️', 4), ('Louvor', '🎵', 5), ('Abertura', '🎤', 6), ('Oração', '🙏', 7), ('Ministração', '✝️', 8), ('Oferta', '💛', 9), ('Encerramento', '🏁', 10), ('Kids', '👶', 11), ('Pré-Teens', '🧒', 12), ('Cantina', '☕', 13)]
+        for dep in _departs:
+            try:
+                cur.execute("INSERT INTO departamentos(nome,icone,ordem) VALUES(%s,%s,%s) ON CONFLICT(nome) DO NOTHING", dep)
                 conn.commit()
             except Exception as e:
                 conn.rollback()
@@ -656,6 +719,15 @@ def can_edit():
 def is_admin():
     return session.get("usuario_cargo") == "admin"
 
+def get_depto_usuario():
+    """Retorna departamento_id do usuário logado. None = acesso total (admin/lider)"""
+    cargo = session.get("usuario_cargo","")
+    if cargo == "lider_depto":
+        return session.get("usuario_departamento_id")
+    return None  # admin e lider veem tudo
+
+
+
 # ── Erros ─────────────────────────────────────────────────────
 @app.errorhandler(500)
 def e500(e): return jsonify({"erro":"Erro interno","d":str(e)}),500
@@ -666,16 +738,16 @@ def e404(e): return jsonify({"erro":"Não encontrado"}),404
 # PÁGINAS
 # ═══════════════════════════════════════════════════════════════
 @app.route("/")
-def index(): return render_template("index.html")
+def index(): return render_template("login.html")
 
 @app.route("/app")
 def app_main():
     if "usuario_id" not in session: return redirect("/")
-    return render_template("app.html")
+    return render_template("dashboard.html")
 
 @app.route("/formulario")
 def formulario():
-    return render_template("formulario.html", culto_id=request.args.get("culto_id",""))
+    return render_template("visitante_form.html", culto_id=request.args.get("culto_id",""))
 
 @app.route("/static/sw.js")
 def service_worker():
@@ -717,6 +789,13 @@ def login():
         session["usuario_id"]    = u["id"]
         session["usuario_nome"]  = u["nome"]
         session["usuario_cargo"] = u["cargo"]
+        session["usuario_departamento_id"] = u.get("departamento_id") if isinstance(u, dict) else None
+        # Define redirect baseado no cargo
+        redirect_map = {
+            "voluntario_escala": "/minha-escala",
+            "lider_depto":       "/escala",
+        }
+        redirect_url = redirect_map.get(u["cargo"], "/app")
         # Atualiza último acesso
         with get_db() as conn:
             try:
@@ -727,7 +806,7 @@ def login():
                 logger.warning(f"Nao salvou ultimo_acesso: {_e}")
                 try: conn.rollback()
                 except: pass
-        return jsonify({"ok":True,"nome":u["nome"],"cargo":u["cargo"]})
+        return jsonify({"ok":True,"nome":u["nome"],"cargo":u["cargo"],"redirect":redirect_url})
     except Exception as e:
         logger.error(f"Login error: {e}")
         return jsonify({"erro":str(e)}),500
@@ -741,11 +820,34 @@ def logout():
 def me():
     if "usuario_id" not in session:
         return jsonify({"autenticado":False})
+    depto_id = session.get("usuario_departamento_id")
+    depto_nome = ""
+    if depto_id:
+        try:
+            with get_db() as conn:
+                dep = conn.execute(qmark("SELECT nome,icone FROM departamentos WHERE id=?"), (depto_id,)).fetchone()
+                if dep: depto_nome = dep["icone"] + " " + dep["nome"]
+        except: pass
+    # Busca voluntario_id vinculado ao usuário (se for voluntario_escala)
+    vol_id = None
+    if session.get("usuario_cargo") == "voluntario_escala":
+        try:
+            with get_db() as conn:
+                vol = conn.execute(
+                    qmark("SELECT id FROM voluntarios WHERE usuario_id=? AND ativo=1"),
+                    (session["usuario_id"],)
+                ).fetchone()
+                if vol: vol_id = vol["id"]
+        except: pass
+
     return jsonify({
-        "autenticado": True,
-        "id":    session["usuario_id"],
-        "nome":  session["usuario_nome"],
-        "cargo": session["usuario_cargo"]
+        "autenticado":      True,
+        "id":               session["usuario_id"],
+        "nome":             session["usuario_nome"],
+        "cargo":            session["usuario_cargo"],
+        "departamento_id":  depto_id,
+        "departamento_nome":depto_nome,
+        "voluntario_id":    vol_id
     })
 
 # ═══════════════════════════════════════════════════════════════
@@ -756,7 +858,11 @@ def me():
 def listar_usuarios():
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id,nome,email,cargo,ativo,criado_em FROM usuarios ORDER BY nome"
+            """SELECT u.id,u.nome,u.email,u.cargo,u.ativo,u.criado_em,u.departamento_id,
+               COALESCE(d.icone||' '||d.nome,'') as departamento_nome
+               FROM usuarios u
+               LEFT JOIN departamentos d ON d.id=u.departamento_id
+               ORDER BY u.nome"""
         ).fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -779,7 +885,7 @@ def criar_usuario():
         return jsonify({"erro":"Senha deve ter ao menos uma letra maiúscula"}),400
     if not re.search(r'[0-9]', senha):
         return jsonify({"erro":"Senha deve ter ao menos um número"}),400
-    if cargo not in ("voluntario","lider","admin"):
+    if cargo not in ("voluntario","lider","admin","lider_depto","voluntario_escala"):
         return jsonify({"erro":"Cargo inválido"}),400
     try:
         with get_db() as conn:
@@ -1942,6 +2048,569 @@ def tempo_real(sid):
 
 
 
+
+
+# ═══════════════════════════════════════════════════════════════
+# VOLUNTÁRIOS
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/voluntarios", methods=["GET"])
+@login_required
+def listar_voluntarios():
+    depto_filtro = get_depto_usuario()
+    todos = request.args.get("todos","")
+    if todos and not depto_filtro:
+        depto_filtro = None
+    with get_db() as conn:
+        if depto_filtro:
+            rows = [dict(r) for r in conn.execute(
+                qmark("""SELECT v.*, COALESCE(d.icone||' '||d.nome,'') as departamento_nome
+                         FROM voluntarios v LEFT JOIN departamentos d ON d.id=v.departamento_id
+                         WHERE v.ativo=1 AND v.departamento_id=? ORDER BY v.nome"""),
+                (depto_filtro,)
+            ).fetchall()]
+        else:
+            rows = [dict(r) for r in conn.execute(
+                """SELECT v.*, COALESCE(d.icone||' '||d.nome,'') as departamento_nome
+                   FROM voluntarios v LEFT JOIN departamentos d ON d.id=v.departamento_id
+                   WHERE v.ativo=1 ORDER BY d.ordem, v.nome"""
+            ).fetchall()]
+    return jsonify(rows)
+
+
+@app.route("/api/voluntarios/por_departamento/<int:did>", methods=["GET"])
+@login_required
+def voluntarios_por_depto(did):
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(
+            qmark("SELECT id,nome,telefone FROM voluntarios WHERE ativo=1 AND departamento_id=? ORDER BY nome"),
+            (did,)
+        ).fetchall()]
+    return jsonify(rows)
+
+@app.route("/api/voluntarios", methods=["POST"])
+@role_required("admin","lider")
+def criar_voluntario():
+    d = request.get_json(force=True) or {}
+    nome = d.get("nome","").strip()
+    tel  = d.get("telefone","").strip()
+    if not nome or not tel:
+        return jsonify({"erro":"Nome e telefone são obrigatórios"}),400
+    depto_id = d.get("departamento_id") or get_depto_usuario()
+    with get_db() as conn:
+        cur = conn.execute(
+            qmark("INSERT INTO voluntarios(nome,telefone,departamentos,departamento_id) VALUES(?,?,?,?)"),
+            (nome, tel, d.get("departamentos",""), depto_id)
+        )
+        conn.commit()
+    return jsonify({"ok":True,"id":cur.lastrowid})
+
+@app.route("/api/voluntarios/<int:vid>", methods=["PUT"])
+@role_required("admin","lider")
+def editar_voluntario(vid):
+    d = request.get_json(force=True) or {}
+    with get_db() as conn:
+        v = conn.execute(qmark("SELECT * FROM voluntarios WHERE id=?"), (vid,)).fetchone()
+        if not v: return jsonify({"erro":"Não encontrado"}),404
+        conn.execute(
+            qmark("UPDATE voluntarios SET nome=?,telefone=?,departamentos=? WHERE id=?"),
+            (d.get("nome",v["nome"]), d.get("telefone",v["telefone"]),
+             d.get("departamentos",v["departamentos"]), vid)
+        )
+        conn.commit()
+    return jsonify({"ok":True})
+
+@app.route("/api/voluntarios/<int:vid>", methods=["DELETE"])
+@role_required("admin","lider")
+def del_voluntario(vid):
+    with get_db() as conn:
+        conn.execute(qmark("UPDATE voluntarios SET ativo=0 WHERE id=?"), (vid,))
+        conn.commit()
+    return jsonify({"ok":True})
+
+# ═══════════════════════════════════════════════════════════════
+# ESCALA — PUBLICAÇÃO E CONFIRMAÇÕES
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/escala/publicar", methods=["POST"])
+@role_required("admin","lider")
+def publicar_escala():
+    d = request.get_json(force=True) or {}
+    mes = d.get("mes","").strip()
+    if not mes: return jsonify({"erro":"Mês obrigatório"}),400
+    with get_db() as conn:
+        # Registra publicação
+        existe = conn.execute(qmark("SELECT id FROM escala_publicacoes WHERE mes=?"), (mes,)).fetchone()
+        if existe:
+            conn.execute(
+                qmark("UPDATE escala_publicacoes SET status='publicada',publicado_em=?,publicado_por=? WHERE mes=?"),
+                (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), session.get("usuario_nome","?"), mes)
+            )
+        else:
+            conn.execute(
+                qmark("INSERT INTO escala_publicacoes(mes,status,publicado_em,publicado_por) VALUES(?,?,?,?)"),
+                (mes,"publicada", datetime.now().strftime('%Y-%m-%d %H:%M:%S'), session.get("usuario_nome","?"))
+            )
+        conn.commit()
+    return jsonify({"ok":True,"msg":f"Escala de {mes} publicada!"})
+
+@app.route("/api/escala/reabrir", methods=["POST"])
+@role_required("admin","lider")
+def reabrir_escala():
+    d = request.get_json(force=True) or {}
+    mes = d.get("mes","").strip()
+    with get_db() as conn:
+        conn.execute(qmark("UPDATE escala_publicacoes SET status='rascunho' WHERE mes=?"), (mes,))
+        conn.commit()
+    return jsonify({"ok":True,"msg":f"Escala de {mes} reaberta para edição"})
+
+@app.route("/api/escala/status/<mes>", methods=["GET"])
+@login_required
+def status_escala(mes):
+    with get_db() as conn:
+        pub = conn.execute(qmark("SELECT * FROM escala_publicacoes WHERE mes=?"), (mes,)).fetchone()
+    if not pub:
+        return jsonify({"status":"rascunho","publicado_em":None,"publicado_por":""})
+    return jsonify(dict(pub))
+
+@app.route("/api/escala/notificar", methods=["POST"])
+@role_required("admin","lider")
+def notificar_voluntarios():
+    """Gera links WhatsApp para notificar cada voluntário escalado no mês"""
+    d = request.get_json(force=True) or {}
+    mes = d.get("mes","").strip()
+    if not mes: return jsonify({"erro":"Mês obrigatório"}),400
+
+    with get_db() as conn:
+        # Busca todos os itens do mês com responsável preenchido
+        itens = [dict(r) for r in conn.execute(qmark(
+            """SELECT e.responsavel, e.culto_data, e.culto_periodo, d.nome as depto
+               FROM escala_itens e
+               JOIN departamentos d ON d.id=e.departamento_id
+               WHERE e.culto_data LIKE ? AND e.responsavel!=''
+               ORDER BY e.culto_data, d.ordem"""
+        ), (f"{mes}%",)).fetchall()]
+        # Busca voluntários para cruzar com telefone
+        voluntarios = {v["nome"].lower().strip(): dict(v) for v in
+                      conn.execute("SELECT * FROM voluntarios WHERE ativo=1").fetchall()}
+
+    if not itens:
+        return jsonify({"erro":"Nenhum item preenchido na escala deste mês"}),400
+
+    # Agrupa por responsável
+    por_pessoa = {}
+    for item in itens:
+        nome = item["responsavel"].strip()
+        if nome not in por_pessoa:
+            por_pessoa[nome] = []
+        por_pessoa[nome].append(item)
+
+    base = get_base()
+    notificacoes = []
+
+    for nome, escalas in por_pessoa.items():
+        # Monta mensagem
+        linhas = [f"Ola {nome}!", "", "Voce esta na escala da Igreja ABA:", ""]
+        for e in escalas:
+            data_br = br(e["culto_data"])
+            linhas.append(f"- {data_br} ({e['culto_periodo']}): {e['depto']}")
+
+        # Busca voluntário para token de confirmação
+        vol = voluntarios.get(nome.lower())
+        token = None
+        if vol:
+            token = secrets.token_urlsafe(16)
+            try:
+                with get_db() as conn:
+                    # Gera confirmação para cada item
+                    for e in escalas:
+                        tk = secrets.token_urlsafe(16)
+                        conn.execute(
+                            qmark("""INSERT INTO escala_confirmacoes
+                                (voluntario_id,voluntario_nome,culto_data,culto_periodo,departamento,token)
+                                VALUES(?,?,?,?,?,?)
+                                ON CONFLICT(token) DO NOTHING"""),
+                            (vol["id"],nome,e["culto_data"],e["culto_periodo"],e["depto"],tk)
+                        )
+                    conn.commit()
+                # Token geral para ver tudo de uma vez
+                token_geral = secrets.token_urlsafe(20)
+                linhas.append("")
+                linhas.append(f"Para confirmar ou solicitar troca:")
+                linhas.append(f"{base}/confirmar/{token_geral}?nome={urllib.parse.quote(nome)}&mes={mes}")
+            except Exception as e:
+                logger.warning(f"Erro gerando token: {e}")
+        else:
+            linhas.append("")
+            linhas.append("Qualquer duvida fale com o coordenador.")
+
+        linhas += ["","Deus abencoe!","Igreja ABA"]
+        msg = "\n".join(linhas)
+
+        # Monta link WhatsApp
+        tel = ""
+        if vol:
+            tel = re.sub(r"\D","",vol["telefone"])
+            if not tel.startswith("55"): tel = "55" + tel
+        wa_link = f"https://wa.me/{tel}?text={urllib.parse.quote(msg)}" if tel else None
+
+        notificacoes.append({
+            "nome": nome,
+            "telefone": vol["telefone"] if vol else None,
+            "tem_telefone": bool(vol),
+            "qtd_escalas": len(escalas),
+            "wa_link": wa_link,
+            "msg_preview": "\n".join(linhas[:6]) + "..."
+        })
+
+    return jsonify({"ok":True,"notificacoes":notificacoes,"total":len(notificacoes)})
+
+@app.route("/confirmar/<token>")
+def pagina_confirmacao(token):
+    nome = request.args.get("nome","")
+    mes  = request.args.get("mes","")
+    return render_template("escala_confirmacao.html", token=token, nome=nome, mes=mes)
+
+@app.route("/api/escala/confirmacoes/<token>", methods=["GET"])
+def ver_confirmacoes(token):
+    """Rota pública — voluntário vê seus compromissos"""
+    nome = request.args.get("nome","")
+    mes  = request.args.get("mes","")
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(
+            qmark("SELECT * FROM escala_confirmacoes WHERE voluntario_nome=? ORDER BY culto_data"),
+            (nome,)
+        ).fetchall()]
+    for r in rows:
+        r["data_br"] = br(r["culto_data"])
+    return jsonify({"nome":nome,"mes":mes,"escalas":rows})
+
+@app.route("/api/escala/responder/<int:cid>", methods=["POST"])
+def responder_confirmacao(cid):
+    """Voluntário aceita ou recusa"""
+    d = request.get_json(force=True) or {}
+    status = d.get("status","")
+    sugestao = d.get("sugestao_troca","").strip()
+    if status not in ("confirmado","recusado"):
+        return jsonify({"erro":"Status inválido"}),400
+    with get_db() as conn:
+        conn.execute(
+            qmark("UPDATE escala_confirmacoes SET status=?,sugestao_troca=?,respondido_em=? WHERE id=?"),
+            (status, sugestao, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), cid)
+        )
+        conn.commit()
+    return jsonify({"ok":True})
+
+@app.route("/api/escala/confirmacoes_admin", methods=["GET"])
+@role_required("admin","lider")
+def ver_confirmacoes_admin():
+    mes = request.args.get("mes","")
+    with get_db() as conn:
+        sql = """SELECT c.*, v.telefone FROM escala_confirmacoes c
+                 LEFT JOIN voluntarios v ON v.id=c.voluntario_id
+                 WHERE 1=1"""
+        p = []
+        if mes:
+            sql += " AND c.culto_data LIKE ?".replace("?","%s" if USE_PG else "?")
+            p.append(f"{mes}%")
+        sql += " ORDER BY c.culto_data, c.status"
+        rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+    for r in rows:
+        r["data_br"] = br(r["culto_data"])
+    return jsonify(rows)
+
+
+@app.route("/api/escala/minha", methods=["GET"])
+@login_required
+def minha_escala():
+    """Retorna a escala do voluntário logado — todos os deptos onde está"""
+    mes = request.args.get("mes", datetime.now().strftime("%Y-%m"))
+    uid = session["usuario_id"]
+    with get_db() as conn:
+        # Busca o voluntário pelo usuario_id
+        vol = conn.execute(
+            qmark("SELECT id,nome FROM voluntarios WHERE usuario_id=? AND ativo=1"), (uid,)
+        ).fetchone()
+        if not vol:
+            return jsonify({"erro":"Voluntário não encontrado","itens":[]})
+        vol_nome = vol["nome"]
+        # Busca escala pelo nome do voluntário no mês
+        if USE_PG:
+            sql = """SELECT e.*, d.nome as depto_nome, d.icone as depto_icone
+                     FROM escala_itens e
+                     JOIN departamentos d ON d.id=e.departamento_id
+                     WHERE e.responsavel=%s
+                     AND to_char(e.culto_data::date,'YYYY-MM')=%s
+                     ORDER BY e.culto_data"""
+        else:
+            sql = """SELECT e.*, d.nome as depto_nome, d.icone as depto_icone
+                     FROM escala_itens e
+                     JOIN departamentos d ON d.id=e.departamento_id
+                     WHERE e.responsavel=?
+                     AND strftime('%Y-%m',e.culto_data)=?
+                     ORDER BY e.culto_data"""
+        rows = [dict(r) for r in conn.execute(qmark(sql),(vol_nome,mes)).fetchall()]
+        # Busca confirmações do voluntário
+        confs = {}
+        try:
+            for c in conn.execute(
+                qmark("SELECT culto_data,culto_periodo,departamento,status FROM escala_confirmacoes WHERE voluntario_id=?"),
+                (vol["id"],)
+            ).fetchall():
+                key = f"{c['culto_data']}_{c['culto_periodo']}_{c['departamento']}"
+                confs[key] = c["status"]
+        except: pass
+    for r in rows:
+        r["data_br"] = br(r["culto_data"])
+        key = f"{r['culto_data']}_{r['culto_periodo']}_{r['depto_nome']}"
+        r["status_confirmacao"] = confs.get(key,"pendente")
+    return jsonify({"nome":vol_nome,"mes":mes,"itens":rows})
+
+@app.route("/api/escala/verificar_conflito", methods=["POST"])
+@login_required
+def verificar_conflito():
+    """Verifica se um voluntário já está escalado em outro depto no mesmo dia"""
+    d = request.get_json(force=True) or {}
+    nome       = d.get("nome","").strip()
+    data       = d.get("culto_data","").strip()
+    periodo    = d.get("culto_periodo","").strip()
+    depto_id   = d.get("departamento_id")
+    if not nome or not data: return jsonify({"conflito":False})
+
+    with get_db() as conn:
+        if USE_PG:
+            sql = """SELECT e.responsavel, d.nome as depto_nome
+                     FROM escala_itens e
+                     JOIN departamentos d ON d.id=e.departamento_id
+                     WHERE e.responsavel=%s AND e.culto_data=%s
+                     AND e.culto_periodo=%s AND e.departamento_id!=%s"""
+        else:
+            sql = """SELECT e.responsavel, d.nome as depto_nome
+                     FROM escala_itens e
+                     JOIN departamentos d ON d.id=e.departamento_id
+                     WHERE e.responsavel=? AND e.culto_data=?
+                     AND e.culto_periodo=? AND e.departamento_id!=?"""
+        conflitos = [dict(r) for r in conn.execute(
+            qmark(sql), (nome, data, periodo, depto_id or 0)
+        ).fetchall()]
+    if conflitos:
+        deptos = ", ".join(set(c["depto_nome"] for c in conflitos))
+        return jsonify({
+            "conflito": True,
+            "mensagem": f"{nome} já está escalado em: {deptos} neste dia"
+        })
+    return jsonify({"conflito":False})
+
+@app.route("/api/voluntarios/<int:vid>/vincular_usuario", methods=["POST"])
+@role_required("admin")
+def vincular_usuario_voluntario(vid):
+    """Vincula um usuário a um voluntário para acesso à escala pessoal"""
+    d = request.get_json(force=True) or {}
+    uid = d.get("usuario_id")
+    if not uid: return jsonify({"erro":"usuario_id obrigatório"}),400
+    with get_db() as conn:
+        conn.execute(qmark("UPDATE voluntarios SET usuario_id=? WHERE id=?"), (uid, vid))
+        conn.commit()
+    return jsonify({"ok":True})
+
+# ═══════════════════════════════════════════════════════════════
+# ESCALAS
+# ═══════════════════════════════════════════════════════════════
+
+
+@app.route("/minha-escala")
+def pagina_minha_escala():
+    return render_template("minha_escala.html")
+
+@app.route("/escala")
+def pagina_escala():
+    """Página pública de preenchimento de escala (para coordenadores)"""
+    return render_template("escala_editor.html")
+
+@app.route("/api/departamentos", methods=["GET"])
+@login_required
+def listar_departamentos():
+    depto_filtro = get_depto_usuario()
+    todos = request.args.get("todos","")  # admin pode pedir todos para cadastrar usuário
+    if todos and is_admin():
+        depto_filtro = None
+    with get_db() as conn:
+        if depto_filtro:
+            rows = conn.execute(
+                qmark("SELECT * FROM departamentos WHERE ativo=1 AND id=? ORDER BY ordem,nome"),
+                (depto_filtro,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM departamentos WHERE ativo=1 ORDER BY ordem,nome").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/api/departamentos", methods=["POST"])
+@role_required("admin","lider")
+def criar_departamento():
+    d = request.get_json(force=True) or {}
+    nome = d.get("nome","").strip()
+    if not nome: return jsonify({"erro":"Nome obrigatório"}),400
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                qmark("INSERT INTO departamentos(nome,icone,ordem) VALUES(?,?,?)"),
+                (nome, d.get("icone","👥"), int(d.get("ordem",99)))
+            )
+            conn.commit()
+        return jsonify({"ok":True,"id":cur.lastrowid})
+    except Exception as e:
+        return jsonify({"erro":"Departamento já existe" if "UNIQUE" in str(e) else str(e)}),400
+
+@app.route("/api/departamentos/<int:did>", methods=["DELETE"])
+@role_required("admin")
+def del_departamento(did):
+    with get_db() as conn:
+        conn.execute(qmark("UPDATE departamentos SET ativo=0 WHERE id=?"), (did,))
+        conn.commit()
+    return jsonify({"ok":True})
+
+# ── Itens da escala ──────────────────────────────────────────
+@app.route("/api/escala", methods=["GET"])
+@login_required
+def listar_escala():
+    mes  = request.args.get("mes","")   # YYYY-MM
+    per  = request.args.get("periodo","")
+    sql  = """SELECT e.*, d.nome as depto_nome, d.icone as depto_icone, d.ordem as depto_ordem
+              FROM escala_itens e
+              JOIN departamentos d ON d.id=e.departamento_id
+              WHERE 1=1"""
+    p = []
+    if mes:
+        if USE_PG:
+            sql += " AND to_char(e.culto_data::date,'YYYY-MM')=%s"; p.append(mes)
+        else:
+            sql += " AND strftime('%Y-%m',e.culto_data)=?"; p.append(mes)
+    if per:
+        sql += " AND e.culto_periodo=?".replace("?","%s" if USE_PG else "?"); p.append(per)
+    sql += " ORDER BY e.culto_data, d.ordem, d.nome"
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+    for r in rows:
+        r["data_br"] = br(r["culto_data"]) if r.get("culto_data") else ""
+    return jsonify(rows)
+
+@app.route("/api/escala/publica", methods=["GET"])
+def escala_publica():
+    """Rota pública — sem login — para coordenadores preencherem"""
+    mes = request.args.get("mes","")
+    per = request.args.get("periodo","")
+    sql = """SELECT e.*, d.nome as depto_nome, d.icone as depto_icone, d.ordem as depto_ordem
+             FROM escala_itens e
+             JOIN departamentos d ON d.id=e.departamento_id
+             WHERE 1=1"""
+    p = []
+    if mes:
+        if USE_PG:
+            sql += " AND to_char(e.culto_data::date,'YYYY-MM')=%s"; p.append(mes)
+        else:
+            sql += " AND strftime('%Y-%m',e.culto_data)=?"; p.append(mes)
+    if per:
+        sql += (" AND e.culto_periodo=%s" if USE_PG else " AND e.culto_periodo=?"); p.append(per)
+    sql += " ORDER BY e.culto_data, d.ordem"
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+        deptos = [dict(r) for r in conn.execute("SELECT * FROM departamentos WHERE ativo=1 ORDER BY ordem").fetchall()]
+    for r in rows: r["data_br"] = br(r["culto_data"]) if r.get("culto_data") else ""
+    return jsonify({"itens": rows, "departamentos": deptos})
+
+@app.route("/api/escala", methods=["POST"])
+@login_required
+def salvar_escala_item():
+    d = request.get_json(force=True) or {}
+    did  = d.get("departamento_id")
+    # Lider de departamento só pode salvar no próprio departamento
+    depto_filtro = get_depto_usuario()
+    if depto_filtro and str(did) != str(depto_filtro):
+        return jsonify({"erro":"Sem permissão para editar este departamento"}),403
+    data = d.get("culto_data","").strip()
+    per  = d.get("culto_periodo","").strip()
+    resp = d.get("responsavel","").strip()
+    if not did or not data or not per:
+        return jsonify({"erro":"departamento_id, culto_data e culto_periodo são obrigatórios"}),400
+    with get_db() as conn:
+        # Upsert: atualiza se já existe, insere se não
+        existe = conn.execute(
+            qmark("SELECT id FROM escala_itens WHERE departamento_id=? AND culto_data=? AND culto_periodo=?"),
+            (did, data, per)
+        ).fetchone()
+        if existe:
+            conn.execute(
+                qmark("UPDATE escala_itens SET responsavel=?,observacao=?,atualizado_em=? WHERE id=?"),
+                (resp, d.get("observacao",""), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), existe["id"])
+            )
+        else:
+            conn.execute(
+                qmark("INSERT INTO escala_itens(departamento_id,culto_data,culto_periodo,responsavel,observacao) VALUES(?,?,?,?,?)"),
+                (did, data, per, resp, d.get("observacao",""))
+            )
+        conn.commit()
+    return jsonify({"ok":True})
+
+@app.route("/api/escala/lote", methods=["POST"])
+@login_required
+def salvar_escala_lote():
+    """Salva múltiplos itens de uma vez"""
+    itens = request.get_json(force=True) or []
+    if not isinstance(itens, list): return jsonify({"erro":"Lista esperada"}),400
+    depto_filtro = get_depto_usuario()
+    salvos = 0
+    with get_db() as conn:
+        for d in itens:
+            # Lider_depto só salva no próprio departamento
+            if depto_filtro and str(d.get("departamento_id")) != str(depto_filtro):
+                continue
+            did  = d.get("departamento_id")
+            data = d.get("culto_data","").strip()
+            per  = d.get("culto_periodo","").strip()
+            resp = d.get("responsavel","").strip()
+            if not did or not data or not per: continue
+            existe = conn.execute(
+                qmark("SELECT id FROM escala_itens WHERE departamento_id=? AND culto_data=? AND culto_periodo=?"),
+                (did,data,per)
+            ).fetchone()
+            if existe:
+                conn.execute(
+                    qmark("UPDATE escala_itens SET responsavel=?,observacao=?,atualizado_em=? WHERE id=?"),
+                    (resp, d.get("observacao",""), datetime.now().strftime('%Y-%m-%d %H:%M:%S'), existe["id"])
+                )
+            else:
+                conn.execute(
+                    qmark("INSERT INTO escala_itens(departamento_id,culto_data,culto_periodo,responsavel,observacao) VALUES(?,?,?,?,?)"),
+                    (did,data,per,resp,d.get("observacao",""))
+                )
+            salvos += 1
+        conn.commit()
+    return jsonify({"ok":True,"salvos":salvos})
+
+@app.route("/api/escala/datas", methods=["GET"])
+@login_required
+def datas_culto_escala():
+    """Retorna datas de cultos de um mês para montar a escala"""
+    mes = request.args.get("mes", datetime.now().strftime("%Y-%m"))
+    # Gera todos os domingos e quartas do mês
+    from calendar import monthrange
+    ano, m = int(mes.split("-")[0]), int(mes.split("-")[1])
+    _, dias = monthrange(ano, m)
+    datas = []
+    for dia in range(1, dias+1):
+        from datetime import date as dt
+        d = dt(ano, m, dia)
+        # Domingo=6, Quarta=2
+        if d.weekday() in (6, 2):
+            periodo = "Manhã" if d.weekday() == 6 else "Noite"
+            datas.append({
+                "data": d.isoformat(),
+                "data_br": d.strftime("%d/%m"),
+                "dia_semana": DIAS[d.weekday()],
+                "periodo": periodo
+            })
+    return jsonify(datas)
+
 # ═══════════════════════════════════════════════════════════════
 # RELATÓRIOS DE GC
 # ═══════════════════════════════════════════════════════════════
@@ -1949,7 +2618,7 @@ def tempo_real(sid):
 @app.route("/relatorio-gc")
 def pagina_relatorio_gc():
     """Página de login exclusiva para líderes de GC"""
-    return render_template("relatorio_gc.html")
+    return render_template("gc_relatorio_form.html")
 
 @app.route("/api/relatorios_gc", methods=["POST"])
 def criar_relatorio_gc():
