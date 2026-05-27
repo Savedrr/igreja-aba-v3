@@ -2059,7 +2059,8 @@ def tempo_real(sid):
 def listar_voluntarios():
     depto_filtro = get_depto_usuario()
     todos = request.args.get("todos","")
-    if todos and not depto_filtro:
+    cargo = session.get("usuario_cargo","")
+    if cargo in ("admin","lider") or todos:
         depto_filtro = None
     with get_db() as conn:
         if depto_filtro:
@@ -2446,8 +2447,10 @@ def pagina_escala():
 @login_required
 def listar_departamentos():
     depto_filtro = get_depto_usuario()
-    todos = request.args.get("todos","")  # admin pode pedir todos para cadastrar usuário
-    if todos and is_admin():
+    todos = request.args.get("todos","")
+    # Admin e lider sempre veem todos os departamentos
+    cargo = session.get("usuario_cargo","")
+    if cargo in ("admin","lider") or todos:
         depto_filtro = None
     with get_db() as conn:
         if depto_filtro:

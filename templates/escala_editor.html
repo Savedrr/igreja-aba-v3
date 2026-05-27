@@ -138,7 +138,8 @@ async function init(){
 }
 
 async function carregarDeptos(){
-  const r = await fetch("/api/departamentos");
+  // Admin e lider passam ?todos=1 para ver todos os departamentos
+  const r = await fetch("/api/departamentos?todos=1");
   _deptos = await r.json();
 
   // Carrega voluntários de cada departamento

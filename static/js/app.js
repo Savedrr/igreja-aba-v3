@@ -70,8 +70,8 @@ async function logout(){await fetch("/api/logout",{method:"POST"});window.locati
 
 // ── TABS ──────────────────────────────────────────────────────
 const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:"Visitantes",
-  gc:"Conecta GC",estoque:"Estoque",ia:"IA Contagem",relatorios:"Relatórios",
-  resumo:"Resumo Geral",escalas:"Escalas",dash_gc:"Dashboard GC",dashboard:"Dashboard",usuarios:"Usuários",logs:"Logs do Sistema"};
+  gc:"Conecta GC",estoque:"Estoque",relatorios:"Relatórios",
+  resumo:"Resumo Geral",escalas:"Escalas",dashboard:"Dashboard",usuarios:"Usuários",logs:"Logs do Sistema"};
 
 function ativarTab(tab){
   document.querySelectorAll(".tab-content").forEach(t=>t.classList.remove("active"));
@@ -80,7 +80,7 @@ function ativarTab(tab){
   document.querySelector(`[data-tab="${tab}"]`)?.classList.add("active");
   document.getElementById("topbarTitle").textContent=TAB_TITLES[tab]||tab;
   if(tab==="resumo")carregarResumo();
-  if(tab==="dash_gc")carregarDashGC();
+  // dash_gc integrado ao resumo
   if(tab==="escalas"){const hoje=new Date();document.getElementById("escala_mes").value=hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");carregarVisualizacaoEscala();carregarVoluntarios();}
   if(tab==="visitantes"){carregarVisitantes();popularSelectVisitantes();}
   if(tab==="usuarios"&&_isAdmin)carregarUsuarios();
@@ -884,6 +884,70 @@ function exportarPDF(){
 
 // ── RESUMO ────────────────────────────────────────────────────
 async function carregarResumo(){
+  // Carrega dados do GC junto com o resumo
+  try{
+    const rg = await fetch("/api/relatorios_gc/dashboard");
+    const dg = await rg.json();
+    if(rg.ok){
+      const t = dg.totais||{};
+      const el = (id,v)=>{ const e=document.getElementById(id); if(e)e.textContent=v||0; };
+      el("dg_relatorios",    t.total_relatorios);
+      el("dg_membros",       t.total_membros);
+      el("dg_visitantes_gc", t.total_visitantes);
+      el("dg_lideres",       t.total_lideres_trein);
+
+      // Por GC
+      const porGC = document.getElementById("dash_gc_por_gc_resumo");
+      if(porGC && dg.por_gc && dg.por_gc.length){
+        const maxMem = Math.max(...dg.por_gc.map(g=>g.total_membros),1);
+        porGC.innerHTML = dg.por_gc.map(g=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #EEF2F9">
+            <div style="min-width:150px;font-weight:700;font-size:12px;color:#0A2463">${g.gc_nome}</div>
+            <div style="flex:1;background:#EEF2F9;border-radius:6px;height:8px;overflow:hidden">
+              <div style="height:100%;width:${Math.round(g.total_membros/maxMem*100)}%;background:linear-gradient(90deg,#1B4FA8,#56B4D3);border-radius:6px"></div>
+            </div>
+            <div style="text-align:right;min-width:90px;font-size:12px">
+              <strong style="color:#0A2463">${g.total_membros}</strong> mem.
+              <span style="color:#059669"> · ${g.total_visitantes}</span> vis.
+            </div>
+            <div style="font-size:10px;color:#8ca0c0;min-width:50px;text-align:right">${g.total_reunioes}x</div>
+          </div>`).join("");
+      }else if(porGC){
+        porGC.innerHTML = '<p style="color:#8ca0c0;font-size:13px;padding:8px 0">Nenhum relatório de GC enviado ainda. <a href="/relatorio-gc" target="_blank" style="color:#1B4FA8">Abrir formulário</a></p>';
+      }
+    }
+  }catch(e){ console.warn("Erro GC resumo:",e); }
+
+  // Confirmações de escala recentes
+  try{
+    const mes = new Date().toISOString().slice(0,7);
+    const rc = await fetch(`/api/escala/confirmacoes_admin?mes=${mes}`);
+    const lc = await rc.json();
+    const confEl = document.getElementById("resumo_confirmacoes");
+    if(confEl){
+      if(!lc.length){
+        confEl.innerHTML = '<p style="color:#8ca0c0;font-size:13px;padding:8px 0">Nenhuma confirmação de escala este mês.</p>';
+      }else{
+        const conf = lc.filter(c=>c.status==="confirmado").length;
+        const rec  = lc.filter(c=>c.status==="recusado").length;
+        const pend = lc.filter(c=>c.status==="pendente").length;
+        confEl.innerHTML = `
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">✅ ${conf} confirmados</span>
+            <span style="background:#FEE2E2;color:#991B1B;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">🔄 ${rec} trocas</span>
+            <span style="background:#FEF3C7;color:#92400E;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">⏳ ${pend} pendentes</span>
+          </div>
+          ${lc.filter(c=>c.status==="recusado").map(c=>`
+          <div style="padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12px">
+            <strong style="color:#991B1B">🔄 Troca solicitada:</strong> ${c.voluntario_nome}
+            — ${c.data_br} · ${c.culto_periodo} · ${c.departamento}
+            ${c.sugestao_troca?`<div style="color:#64748B;font-style:italic;font-size:11px;margin-top:2px">↪ ${c.sugestao_troca}</div>`:""}
+          </div>`).join("")}`;
+      }
+    }
+  }catch(e){ console.warn("Erro confirmações:",e); }
+
+
   const r=await fetch("/api/resumo"); const d=await r.json(); const g=d.geral;
   ["st_cultos","st_presentes","st_visitantes","st_criancas","st_media_presentes","st_media_visitantes","st_media_criancas"]
     .forEach((id,i)=>{const keys=["total_cultos","total_presentes","total_visitantes","total_criancas","media_presentes","media_visitantes","media_criancas"];const el=document.getElementById(id);if(el)el.textContent=g[keys[i]]||0;});
