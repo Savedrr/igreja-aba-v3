@@ -62,9 +62,7 @@
     <li><a class="nav-item" data-tab="dashboard">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       Dashboard</a></li>
-    <li><a class="nav-item" data-tab="relatorios">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-      Relatórios</a></li>
+    
     <li><a class="nav-item" data-tab="escalas">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="14"/><line x1="12" y1="14" x2="12" y2="14"/><line x1="16" y1="14" x2="16" y2="14"/></svg>
       Escalas</a></li>
@@ -571,139 +569,7 @@
   </div>
 
   <!-- ═══ DASHBOARD GC ════════════════════════════════════════ -->
-  <div class="tab-content" id="tab-dash_gc">
-    <div class="page-header">
-      <div><h1 class="page-title">Dashboard GC</h1><p class="page-sub">Relatórios semanais dos Grupos de Crescimento</p></div>
-      <div class="page-header-right">
-        <a href="/relatorio-gc" target="_blank"><button class="btn-secondary">📋 Abrir Formulário</button></a>
-        <button class="btn-outline" onclick="carregarDashGC()">🔄 Atualizar</button>
-      </div>
-    </div>
-    <div class="info-box" style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span style="font-size:13px">🔗 Link para líderes:</span>
-      <strong id="linkRelatorioGC" style="color:#0A2463;font-size:13px;word-break:break-all"></strong>
-      <button class="btn-sm blue" onclick="copiarLinkRelatorio()">📋 Copiar</button>
-    </div>
-    <div class="stats-grid" style="margin-bottom:18px">
-      <div class="stat-card blue"><div class="stat-icon">📋</div><div class="stat-value" id="dg_relatorios">0</div><div class="stat-label">Relatórios</div></div>
-      <div class="stat-card green"><div class="stat-icon">👥</div><div class="stat-value" id="dg_membros">0</div><div class="stat-label">Total Membros</div></div>
-      <div class="stat-card"><div class="stat-icon">🙋</div><div class="stat-value" id="dg_visitantes">0</div><div class="stat-label">Visitantes</div></div>
-      <div class="stat-card purple"><div class="stat-icon">🌱</div><div class="stat-value" id="dg_lideres">0</div><div class="stat-label">Em Treinamento</div></div>
-    </div>
-    <div class="form-card" style="margin-bottom:16px">
-      <div class="form-section">
-        <div class="section-title">📊 Por GC</div>
-        <div id="dash_gc_por_gc"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg><p>Nenhum relatório ainda.<br>Compartilhe o link com os líderes.</p></div></div>
-      </div>
-    </div>
-    <div class="form-card">
-      <div class="form-section">
-        <div class="section-title">📅 Últimos Relatórios</div>
-        <div id="dash_gc_ultimos"><div class="loading-msg">Carregando...</div></div>
-      </div>
-    </div>
-  </div>
 
-  <!-- ═══ RESUMO GERAL ═════════════════════════════════════ -->
-        <div class="page-header-right">
-        <button class="btn-outline" onclick="carregarResumo()">🔄 Atualizar</button>
-        <button class="btn-secondary" onclick="exportarExcel()">📊 Excel</button>
-        <button class="btn-pdf" onclick="exportarPDF()">📄 PDF</button>
-      </div>
-    </div>
-
-    <!-- FILTRO DE ANO -->
-    <div class="form-card" style="margin-bottom:14px;padding:12px 16px">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <label style="font-size:12px;font-weight:600;color:#4A6080">Ano:</label>
-        <select class="field-input" id="resumo_ano" onchange="carregarResumo()" style="max-width:120px">
-        </select>
-        <label style="font-size:12px;font-weight:600;color:#4A6080">Período:</label>
-        <select class="field-input" id="resumo_periodo" onchange="carregarResumo()" style="max-width:120px">
-          <option value="">Todos</option>
-          <option value="Manhã">Manhã</option>
-          <option value="Noite">Noite</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- STATS CULTOS -->
-    <div class="section-label" style="padding:0 0 8px">CULTOS</div>
-    <div class="stats-grid" style="margin-bottom:18px">
-      <div class="stat-card blue"><div class="stat-icon">🏛️</div><div class="stat-value" id="st_cultos">—</div><div class="stat-label">Total Cultos</div></div>
-      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" id="st_presentes">—</div><div class="stat-label">Total Presentes</div></div>
-      <div class="stat-card"><div class="stat-icon">🙋</div><div class="stat-value" id="st_visitantes">—</div><div class="stat-label">Total Visitantes</div></div>
-      <div class="stat-card"><div class="stat-icon">🧒</div><div class="stat-value" id="st_criancas">—</div><div class="stat-label">Total Crianças</div></div>
-      <div class="stat-card accent"><div class="stat-icon">📊</div><div class="stat-value" id="st_media_presentes">—</div><div class="stat-label">Média Pres./Culto</div></div>
-      <div class="stat-card accent"><div class="stat-icon">📈</div><div class="stat-value" id="st_media_visitantes">—</div><div class="stat-label">Média Visit./Culto</div></div>
-      <div class="stat-card accent"><div class="stat-icon">👶</div><div class="stat-value" id="st_media_criancas">—</div><div class="stat-label">Média Crian./Culto</div></div>
-    </div>
-
-    <!-- GRÁFICO EVOLUÇÃO MENSAL -->
-    <div class="form-card" style="margin-bottom:16px">
-      <div class="form-section">
-        <div class="section-title">📈 Evolução Mensal de Presença</div>
-        <div id="grafico_mensal" style="overflow-x:auto;padding-bottom:4px">
-          <div class="loading-msg">Carregando gráfico...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- POR PERÍODO E ÚLTIMOS CULTOS -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px" class="grid-responsive">
-      <div class="form-card">
-        <div class="form-section">
-          <div class="section-title">Por Período</div>
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead><tr><th>Período</th><th>Cultos</th><th>Presentes</th><th>Média</th></tr></thead>
-              <tbody id="bodyPeriodo"><tr><td colspan="4" class="loading-msg">...</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-      <div class="form-card">
-        <div class="form-section">
-          <div class="section-title">Últimos Cultos</div>
-          <div id="ultimosCultos" class="loading-msg">Carregando...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- STATS GC -->
-    <div class="section-label" style="padding:8px 0">GRUPOS DE CRESCIMENTO</div>
-    <div class="stats-grid" style="margin-bottom:14px">
-      <div class="stat-card green"><div class="stat-icon">📋</div><div class="stat-value" id="dg_relatorios">—</div><div class="stat-label">Relatórios GC</div></div>
-      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" id="dg_membros">—</div><div class="stat-label">Membros nos GCs</div></div>
-      <div class="stat-card"><div class="stat-icon">🙋</div><div class="stat-value" id="dg_visitantes_gc">—</div><div class="stat-label">Visitantes nos GCs</div></div>
-      <div class="stat-card accent"><div class="stat-icon">🌱</div><div class="stat-value" id="dg_lideres">—</div><div class="stat-label">Líderes em Trein.</div></div>
-    </div>
-
-    <!-- GRÁFICO RANKING GCs -->
-    <div class="form-card" style="margin-bottom:16px">
-      <div class="form-section">
-        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
-          <span>🏆 Ranking dos GCs — Membros e Visitantes</span>
-          <a href="/relatorio-gc" target="_blank" style="font-size:11px;color:#1B4FA8;text-decoration:none;font-weight:600">+ Enviar Relatório</a>
-        </div>
-        <div id="grafico_gcs"><div class="loading-msg">Carregando GCs...</div></div>
-      </div>
-    </div>
-
-    <!-- CONFIRMAÇÕES ESCALA -->
-    <div class="form-card" style="margin-bottom:16px">
-      <div class="form-section">
-        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
-          <span>📋 Escala — Confirmações do Mês</span>
-          <button class="btn-outline" onclick="verConfirmacoes()" style="font-size:11px;padding:4px 10px">Ver todas</button>
-        </div>
-        <div id="resumo_confirmacoes"><div class="loading-msg">Carregando...</div></div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- ═══ USUÁRIOS (admin)  <!-- ═══ USUÁRIOS (admin) ═════════════════════════════════════ -->
   <div class="tab-content" id="tab-usuarios">
     <div class="page-header"><h1 class="page-title">Usuários</h1><p class="page-sub">Gerencie quem acessa o sistema</p></div>
     <div class="form-card" style="margin-bottom:18px">

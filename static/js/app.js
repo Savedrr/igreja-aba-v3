@@ -48,14 +48,14 @@ async function verificarAuth(){
   if(_isAdmin){carregarUsuarios();}
   // Voluntário: oculta abas restritas no menu
   if(d.cargo==="voluntario"){
-    ["gc","estoque","dashboard","relatorios","resumo","ia","usuarios","logs","escalas","dash_gc"].forEach(tab=>{
+    ["gc","estoque","dashboard","usuarios","escalas"].forEach(tab=>{
       const nav=document.querySelector(`[data-tab="${tab}"]`);
       if(nav)nav.closest("li").style.display="none";
     });
   }
   // Lider de departamento: vê só a aba de escalas
   if(d.cargo==="lider_depto"){
-    ["registro","checklist","visitantes","gc","estoque","dashboard","relatorios","resumo","ia","usuarios","logs","dash_gc"].forEach(tab=>{
+    ["registro","checklist","visitantes","gc","estoque","dashboard","usuarios"].forEach(tab=>{
       const nav=document.querySelector(`[data-tab="${tab}"]`);
       if(nav)nav.closest("li").style.display="none";
     });
@@ -70,8 +70,7 @@ async function logout(){await fetch("/api/logout",{method:"POST"});window.locati
 
 // ── TABS ──────────────────────────────────────────────────────
 const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:"Visitantes",
-  gc:"Conecta GC",estoque:"Estoque",relatorios:"Relatórios",
-  escalas:"Escalas",dashboard:"Dashboard",usuarios:"Usuários",logs:"Logs do Sistema"};
+  gc:"Conecta GC",estoque:"Estoque",escalas:"Escalas",dashboard:"Dashboard",usuarios:"Usuários",};
 
 function ativarTab(tab){
   document.querySelectorAll(".tab-content").forEach(t=>t.classList.remove("active"));
@@ -80,14 +79,14 @@ function ativarTab(tab){
   document.querySelector(`[data-tab="${tab}"]`)?.classList.add("active");
   document.getElementById("topbarTitle").textContent=TAB_TITLES[tab]||tab;
   if(tab==="dashboard")carregarDashboard();
-  // dash_gc integrado ao resumo
+  
   if(tab==="escalas"){const hoje=new Date();document.getElementById("escala_mes").value=hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");carregarVisualizacaoEscala();carregarVoluntarios();}
   if(tab==="visitantes"){carregarVisitantes();popularSelectVisitantes();}
   if(tab==="usuarios"&&_isAdmin)carregarUsuarios();
   if(tab==="gc"){carregarGCs();carregarDirecionamentos();popularSelectVisitantes();}
   if(tab==="estoque")carregarEstoque();
   if(tab==="dashboard")carregarDashboard();
-  if(tab==="ia"){carregarSessoesIA();carregarCameras();}
+  
   
 }
 
@@ -734,40 +733,7 @@ async function delEst(id,nome){
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════
-async function carregarDashboard(){
-  const ano=document.getElementById("dash_ano")?.value||new Date().getFullYear();
-  const r=await fetch(`/api/dashboard?ano=${ano}`); const d=await r.json();
-  const g=d.resumo||{};
 
-  // Stats
-  const stats={st_dash_cultos:"total_cultos",st_dash_presentes:"total_presentes",
-    st_dash_visitantes:"total_visitantes",st_dash_criancas:"total_criancas"};
-  Object.entries(stats).forEach(([eid,key])=>{
-    const el=document.getElementById(eid); if(el)el.textContent=g[key]||0;
-  });
-
-  // Gráfico mensal
-  renderGraficoMensal(d.mensal||[]);
-
-  // Por tipo
-  renderGraficoPorTipo(d.por_tipo||[]);
-
-  // Insights
-  const ins=document.getElementById("dash_insights");
-  if(ins)ins.innerHTML=(d.insights||[]).map(i=>`<div class="insight-item">${i}</div>`).join("")||
-    `<div class="insight-item">📊 Sem dados suficientes para insights ainda.</div>`;
-
-  // Top GCs
-  const tgc=document.getElementById("dash_top_gcs");
-  if(tgc&&d.top_gcs?.length){
-    tgc.innerHTML=d.top_gcs.map((g,i)=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #EEF2F9">
-        <div style="font-family:'Bebas Neue';font-size:20px;color:${i===0?"#D97706":"#8CA0C0"};width:22px">${i+1}°</div>
-        <div style="flex:1;font-weight:600;font-size:13px">${g.gc_nome}</div>
-        <div style="font-family:'Bebas Neue';font-size:18px;color:#0A2463">${g.direcionamentos}</div>
-      </div>`).join("");
-  }else if(tgc){tgc.innerHTML="<p style='color:#8ca0c0;font-size:13px'>Sem direcionamentos ainda.</p>";}
-}
 
 function renderGraficoMensal(mensal){
   const wrap=document.getElementById("grafico_mensal"); if(!wrap)return;
@@ -1073,154 +1039,7 @@ async function carregarDashboard(){
   }catch(e){ console.warn("Erro confirmações:",e); }
 }
 
-async function carregarDashboard_OLD(){
-  // Preenche seletor de ano
-  const anoSel = document.getElementById("resumo_ano");
-  if(anoSel && anoSel.options.length <= 1){
-    const anoAtual = new Date().getFullYear();
-    for(let a=anoAtual; a>=2023; a--){
-      const o=document.createElement("option");
-      o.value=a; o.textContent=a;
-      if(a===anoAtual) o.selected=true;
-      anoSel.appendChild(o);
-    }
-  }
-  const ano = document.getElementById("resumo_ano")?.value || new Date().getFullYear();
-  const per = document.getElementById("resumo_periodo")?.value || "";
 
-  try{
-    // ── Dados dos cultos ──────────────────────────────
-    const r = await fetch(`/api/dashboard?ano=${ano}${per?"&periodo="+encodeURIComponent(per):""}`);
-    const d = await r.json();
-    if(!r.ok) return;
-
-    const res = d.resumo||{};
-    const el=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v??'—';};
-    el("st_cultos",          res.total_cultos);
-    el("st_presentes",       res.total_presentes);
-    el("st_visitantes",      res.total_visitantes);
-    el("st_criancas",        res.total_criancas);
-    el("st_media_presentes", res.media_presentes);
-    el("st_media_visitantes",res.media_visitantes);
-    el("st_media_criancas",  res.media_criancas||"—");
-
-    // ── Tabela por período ─────────────────────────────
-    const bp = document.getElementById("bodyPeriodo");
-    if(bp && d.por_tipo){
-      bp.innerHTML = d.por_tipo.map(t=>`<tr>
-        <td><strong>${t.tipo_culto||t.periodo||"—"}</strong></td>
-        <td>${t.qtd||0}</td>
-        <td>${t.total_presentes||0}</td>
-        <td>${t.media_presentes||0}</td>
-      </tr>`).join("") || '<tr><td colspan="4" class="loading-msg">Sem dados</td></tr>';
-    }
-
-    // ── Últimos cultos ─────────────────────────────────
-    const uc = document.getElementById("ultimosCultos");
-    if(uc && d.ultimos){
-      uc.innerHTML = d.ultimos.map(c=>`
-        <div style="padding:8px 0;border-bottom:1px solid #EEF2F9;font-size:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <strong style="color:#0A2463">${c.data} — ${c.periodo}</strong>
-            <span style="background:#EBF5FF;color:#0A2463;padding:2px 7px;border-radius:6px;font-size:11px">${c.presentes} pres.</span>
-          </div>
-          <div style="color:#64748B;margin-top:2px">${c.tipo_culto||"Culto Regular"} · ${c.responsavel||"—"}</div>
-        </div>`).join("") || '<p style="color:#8ca0c0">Sem registros.</p>';
-    }
-
-    // ── Gráfico de evolução mensal ─────────────────────
-    const gm = document.getElementById("grafico_mensal");
-    if(gm && d.mensal && d.mensal.length){
-      const maxVal = Math.max(...d.mensal.map(m=>m.presentes||0), 1);
-      const MESES_BR = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-      gm.innerHTML = `<div style="display:flex;align-items:flex-end;gap:6px;height:140px;padding:10px 0;min-width:${d.mensal.length*52}px">
-        ${d.mensal.map(m=>{
-          const h = Math.max(8, Math.round((m.presentes||0)/maxVal*120));
-          const mesLabel = m.mes ? MESES_BR[parseInt(m.mes.split("-")[1]||0)-1]||m.mes : "?";
-          return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:44px">
-            <div style="font-size:10px;font-weight:700;color:#0A2463">${m.presentes||0}</div>
-            <div title="${m.presentes} presentes" style="width:100%;max-width:40px;height:${h}px;
-              background:linear-gradient(180deg,#1B4FA8,#56B4D3);border-radius:4px 4px 0 0;
-              cursor:default;transition:.3s"></div>
-            <div style="font-size:10px;color:#64748B">${mesLabel}</div>
-          </div>`;
-        }).join("")}
-      </div>`;
-    }else if(gm){
-      gm.innerHTML='<p style="color:#8ca0c0;font-size:13px;padding:14px">Nenhum dado disponível.</p>';
-    }
-
-  }catch(e){ console.error("Erro resumo cultos:",e); }
-
-  // ── Dados dos GCs ─────────────────────────────────────
-  try{
-    const rg = await fetch("/api/relatorios_gc/dashboard");
-    if(rg.ok){
-      const dg = await rg.json();
-      const t = dg.totais||{};
-      const el=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v??0;};
-      el("dg_relatorios",    t.total_relatorios);
-      el("dg_membros",       t.total_membros);
-      el("dg_visitantes_gc", t.total_visitantes);
-      el("dg_lideres",       t.total_lideres_trein);
-
-      // Gráfico ranking GCs
-      const gcs = document.getElementById("grafico_gcs");
-      if(gcs && dg.por_gc && dg.por_gc.length){
-        const maxMem = Math.max(...dg.por_gc.map(g=>g.total_membros||0), 1);
-        gcs.innerHTML = dg.por_gc.map((g,i)=>`
-          <div style="display:grid;grid-template-columns:160px 1fr 100px 70px;
-            align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #EEF2F9">
-            <div style="font-weight:700;font-size:12px;color:#0A2463;overflow:hidden;
-              text-overflow:ellipsis;white-space:nowrap" title="${g.gc_nome}">${i+1}. ${g.gc_nome}</div>
-            <div style="position:relative;height:12px;background:#EEF2F9;border-radius:6px;overflow:hidden">
-              <div style="position:absolute;left:0;top:0;height:100%;
-                width:${Math.round((g.total_membros||0)/maxMem*100)}%;
-                background:linear-gradient(90deg,#1B4FA8,#56B4D3);border-radius:6px;transition:.5s"></div>
-            </div>
-            <div style="font-size:12px;text-align:right">
-              <strong style="color:#0A2463">${g.total_membros||0}</strong>
-              <span style="color:#059669"> +${g.total_visitantes||0}</span>
-            </div>
-            <div style="font-size:10px;color:#8ca0c0;text-align:right">${g.total_reunioes||0} reun.</div>
-          </div>`).join("");
-      }else if(gcs){
-        gcs.innerHTML='<p style="color:#8ca0c0;font-size:13px;padding:10px 0">Nenhum relatório de GC ainda. <a href="/relatorio-gc" target="_blank" style="color:#1B4FA8">Enviar primeiro relatório</a></p>';
-      }
-    }
-  }catch(e){ console.warn("Erro GC:",e); }
-
-  // ── Confirmações de escala ─────────────────────────────
-  try{
-    const mes = new Date().toISOString().slice(0,7);
-    const rc = await fetch(`/api/escala/confirmacoes_admin?mes=${mes}`);
-    if(rc.ok){
-      const lc = await rc.json();
-      const confEl = document.getElementById("resumo_confirmacoes");
-      if(confEl){
-        if(!lc.length){
-          confEl.innerHTML='<p style="color:#8ca0c0;font-size:13px">Nenhuma confirmação de escala este mês.</p>';
-        }else{
-          const conf=lc.filter(c=>c.status==="confirmado").length;
-          const rec =lc.filter(c=>c.status==="recusado").length;
-          const pend=lc.filter(c=>c.status==="pendente").length;
-          confEl.innerHTML=`
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-              <span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">✅ ${conf} confirmados</span>
-              <span style="background:#FEE2E2;color:#991B1B;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">🔄 ${rec} trocas</span>
-              <span style="background:#FEF3C7;color:#92400E;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">⏳ ${pend} pendentes</span>
-            </div>
-            ${lc.filter(c=>c.status==="recusado").map(c=>`
-              <div style="padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12px">
-                <strong style="color:#991B1B">🔄</strong> ${c.voluntario_nome}
-                — ${c.data_br||c.culto_data} · ${c.culto_periodo} · ${c.departamento}
-                ${c.sugestao_troca?`<div style="color:#64748B;font-style:italic;margin-top:2px">↪ ${c.sugestao_troca}</div>`:""}
-              </div>`).join("")}`;
-        }
-      }
-    }
-  }catch(e){ console.warn("Erro confirmações:",e); }
-}
 
 
 async function carregarDeptosSelect(){
