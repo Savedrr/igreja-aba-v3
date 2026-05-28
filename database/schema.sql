@@ -1,13 +1,14 @@
 -- IGREJA ABA — Schema v5
 CREATE TABLE IF NOT EXISTS usuarios (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome        TEXT    NOT NULL,
-    email       TEXT    NOT NULL UNIQUE,
-    senha_hash  TEXT    NOT NULL,
-    cargo       TEXT    DEFAULT 'voluntario', -- voluntario | lider | admin
-    ativo       INTEGER DEFAULT 1,
-    criado_em   TEXT    DEFAULT (datetime('now','localtime')),
-    ultimo_acesso TEXT  DEFAULT NULL
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome            TEXT    NOT NULL,
+    email           TEXT    NOT NULL UNIQUE,
+    senha_hash      TEXT    NOT NULL,
+    cargo           TEXT    DEFAULT 'voluntario', -- voluntario | lider | admin | lider_depto | voluntario_escala
+    ativo           INTEGER DEFAULT 1,
+    criado_em       TEXT    DEFAULT (datetime('now','localtime')),
+    ultimo_acesso   TEXT    DEFAULT NULL,
+    departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS cultos (
@@ -165,6 +166,7 @@ CREATE TABLE IF NOT EXISTS relatorios_gc (
     lider_treinamento   INTEGER DEFAULT 0,
     nome_lider_trein    TEXT    DEFAULT '',
     observacoes         TEXT    DEFAULT '',
+    campos_livres       TEXT    DEFAULT '',
     criado_em           TEXT    DEFAULT (datetime('now','localtime'))
 );
 
@@ -210,6 +212,8 @@ CREATE TABLE IF NOT EXISTS voluntarios (
     nome        TEXT    NOT NULL,
     telefone    TEXT    NOT NULL,
     departamentos TEXT  DEFAULT '',
+    departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL,
+    usuario_id  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
     ativo       INTEGER DEFAULT 1,
     criado_em   TEXT    DEFAULT (datetime('now','localtime'))
 );

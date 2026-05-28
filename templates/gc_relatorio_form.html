@@ -134,6 +134,15 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <textarea id="proximos_passos" placeholder="Planejamento para o próximo encontro, metas, eventos..." style="min-height:70px"></textarea>
     </div>
 
+    <!-- CAMPOS LIVRES -->
+    <div class="divider"></div>
+    <div class="section-label">📝 Campos Adicionais Livres</div>
+    <p style="font-size:12px;color:#64748B;margin:0 0 10px">Adicione campos personalizados para registrar informações extras do GC.</p>
+    <div id="campos_livres_container"></div>
+    <button type="button" onclick="adicionarCampoLivre()" style="background:#EBF5FF;color:#0A2463;border:2px dashed #93C5FD;border-radius:10px;padding:10px 16px;width:100%;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px">
+      + Adicionar Campo Livre
+    </button>
+
     <div class="err" id="errMsg"></div>
     <button class="btn-submit" id="btnEnviar" onclick="enviarRelatorio()">Enviar Relatório</button>
   </div>
@@ -201,6 +210,14 @@ async function enviarRelatorio(){
   const obs         = document.getElementById("observacoes").value.trim();
   const err         = document.getElementById("errMsg");
 
+  // Coleta campos livres
+  const campos_livres = [];
+  document.querySelectorAll(".campo-livre-item").forEach(item=>{
+    const titulo = item.querySelector(".cl-titulo")?.value?.trim();
+    const valor  = item.querySelector(".cl-valor")?.value?.trim();
+    if(titulo && valor) campos_livres.push({titulo,valor});
+  });
+
   err.style.display = "none";
   if(!gc_nome)         return mostrarErro("Selecione o GC.");
   if(!lider_nome && lider_raw !== "__manual__") return mostrarErro("Selecione o líder.");
@@ -212,13 +229,18 @@ async function enviarRelatorio(){
   btn.innerHTML = '<span class="sp"></span>Enviando...'; btn.disabled = true;
 
   try{
+    const obs_completo = [obs,
+      document.getElementById('necessidades')?.value||'',
+      document.getElementById('proximos_passos')?.value||''
+    ].filter(Boolean).join(' | ');
+
     const r = await fetch("/api/relatorios_gc", {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({gc_nome, lider_nome: lider_nome||anfitriao,
         anfitriao, dia, membros_presentes:membros, visitantes,
         lider_treinamento:trein, nome_lider_trein:nome_trein,
-        observacoes:[obs, document.getElementById('necessidades')?.value||'',
-          document.getElementById('proximos_passos')?.value||''].filter(Boolean).join(' | ')})
+        observacoes: obs_completo,
+        campos_livres: campos_livres})
     });
     const d = await r.json();
     if(r.ok && d.ok){
@@ -231,6 +253,27 @@ async function enviarRelatorio(){
     }
   }catch(e){ mostrarErro("Erro de conexão."); }
   btn.innerHTML = "Enviar Relatório"; btn.disabled = false;
+}
+
+let _clCount = 0;
+function adicionarCampoLivre(){
+  _clCount++;
+  const cont = document.getElementById("campos_livres_container");
+  const div = document.createElement("div");
+  div.className = "campo-livre-item field";
+  div.style.cssText = "background:#F8FAFF;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:grid;gap:6px";
+  div.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label style="font-size:11px;font-weight:600;color:#4A6080;text-transform:uppercase">Campo ${_clCount}</label>
+      <button type="button" onclick="this.closest('.campo-livre-item').remove()" style="background:none;border:none;color:#94A3B8;cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <input type="text" class="cl-titulo" placeholder="Nome do campo (ex: Tema da Reunião, Participante Especial...)"
+      style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;width:100%">
+    <textarea class="cl-valor" placeholder="Valor / descrição..."
+      style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;width:100%;min-height:60px;resize:vertical"></textarea>
+  `;
+  cont.appendChild(div);
+  div.querySelector(".cl-titulo").focus();
 }
 
 function mostrarErro(m){

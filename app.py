@@ -364,7 +364,10 @@ def _pg_migrations(conn):
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS lider TEXT DEFAULT ''",
         """CREATE TABLE IF NOT EXISTS voluntarios (
             id SERIAL PRIMARY KEY, nome TEXT NOT NULL, telefone TEXT NOT NULL,
-            departamentos TEXT DEFAULT '', ativo INTEGER DEFAULT 1,
+            departamentos TEXT DEFAULT '',
+            departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL,
+            usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+            ativo INTEGER DEFAULT 1,
             criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
         """CREATE TABLE IF NOT EXISTS escala_publicacoes (
             id SERIAL PRIMARY KEY, mes TEXT NOT NULL UNIQUE,
@@ -434,6 +437,10 @@ def _pg_migrations(conn):
             atualizado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS telefone_lider TEXT DEFAULT ''",
         "ALTER TABLE estoque ADD COLUMN IF NOT EXISTS atualizado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')",
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL",
+        "ALTER TABLE voluntarios ADD COLUMN IF NOT EXISTS departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL",
+        "ALTER TABLE voluntarios ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL",
+        "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS campos_livres TEXT DEFAULT ''",
     ]
     cur = conn.cursor()
     for sql in migrations:
@@ -567,6 +574,20 @@ def _init_sqlite():
     conn.execute("PRAGMA journal_mode = WAL")
     with open(SQL_PATH,"r",encoding="utf-8") as sf:
         conn.executescript(sf.read())
+    # Migrations seguras para bancos existentes
+    _migrations_sqlite = [
+        "ALTER TABLE usuarios ADD COLUMN departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL",
+        "ALTER TABLE usuarios ADD COLUMN ultimo_acesso TEXT DEFAULT NULL",
+        "ALTER TABLE voluntarios ADD COLUMN departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL",
+        "ALTER TABLE voluntarios ADD COLUMN usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL",
+        "ALTER TABLE relatorios_gc ADD COLUMN campos_livres TEXT DEFAULT ''",
+    ]
+    for sql in _migrations_sqlite:
+        try:
+            conn.execute(sql)
+            conn.commit()
+        except Exception:
+            conn.rollback()
     conn.execute("DELETE FROM estoque WHERE id NOT IN (SELECT MIN(id) FROM estoque GROUP BY nome)")
     try:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_estoque_nome ON estoque(nome)")
@@ -1838,127 +1859,283 @@ def exportar_excel():
     ini = request.args.get("data_ini","")
     fim = request.args.get("data_fim","")
     with get_db() as conn:
-        sql = "SELECT * FROM cultos WHERE 1=1"; p=[]
+        sql = "SELECT * FROM cultos WHERE 1=1"
+        p = []
         if ini: sql+=" AND data>=?"; p.append(ini)
         if fim: sql+=" AND data<=?"; p.append(fim)
-        cultos = [dict(r) for r in conn.execute(qmark(sql+" ORDER BY data ASC"),p).fetchall()]
-        gc_rows = [dict(r) for r in conn.execute("SELECT * FROM relatorios_gc ORDER BY dia ASC").fetchall()]
+        sql += " ORDER BY data ASC"
+        cultos = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+        # Relatórios de GC
+        gc_rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM relatorios_gc ORDER BY dia ASC"
+        ).fetchall()]
 
     wb = openpyxl.Workbook()
-    azul   = PatternFill("solid",fgColor="0A2463")
-    azul2  = PatternFill("solid",fgColor="1B4FA8")
-    cinza  = PatternFill("solid",fgColor="EBF5FF")
-    verde  = PatternFill("solid",fgColor="D1FAE5")
-    amarelo= PatternFill("solid",fgColor="FEF3C7")
-    branco = PatternFill("solid",fgColor="FFFFFF")
-    fb = Font(color="FFFFFF",bold=True,name="Calibri",size=11)
-    fn = Font(name="Calibri",size=10)
-    fb2= Font(name="Calibri",size=10,bold=True)
-    fa = Font(color="0A2463",bold=True,name="Calibri",size=11)
-    centro = Alignment(horizontal="center",vertical="center")
-    esq    = Alignment(horizontal="left",vertical="center",wrap_text=True)
-    brd    = Border(left=Side(style="thin",color="D1D5DB"),right=Side(style="thin",color="D1D5DB"),
-                    top=Side(style="thin",color="D1D5DB"),bottom=Side(style="thin",color="D1D5DB"))
 
-    def cab(ws,row,cols,fill=None):
-        for i,t in enumerate(cols,1):
-            c=ws.cell(row=row,column=i,value=t)
-            c.fill=fill or azul; c.font=fb; c.alignment=centro; c.border=brd
+    # ── Estilos ────────────────────────────────────────
+    azul     = PatternFill("solid", fgColor="0A2463")
+    azul2    = PatternFill("solid", fgColor="1B4FA8")
+    cinza    = PatternFill("solid", fgColor="EBF5FF")
+    verde    = PatternFill("solid", fgColor="D1FAE5")
+    amarelo  = PatternFill("solid", fgColor="FEF3C7")
+    branco   = PatternFill("solid", fgColor="FFFFFF")
+    txt_branco = Font(color="FFFFFF", bold=True, name="Calibri", size=11)
+    txt_azul   = Font(color="0A2463", bold=True, name="Calibri", size=11)
+    txt_normal = Font(name="Calibri", size=10)
+    txt_bold   = Font(name="Calibri", size=10, bold=True)
+    centro  = Alignment(horizontal="center", vertical="center")
+    esq     = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    borda   = Border(
+        left=Side(style="thin",color="D1D5DB"),
+        right=Side(style="thin",color="D1D5DB"),
+        top=Side(style="thin",color="D1D5DB"),
+        bottom=Side(style="thin",color="D1D5DB")
+    )
 
-    def cel(ws,r,c,v,bold=False,fill=None,align=None):
-        x=ws.cell(row=r,column=c,value=v)
-        x.fill=fill or branco; x.font=fb2 if bold else fn
-        x.alignment=align or centro; x.border=brd; return x
+    def estilizar_cabecalho(ws, row, colunas, fill=None):
+        fill = fill or azul
+        for col_idx, titulo in enumerate(colunas, 1):
+            c = ws.cell(row=row, column=col_idx, value=titulo)
+            c.fill = fill; c.font = txt_branco; c.alignment = centro; c.border = borda
 
-    n = max(len(cultos),1)
-    tp = sum(c["presentes"] for c in cultos)
-    tv = sum(c["visitantes"] for c in cultos)
-    tc = sum(c["criancas"] for c in cultos)
+    def estilizar_celula(ws, row, col, valor, bold=False, fill=None, align=None):
+        c = ws.cell(row=row, column=col, value=valor)
+        c.fill = fill or branco
+        c.font = txt_bold if bold else txt_normal
+        c.alignment = align or centro
+        c.border = borda
+        return c
 
-    # ── ABA 1: Resumo Geral ─────────────────────────────
-    ws1=wb.active; ws1.title="Resumo Geral"
-    ws1.column_dimensions["A"].width=28; ws1.column_dimensions["B"].width=16
+    # ════════════════════════════════════════════════════
+    # ABA 1: Resumo Geral
+    # ════════════════════════════════════════════════════
+    ws1 = wb.active; ws1.title = "Resumo Geral"
+    ws1.column_dimensions["A"].width = 30
+    ws1.column_dimensions["B"].width = 18
+    ws1.row_dimensions[1].height = 35
+
+    # Título
     ws1.merge_cells("A1:B1")
-    c1=ws1["A1"]; c1.value="IGREJA ABA — Relatório Consolidado"
-    c1.fill=azul; c1.font=Font(color="FFFFFF",bold=True,name="Calibri",size=14); c1.alignment=centro
-    ws1.row_dimensions[1].height=32
-    dados=[("Total de Cultos",len(cultos)),("Total de Presentes",tp),
-           ("Total de Visitantes",tv),("Total de Crianças",tc),
-           ("Média Presentes/Culto",round(tp/n,1)),("Média Visitantes/Culto",round(tv/n,1)),
-           ("Média Crianças/Culto",round(tc/n,1))]
-    for i,(lb,vl) in enumerate(dados,3):
-        ws1.row_dimensions[i].height=22
-        cel(ws1,i,1,lb,bold=True,fill=cinza if i%2==0 else branco,align=esq)
-        cel(ws1,i,2,vl,bold=True,fill=cinza if i%2==0 else branco)
-    ws1["A11"]=None
-    ws1.merge_cells("A11:B11"); c11=ws1["A11"]
-    c11.value="POR PERÍODO"; c11.fill=azul2; c11.font=fb; c11.alignment=esq
-    cab(ws1,12,["Período","Total Presentes"],azul2)
-    periodos={}
+    c = ws1["A1"]; c.value = "IGREJA ABA — Relatório de Cultos"
+    c.fill = azul; c.font = Font(color="FFFFFF", bold=True, name="Calibri", size=14)
+    c.alignment = centro
+
+    dados_resumo = [
+        ("Total de Cultos",           len(cultos)),
+        ("Total de Presentes",         sum(c["presentes"] for c in cultos)),
+        ("Total de Visitantes",        sum(c["visitantes"] for c in cultos)),
+        ("Total de Crianças",          sum(c["criancas"] for c in cultos)),
+        ("Média de Presentes/Culto",   round(sum(c["presentes"] for c in cultos)/max(len(cultos),1),1)),
+        ("Média de Visitantes/Culto",  round(sum(c["visitantes"] for c in cultos)/max(len(cultos),1),1)),
+        ("Média de Crianças/Culto",    round(sum(c["criancas"] for c in cultos)/max(len(cultos),1),1)),
+    ]
+    for i, (label, valor) in enumerate(dados_resumo, 3):
+        ws1.row_dimensions[i].height = 22
+        estilizar_celula(ws1, i, 1, label, bold=True, fill=cinza if i%2==0 else branco, align=esq)
+        estilizar_celula(ws1, i, 2, valor, bold=True, fill=cinza if i%2==0 else branco)
+
+    # Por período
+    ws1["A11"] = "POR PERÍODO"
+    ws1["A11"].fill = azul2; ws1["A11"].font = txt_branco; ws1["A11"].alignment = esq
+    ws1.merge_cells("A11:B11")
+    estilizar_cabecalho(ws1, 12, ["Período","Total Presentes"])
+    periodos = {}
     for c in cultos:
-        p=c.get("periodo","—")
-        if p not in periodos: periodos[p]={"n":0,"total":0}
-        periodos[p]["n"]+=1; periodos[p]["total"]+=c["presentes"]
-    for i,(per,s) in enumerate(periodos.items(),13):
-        cel(ws1,i,1,per,align=esq); cel(ws1,i,2,s["total"],bold=True)
+        p = c.get("periodo","—")
+        if p not in periodos: periodos[p] = 0
+        periodos[p] += c["presentes"]
+    for i,(per,tot) in enumerate(periodos.items(),13):
+        estilizar_celula(ws1,i,1,per,align=esq)
+        estilizar_celula(ws1,i,2,tot,bold=True)
 
-    # ── ABA 2: Todos os Cultos ──────────────────────────
-    ws2=wb.create_sheet("Cultos")
-    cols2=["Data","Dia","Período","Tipo","Responsável","Presentes","Visitantes","Crianças","Observações"]
-    for i,(c,l) in enumerate(zip(cols2,[12,10,8,20,22,10,10,10,35]),1):
-        ws2.column_dimensions[get_column_letter(i)].width=l
-    ws2.row_dimensions[1].height=28; cab(ws2,1,cols2)
+    # ════════════════════════════════════════════════════
+    # ABA 2: Todos os Cultos
+    # ════════════════════════════════════════════════════
+    ws2 = wb.create_sheet("Cultos")
+    colunas2 = ["Data","Dia","Período","Tipo","Responsável","Presentes","Visitantes","Crianças","Observações"]
+    larguras2 = [12,10,8,18,20,10,10,10,30]
+    for i,(c,l) in enumerate(zip(colunas2,larguras2),1):
+        ws2.column_dimensions[get_column_letter(i)].width = l
+    ws2.row_dimensions[1].height = 28
+    estilizar_cabecalho(ws2, 1, colunas2)
+
     for i,c in enumerate(cultos,2):
-        fl=cinza if i%2==0 else branco; ws2.row_dimensions[i].height=20
-        vals=[br(c["data"]),c.get("dia_semana",""),c.get("periodo",""),
-              c.get("tipo_culto","Culto Regular"),c.get("responsavel",""),
-              c["presentes"],c["visitantes"],c["criancas"],c.get("observacoes","")]
+        fill = cinza if i%2==0 else branco
+        ws2.row_dimensions[i].height = 20
+        vals = [br(c["data"]),c.get("dia_semana",""),c.get("periodo",""),
+                c.get("tipo_culto","Culto Regular"),c.get("responsavel",""),
+                c["presentes"],c["visitantes"],c["criancas"],c.get("observacoes","")]
         for j,v in enumerate(vals,1):
-            cel(ws2,i,j,v,fill=fl,align=esq if j in(5,9) else centro)
-    tr=len(cultos)+2; ws2.row_dimensions[tr].height=24
-    ws2.merge_cells(f"A{tr}:E{tr}"); cel(ws2,tr,1,"TOTAIS",bold=True,fill=amarelo)
-    for j,v in enumerate([tp,tv,tc],6): cel(ws2,tr,j,v,bold=True,fill=amarelo)
-    mr=tr+1; ws2.row_dimensions[mr].height=24
-    ws2.merge_cells(f"A{mr}:E{mr}"); cel(ws2,mr,1,"MÉDIAS/CULTO",bold=True,fill=verde)
-    for j,v in enumerate([round(tp/n,1),round(tv/n,1),round(tc/n,1)],6): cel(ws2,mr,j,v,bold=True,fill=verde)
+            al = esq if j in (5,9) else centro
+            estilizar_celula(ws2,i,j,v,fill=fill,align=al)
 
-    # ── ABA 3: Relatórios GC ────────────────────────────
-    ws3=wb.create_sheet("Relatórios GC")
-    cols3=["Data","GC","Líder","Anfitrião","Membros","Visitantes","Líder Trein.","Observações"]
-    for i,(c,l) in enumerate(zip(cols3,[12,22,22,20,10,10,12,40]),1):
-        ws3.column_dimensions[get_column_letter(i)].width=l
-    ws3.row_dimensions[1].height=28; cab(ws3,1,cols3)
+    # Linha de totais
+    tot_row = len(cultos)+2
+    ws2.row_dimensions[tot_row].height = 24
+    estilizar_celula(ws2,tot_row,1,"TOTAIS",bold=True,fill=amarelo)
+    ws2.merge_cells(f"A{tot_row}:E{tot_row}")
+    estilizar_celula(ws2,tot_row,6,sum(c["presentes"] for c in cultos),bold=True,fill=amarelo)
+    estilizar_celula(ws2,tot_row,7,sum(c["visitantes"] for c in cultos),bold=True,fill=amarelo)
+    estilizar_celula(ws2,tot_row,8,sum(c["criancas"] for c in cultos),bold=True,fill=amarelo)
+
+    media_row = tot_row+1
+    ws2.row_dimensions[media_row].height = 24
+    estilizar_celula(ws2,media_row,1,"MÉDIAS/CULTO",bold=True,fill=verde)
+    ws2.merge_cells(f"A{media_row}:E{media_row}")
+    n = max(len(cultos),1)
+    estilizar_celula(ws2,media_row,6,round(sum(c["presentes"] for c in cultos)/n,1),bold=True,fill=verde)
+    estilizar_celula(ws2,media_row,7,round(sum(c["visitantes"] for c in cultos)/n,1),bold=True,fill=verde)
+    estilizar_celula(ws2,media_row,8,round(sum(c["criancas"] for c in cultos)/n,1),bold=True,fill=verde)
+
+    # ════════════════════════════════════════════════════
+    # ABA 3: Relatórios de GC
+    # ════════════════════════════════════════════════════
+    ws3 = wb.create_sheet("Relatórios GC")
+    colunas3 = ["Data","GC","Líder","Anfitrião","Membros","Visitantes","Líder Trein.","Nome Líder Trein.","Observações"]
+    larguras3 = [12,22,20,20,10,10,12,22,35]
+    for i,(c,l) in enumerate(zip(colunas3,larguras3),1):
+        ws3.column_dimensions[get_column_letter(i)].width = l
+    ws3.row_dimensions[1].height = 28
+    estilizar_cabecalho(ws3, 1, colunas3)
+
     for i,r in enumerate(gc_rows,2):
-        fl=cinza if i%2==0 else branco; ws3.row_dimensions[i].height=20
-        vals=[br(r.get("dia","")),r.get("gc_nome",""),r.get("lider_nome",""),
-              r.get("anfitriao",""),r.get("membros_presentes",0),r.get("visitantes",0),
-              "Sim" if r.get("lider_treinamento") else "Não",r.get("observacoes","")]
+        fill = cinza if i%2==0 else branco
+        ws3.row_dimensions[i].height = 20
+        vals = [br(r.get("dia","")),r.get("gc_nome",""),r.get("lider_nome",""),
+                r.get("anfitriao",""),r.get("membros_presentes",0),r.get("visitantes",0),
+                "Sim" if r.get("lider_treinamento") else "Não",
+                r.get("nome_lider_trein",""),r.get("observacoes","")]
         for j,v in enumerate(vals,1):
-            cel(ws3,i,j,v,fill=fl,align=esq if j in(2,3,4,8) else centro)
-    if not gc_rows:
-        ws3.merge_cells("A2:H2")
-        cel(ws3,2,1,"Nenhum relatório de GC enviado ainda.",fill=cinza,align=esq)
+            al = esq if j in (2,3,4,8,9) else centro
+            estilizar_celula(ws3,i,j,v,fill=fill,align=al)
 
-    # ── ABA 4: Ranking GCs ──────────────────────────────
-    ws4=wb.create_sheet("Ranking GCs")
-    for col,w in zip(["A","B","C","D","E","F"],[26,12,14,14,14,14]):
-        ws4.column_dimensions[col].width=w
-    ws4.row_dimensions[1].height=28
-    cab(ws4,1,["GC","Reuniões","Total Membros","Total Visitantes","Média Membros","Média Visitantes"])
-    gc_stats={}
+    # ════════════════════════════════════════════════════
+    # ABA 4: Ranking GCs
+    # ════════════════════════════════════════════════════
+    ws4 = wb.create_sheet("Ranking GCs")
+    ws4.column_dimensions["A"].width = 25
+    for col in ["B","C","D","E","F"]: ws4.column_dimensions[col].width = 14
+    ws4.row_dimensions[1].height = 28
+    estilizar_cabecalho(ws4, 1, ["GC","Reuniões","Total Membros","Total Visit.","Média Membros","Média Visit."])
+
+    gc_stats = {}
     for r in gc_rows:
-        nm=r.get("gc_nome","—")
-        if nm not in gc_stats: gc_stats[nm]={"r":0,"m":0,"v":0}
-        gc_stats[nm]["r"]+=1; gc_stats[nm]["m"]+=r.get("membros_presentes",0); gc_stats[nm]["v"]+=r.get("visitantes",0)
-    for i,(nm,s) in enumerate(sorted(gc_stats.items(),key=lambda x:x[1]["m"],reverse=True),2):
-        fl=cinza if i%2==0 else branco; nr=max(s["r"],1)
-        for j,v in enumerate([nm,s["r"],s["m"],s["v"],round(s["m"]/nr,1),round(s["v"]/nr,1)],1):
-            cel(ws4,i,j,v,bold=(j==1),fill=fl,align=esq if j==1 else centro)
-    if not gc_stats:
-        ws4.merge_cells("A2:F2"); cel(ws4,2,1,"Nenhum relatório de GC enviado ainda.",fill=cinza,align=esq)
+        nome = r.get("gc_nome","—")
+        if nome not in gc_stats: gc_stats[nome] = {"reunioes":0,"membros":0,"visitantes":0}
+        gc_stats[nome]["reunioes"]   += 1
+        gc_stats[nome]["membros"]    += r.get("membros_presentes",0)
+        gc_stats[nome]["visitantes"] += r.get("visitantes",0)
 
-    buf=io.BytesIO(); wb.save(buf); buf.seek(0)
-    return send_file(buf,as_attachment=True,
+    ranking = sorted(gc_stats.items(), key=lambda x: x[1]["membros"], reverse=True)
+    for i,(nome,s) in enumerate(ranking,2):
+        fill = cinza if i%2==0 else branco
+        ws4.row_dimensions[i].height = 22
+        n_r = max(s["reunioes"],1)
+        vals = [nome,s["reunioes"],s["membros"],s["visitantes"],
+                round(s["membros"]/n_r,1),round(s["visitantes"]/n_r,1)]
+        for j,v in enumerate(vals,1):
+            al = esq if j==1 else centro
+            estilizar_celula(ws4,i,j,v,bold=(j==1),fill=fill,align=al)
+
+    # ════════════════════════════════════════════════════
+    # ABA 5: Por Período (média separada por período/tipo)
+    # ════════════════════════════════════════════════════
+    ws5 = wb.create_sheet("Por Período")
+    ws5.column_dimensions["A"].width = 22
+    for col in ["B","C","D","E","F"]: ws5.column_dimensions[col].width = 14
+    ws5.row_dimensions[1].height = 28
+    estilizar_cabecalho(ws5, 1, ["Período","Qtd. Cultos","Total Presentes","Total Visitantes","Média Presentes","Média Visitantes"])
+
+    # Agrupa por período
+    por_periodo = {}
+    for c in cultos:
+        p = c.get("periodo","—") or "—"
+        if p not in por_periodo: por_periodo[p] = {"qtd":0,"presentes":0,"visitantes":0,"criancas":0}
+        por_periodo[p]["qtd"] += 1
+        por_periodo[p]["presentes"] += c["presentes"]
+        por_periodo[p]["visitantes"] += c["visitantes"]
+        por_periodo[p]["criancas"] += c["criancas"]
+
+    for i,(per,s) in enumerate(sorted(por_periodo.items()),2):
+        fill = cinza if i%2==0 else branco
+        n_p = max(s["qtd"],1)
+        estilizar_celula(ws5,i,1,per,bold=True,fill=fill,align=esq)
+        estilizar_celula(ws5,i,2,s["qtd"],fill=fill)
+        estilizar_celula(ws5,i,3,s["presentes"],fill=fill)
+        estilizar_celula(ws5,i,4,s["visitantes"],fill=fill)
+        estilizar_celula(ws5,i,5,round(s["presentes"]/n_p,1),bold=True,fill=fill)
+        estilizar_celula(ws5,i,6,round(s["visitantes"]/n_p,1),bold=True,fill=fill)
+
+    # Separador
+    sep = len(por_periodo)+3
+    ws5.merge_cells(f"A{sep}:F{sep}")
+    c = ws5.cell(row=sep,column=1,value="POR TIPO DE CULTO")
+    c.fill=azul2; c.font=Font(color="FFFFFF",bold=True,name="Calibri",size=11); c.alignment=centro
+
+    estilizar_cabecalho(ws5, sep+1, ["Tipo de Culto","Qtd. Cultos","Total Presentes","Total Visitantes","Média Presentes","Média Visitantes"], fill=azul2)
+
+    por_tipo = {}
+    for c in cultos:
+        t = c.get("tipo_culto","Culto Regular") or "Culto Regular"
+        if t not in por_tipo: por_tipo[t] = {"qtd":0,"presentes":0,"visitantes":0}
+        por_tipo[t]["qtd"] += 1
+        por_tipo[t]["presentes"] += c["presentes"]
+        por_tipo[t]["visitantes"] += c["visitantes"]
+
+    for i,(tp,s) in enumerate(sorted(por_tipo.items(),key=lambda x:x[1]["presentes"],reverse=True), sep+2):
+        fill = cinza if i%2==0 else branco
+        n_t = max(s["qtd"],1)
+        estilizar_celula(ws5,i,1,tp,bold=True,fill=fill,align=esq)
+        estilizar_celula(ws5,i,2,s["qtd"],fill=fill)
+        estilizar_celula(ws5,i,3,s["presentes"],fill=fill)
+        estilizar_celula(ws5,i,4,s["visitantes"],fill=fill)
+        estilizar_celula(ws5,i,5,round(s["presentes"]/n_t,1),bold=True,fill=fill)
+        estilizar_celula(ws5,i,6,round(s["visitantes"]/n_t,1),bold=True,fill=fill)
+
+    # ════════════════════════════════════════════════════
+    # ABA 6: Visão Consolidada
+    # ════════════════════════════════════════════════════
+    ws6 = wb.create_sheet("Visão Consolidada")
+    ws6.column_dimensions["A"].width = 30; ws6.column_dimensions["B"].width = 18
+    ws6.row_dimensions[1].height = 35
+    ws6.merge_cells("A1:B1")
+    c=ws6["A1"]; c.value="VISÃO CONSOLIDADA — IGREJA ABA"
+    c.fill=azul; c.font=Font(color="FFFFFF",bold=True,name="Calibri",size=14); c.alignment=centro
+
+    n_all = max(len(cultos),1)
+    total_p_all = sum(c["presentes"] for c in cultos)
+    total_v_all = sum(c["visitantes"] for c in cultos)
+    total_c_all = sum(c["criancas"] for c in cultos)
+    total_gc_relat = len(gc_rows)
+    total_gc_membros = sum(r.get("membros_presentes",0) for r in gc_rows)
+
+    dados_consol = [
+        ("═══ CULTOS ═══", ""),
+        ("Total de Cultos", len(cultos)),
+        ("Total de Presentes", total_p_all),
+        ("Total de Visitantes", total_v_all),
+        ("Total de Crianças", total_c_all),
+        ("Média de Presentes/Culto", round(total_p_all/n_all,1)),
+        ("Média de Visitantes/Culto", round(total_v_all/n_all,1)),
+        ("Média de Crianças/Culto", round(total_c_all/n_all,1)),
+        ("═══ GCS ═══", ""),
+        ("Total de Relatórios GC", total_gc_relat),
+        ("Total de Membros GC", total_gc_membros),
+        ("Média Membros/Reunião", round(total_gc_membros/max(total_gc_relat,1),1)),
+        ("GCs com Relatório", len(set(r.get("gc_nome","") for r in gc_rows))),
+    ]
+    for i,(label,valor) in enumerate(dados_consol,3):
+        ws6.row_dimensions[i].height = 22
+        is_section = str(valor)==""
+        fill_cell = azul2 if is_section else (cinza if i%2==0 else branco)
+        font_cell = Font(color="FFFFFF",bold=True,name="Calibri",size=11) if is_section else Font(name="Calibri",size=10,bold=True)
+        c1=ws6.cell(row=i,column=1,value=label); c1.fill=fill_cell; c1.font=font_cell; c1.alignment=esq; c1.border=borda
+        c2=ws6.cell(row=i,column=2,value=valor if not is_section else ""); c2.fill=fill_cell; c2.font=font_cell; c2.alignment=centro; c2.border=borda
+        if is_section: ws6.merge_cells(f"A{i}:B{i}")
+
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    return send_file(buf, as_attachment=True,
                      download_name=f"igrejaaba_{date.today().isoformat()}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -2699,6 +2876,11 @@ def criar_relatorio_gc():
     if not gc_nome or not lider_nome or not dia:
         return jsonify({"erro":"GC, líder e dia são obrigatórios"}),400
 
+    # Campos livres: lista de {titulo, valor}
+    campos_livres = d.get("campos_livres","")
+    if isinstance(campos_livres, (list, dict)):
+        campos_livres = json.dumps(campos_livres, ensure_ascii=False)
+
     # Busca gc_id pelo nome
     with get_db() as conn:
         gc = conn.execute(qmark("SELECT id FROM grupos_crescimento WHERE nome=?"), (gc_nome,)).fetchone()
@@ -2707,8 +2889,8 @@ def criar_relatorio_gc():
         conn.execute(
             qmark("""INSERT INTO relatorios_gc
                 (gc_id,gc_nome,lider_nome,anfitriao,dia,membros_presentes,
-                 visitantes,lider_treinamento,nome_lider_trein,observacoes)
-                VALUES(?,?,?,?,?,?,?,?,?,?)"""),
+                 visitantes,lider_treinamento,nome_lider_trein,observacoes,campos_livres)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?)"""),
             (gc_id, gc_nome, lider_nome,
              d.get("anfitriao",""),
              dia,
@@ -2716,7 +2898,8 @@ def criar_relatorio_gc():
              int(d.get("visitantes",0)),
              1 if d.get("lider_treinamento") else 0,
              d.get("nome_lider_trein",""),
-             d.get("observacoes",""))
+             d.get("observacoes",""),
+             campos_livres)
         )
         conn.commit()
     return jsonify({"ok":True, "msg":"Relatório enviado com sucesso!"})
@@ -2805,6 +2988,270 @@ def deletar_relatorio_gc(rid):
         conn.execute(qmark("DELETE FROM relatorios_gc WHERE id=?"), (rid,))
         conn.commit()
     return jsonify({"ok":True})
+
+# ═══════════════════════════════════════════════════════════════
+# RELATÓRIO DE FREQUÊNCIA DOS GCs
+# ═══════════════════════════════════════════════════════════════
+@app.route("/api/relatorios_gc/frequencia", methods=["GET"])
+@role_required("admin","lider")
+def frequencia_gc():
+    """Relatório de frequência por GC com média, filtros e exportação"""
+    gc_nome = request.args.get("gc_nome","")
+    ini     = request.args.get("data_ini","")
+    fim     = request.args.get("data_fim","")
+    sql = "SELECT * FROM relatorios_gc WHERE 1=1"; p=[]
+    if gc_nome: sql+=" AND gc_nome=?"; p.append(gc_nome)
+    if ini: sql+=" AND dia>=?"; p.append(ini)
+    if fim: sql+=" AND dia<=?"; p.append(fim)
+    sql+=" ORDER BY gc_nome,dia"
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+        gcs  = [dict(r) for r in conn.execute("SELECT nome FROM grupos_crescimento WHERE ativo=1 ORDER BY nome").fetchall()]
+
+    # Calcula frequência por GC
+    por_gc = {}
+    for r in rows:
+        nome = r["gc_nome"]
+        if nome not in por_gc:
+            por_gc[nome] = {"gc_nome":nome,"reunioes":0,"total_membros":0,"total_visitantes":0,"datas":[]}
+        por_gc[nome]["reunioes"] += 1
+        por_gc[nome]["total_membros"] += r.get("membros_presentes",0)
+        por_gc[nome]["total_visitantes"] += r.get("visitantes",0)
+        por_gc[nome]["datas"].append({
+            "dia": r["dia"],
+            "dia_br": br(r["dia"]),
+            "membros": r.get("membros_presentes",0),
+            "visitantes": r.get("visitantes",0),
+            "lider": r.get("lider_nome",""),
+            "anfitriao": r.get("anfitriao",""),
+            "observacoes": r.get("observacoes","")
+        })
+
+    resultado = []
+    for gc_nome_key, g in por_gc.items():
+        n = max(g["reunioes"],1)
+        resultado.append({
+            **g,
+            "media_membros": round(g["total_membros"]/n,1),
+            "media_visitantes": round(g["total_visitantes"]/n,1)
+        })
+    resultado.sort(key=lambda x: x["total_membros"], reverse=True)
+
+    def safe(v):
+        if v is None: return 0
+        try: return float(v) if "." in str(v) else int(v)
+        except: return 0
+
+    totais = {
+        "total_relatorios": len(rows),
+        "total_gcs": len(por_gc),
+        "media_geral_membros": round(sum(g["total_membros"] for g in por_gc.values())/max(len(rows),1),1),
+        "media_geral_visitantes": round(sum(g["total_visitantes"] for g in por_gc.values())/max(len(rows),1),1)
+    }
+    return jsonify({"ok":True,"totais":totais,"por_gc":resultado,"gcs_lista":[g["nome"] for g in gcs]})
+
+@app.route("/api/relatorios_gc/frequencia/pdf", methods=["GET"])
+@role_required("admin","lider")
+def frequencia_gc_pdf():
+    """PDF de frequência dos GCs"""
+    gc_nome = request.args.get("gc_nome","")
+    ini     = request.args.get("data_ini","")
+    fim     = request.args.get("data_fim","")
+
+    sql = "SELECT * FROM relatorios_gc WHERE 1=1"; p=[]
+    if gc_nome: sql+=" AND gc_nome=?"; p.append(gc_nome)
+    if ini: sql+=" AND dia>=?"; p.append(ini)
+    if fim: sql+=" AND dia<=?"; p.append(fim)
+    sql+=" ORDER BY gc_nome,dia"
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+
+    por_gc = {}
+    for r in rows:
+        nome = r["gc_nome"]
+        if nome not in por_gc: por_gc[nome]={"reunioes":0,"total_membros":0,"total_visitantes":0,"datas":[]}
+        por_gc[nome]["reunioes"]+=1
+        por_gc[nome]["total_membros"]+=r.get("membros_presentes",0)
+        por_gc[nome]["total_visitantes"]+=r.get("visitantes",0)
+        por_gc[nome]["datas"].append(r)
+
+    cards_html=""
+    for nome,g in sorted(por_gc.items(),key=lambda x:x[1]["total_membros"],reverse=True):
+        n=max(g["reunioes"],1)
+        media=round(g["total_membros"]/n,1)
+        media_v=round(g["total_visitantes"]/n,1)
+        rows_html="".join(f"<tr><td>{br(d['dia'])}</td><td style='text-align:center'>{d.get('membros_presentes',0)}</td><td style='text-align:center'>{d.get('visitantes',0)}</td><td>{d.get('anfitriao','')}</td></tr>" for d in g["datas"])
+        cards_html+=f"""<div class="gc-card">
+          <div class="gc-header"><span class="gc-nome">{nome}</span>
+            <div class="gc-badges">
+              <span class="badge blue">{g['reunioes']} reuniões</span>
+              <span class="badge green">Média: {media} membros</span>
+            </div>
+          </div>
+          <table class="mini-table"><thead><tr><th>Data</th><th>Membros</th><th>Visitantes</th><th>Anfitrião</th></tr></thead>
+          <tbody>{rows_html}</tbody></table>
+          <div class="gc-totais">Total membros: <strong>{g['total_membros']}</strong> | Total visitantes: <strong>{g['total_visitantes']}</strong> | Média visit.: <strong>{media_v}</strong></div>
+        </div>"""
+
+    total_membros=sum(g["total_membros"] for g in por_gc.values())
+    total_vis=sum(g["total_visitantes"] for g in por_gc.values())
+    filtro=""
+    if gc_nome: filtro+=f" | GC: {gc_nome}"
+    if ini or fim: filtro+=f" | {br(ini) if ini else '...'} — {br(fim) if fim else '...'}"
+
+    html=f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Frequência GCs — Igreja ABA</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#F1F5F9;color:#1E293B;padding:0}}
+.btn-print{{display:block;width:calc(100% - 32px);margin:16px auto 0;padding:14px;background:#0A2463;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer}}
+.hint{{text-align:center;font-size:11px;color:#94A3B8;margin:6px 16px 14px}}
+.header{{background:linear-gradient(135deg,#0A2463,#1B4FA8);color:#fff;padding:20px 16px;margin:0 0 16px}}
+.header h1{{font-size:20px;font-weight:900;letter-spacing:2px}}
+.header .meta{{font-size:11px;opacity:.6;margin-top:4px}}
+.stats{{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 16px}}
+.stat{{background:#fff;border-radius:12px;padding:12px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
+.stat.blue{{background:linear-gradient(135deg,#0A2463,#1B4FA8)}}
+.stat .sv{{font-size:26px;font-weight:800;color:#0A2463}}
+.stat.blue .sv{{color:#fff}}
+.stat .sl{{font-size:10px;color:#64748B;text-transform:uppercase;margin-top:3px}}
+.stat.blue .sl{{color:rgba(255,255,255,.7)}}
+.gc-card{{background:#fff;border-radius:12px;margin:0 16px 12px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
+.gc-header{{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:10px}}
+.gc-nome{{font-size:14px;font-weight:800;color:#0A2463}}
+.gc-badges{{display:flex;gap:5px;flex-wrap:wrap}}
+.badge{{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;color:#fff}}
+.badge.blue{{background:#1B4FA8}}.badge.green{{background:#059669}}
+.mini-table{{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px}}
+.mini-table th{{background:#F1F5F9;padding:5px 8px;text-align:left;font-weight:600;color:#4A6080}}
+.mini-table td{{padding:5px 8px;border-bottom:1px solid #F1F5F9}}
+.gc-totais{{font-size:11px;color:#4A6080;background:#F8FAFF;border-radius:8px;padding:6px 10px}}
+.footer{{text-align:center;font-size:10px;color:#94A3B8;padding:16px}}
+@media print{{.btn-print,.hint{{display:none}}body{{background:#fff}}}}
+</style></head><body>
+<button class="btn-print" onclick="window.print()">💾 Salvar como PDF</button>
+<p class="hint">Toque nos 3 pontos → Imprimir</p>
+<div class="header">
+  <h1>FREQUÊNCIA DOS GCs</h1>
+  <div class="meta">Igreja ABA · Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}{filtro}</div>
+</div>
+<div class="stats">
+  <div class="stat blue"><div class="sv">{len(rows)}</div><div class="sl">Relatórios</div></div>
+  <div class="stat blue"><div class="sv">{len(por_gc)}</div><div class="sl">GCs Ativos</div></div>
+  <div class="stat"><div class="sv" style="color:#059669">{total_membros}</div><div class="sl">Total Membros</div></div>
+  <div class="stat"><div class="sv" style="color:#7C3AED">{total_vis}</div><div class="sl">Total Visitantes</div></div>
+</div>
+{cards_html}
+<div class="footer">Igreja ABA — Um Lar Para Pertencer</div>
+</body></html>"""
+    resp=make_response(html)
+    resp.headers["Content-Type"]="text/html; charset=utf-8"
+    return resp
+
+@app.route("/api/relatorios_gc/frequencia/excel", methods=["GET"])
+@role_required("admin","lider")
+def frequencia_gc_excel():
+    """Excel completo de frequência dos GCs"""
+    gc_filtro = request.args.get("gc_nome","")
+    ini       = request.args.get("data_ini","")
+    fim       = request.args.get("data_fim","")
+    sql = "SELECT * FROM relatorios_gc WHERE 1=1"; p=[]
+    if gc_filtro: sql+=" AND gc_nome=?"; p.append(gc_filtro)
+    if ini: sql+=" AND dia>=?"; p.append(ini)
+    if fim: sql+=" AND dia<=?"; p.append(fim)
+    sql+=" ORDER BY gc_nome,dia"
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+
+    wb = openpyxl.Workbook()
+    azul   = PatternFill("solid",fgColor="0A2463")
+    azul2  = PatternFill("solid",fgColor="1B4FA8")
+    cinza  = PatternFill("solid",fgColor="EBF5FF")
+    verde  = PatternFill("solid",fgColor="D1FAE5")
+    amarelo= PatternFill("solid",fgColor="FEF3C7")
+    branco = PatternFill("solid",fgColor="FFFFFF")
+    tw = Font(color="FFFFFF",bold=True,name="Calibri",size=11)
+    tn = Font(name="Calibri",size=10)
+    tb = Font(name="Calibri",size=10,bold=True)
+    centro=Alignment(horizontal="center",vertical="center")
+    esq=Alignment(horizontal="left",vertical="center",wrap_text=True)
+    borda=Border(left=Side(style="thin",color="D1D5DB"),right=Side(style="thin",color="D1D5DB"),
+                 top=Side(style="thin",color="D1D5DB"),bottom=Side(style="thin",color="D1D5DB"))
+
+    def cab(ws,row,cols,fill=None):
+        fill=fill or azul
+        for i,t in enumerate(cols,1):
+            c=ws.cell(row=row,column=i,value=t)
+            c.fill=fill;c.font=tw;c.alignment=centro;c.border=borda
+    def cel(ws,row,col,val,bold=False,fill=None,align=None):
+        c=ws.cell(row=row,column=col,value=val)
+        c.fill=fill or branco;c.font=tb if bold else tn
+        c.alignment=align or centro;c.border=borda;return c
+
+    # Aba Resumo por GC
+    ws1=wb.active; ws1.title="Resumo por GC"
+    ws1.merge_cells("A1:F1")
+    c=ws1["A1"];c.value="FREQUÊNCIA DOS GCS — IGREJA ABA";c.fill=azul
+    c.font=Font(color="FFFFFF",bold=True,name="Calibri",size=14);c.alignment=centro
+    cab(ws1,2,["GC","Reuniões","Total Membros","Total Visitantes","Média Membros","Média Visitantes"],azul)
+    larguras={"A":28,"B":12,"C":16,"D":16,"E":16,"F":16}
+    for col,w in larguras.items(): ws1.column_dimensions[col].width=w
+
+    por_gc={}
+    for r in rows:
+        n=r["gc_nome"]
+        if n not in por_gc: por_gc[n]={"reunioes":0,"membros":0,"vis":0}
+        por_gc[n]["reunioes"]+=1
+        por_gc[n]["membros"]+=r.get("membros_presentes",0)
+        por_gc[n]["vis"]+=r.get("visitantes",0)
+
+    for i,(nome,g) in enumerate(sorted(por_gc.items(),key=lambda x:x[1]["membros"],reverse=True),3):
+        n=max(g["reunioes"],1)
+        fill=cinza if i%2==0 else branco
+        cel(ws1,i,1,nome,bold=True,fill=fill,align=esq)
+        cel(ws1,i,2,g["reunioes"],fill=fill)
+        cel(ws1,i,3,g["membros"],fill=fill)
+        cel(ws1,i,4,g["vis"],fill=fill)
+        cel(ws1,i,5,round(g["membros"]/n,1),fill=fill)
+        cel(ws1,i,6,round(g["vis"]/n,1),fill=fill)
+
+    # Linha totais
+    tot=len(por_gc)+3
+    cel(ws1,tot,1,"MÉDIA GERAL",bold=True,fill=amarelo,align=esq)
+    cel(ws1,tot,5,round(sum(g["membros"] for g in por_gc.values())/max(len(rows),1),1),bold=True,fill=amarelo)
+    cel(ws1,tot,6,round(sum(g["vis"] for g in por_gc.values())/max(len(rows),1),1),bold=True,fill=amarelo)
+
+    # Aba detalhe
+    ws2=wb.create_sheet("Todos Relatórios")
+    cols2=["Data","GC","Líder","Anfitrião","Membros","Visitantes","Líder Trein.","Nome Líder Trein.","Observações"]
+    larg2=[12,24,20,20,10,10,12,22,35]
+    for i,(c,l) in enumerate(zip(cols2,larg2),1): ws2.column_dimensions[get_column_letter(i)].width=l
+    ws2.row_dimensions[1].height=28
+    cab(ws2,1,cols2)
+    for i,r in enumerate(rows,2):
+        fill=cinza if i%2==0 else branco
+        vals=[br(r.get("dia","")),r.get("gc_nome",""),r.get("lider_nome",""),
+              r.get("anfitriao",""),r.get("membros_presentes",0),r.get("visitantes",0),
+              "Sim" if r.get("lider_treinamento") else "Não",r.get("nome_lider_trein",""),r.get("observacoes","")]
+        for j,v in enumerate(vals,1):
+            cel(ws2,i,j,v,fill=fill,align=esq if j in (2,3,4,8,9) else centro)
+
+    tot2=len(rows)+2
+    cel(ws2,tot2,1,"TOTAIS",bold=True,fill=amarelo)
+    ws2.merge_cells(f"A{tot2}:D{tot2}")
+    cel(ws2,tot2,5,sum(r.get("membros_presentes",0) for r in rows),bold=True,fill=amarelo)
+    cel(ws2,tot2,6,sum(r.get("visitantes",0) for r in rows),bold=True,fill=amarelo)
+    media2=tot2+1
+    cel(ws2,media2,1,"MÉDIAS",bold=True,fill=verde)
+    ws2.merge_cells(f"A{media2}:D{media2}")
+    n2=max(len(rows),1)
+    cel(ws2,media2,5,round(sum(r.get("membros_presentes",0) for r in rows)/n2,1),bold=True,fill=verde)
+    cel(ws2,media2,6,round(sum(r.get("visitantes",0) for r in rows)/n2,1),bold=True,fill=verde)
+
+    buf=io.BytesIO(); wb.save(buf); buf.seek(0)
+    return send_file(buf,as_attachment=True,
+                     download_name=f"frequencia_gc_{date.today().isoformat()}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ═══════════════════════════════════════════════════════════════
 # INIT

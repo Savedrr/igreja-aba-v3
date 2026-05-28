@@ -70,24 +70,26 @@ async function logout(){await fetch("/api/logout",{method:"POST"});window.locati
 
 // ── TABS ──────────────────────────────────────────────────────
 const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:"Visitantes",
-  gc:"Conecta GC",estoque:"Estoque",escalas:"Escalas",dashboard:"Dashboard",usuarios:"Usuários",};
+  gc:"Conecta GC",estoque:"Estoque",escalas:"Escalas",dashboard:"Dashboard",usuarios:"Usuários",
+  dash_gc:"Dashboard GC",relatorios:"Relatórios",ia:"IA Contagem"};
 
 function ativarTab(tab){
+  // Redireciona resumo para dashboard (unificado)
+  if(tab==="resumo") tab="dashboard";
   document.querySelectorAll(".tab-content").forEach(t=>t.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
-  document.getElementById("tab-"+tab)?.classList.add("active");
+  const tabEl = document.getElementById("tab-"+tab);
+  if(tabEl) tabEl.classList.add("active");
   document.querySelector(`[data-tab="${tab}"]`)?.classList.add("active");
   document.getElementById("topbarTitle").textContent=TAB_TITLES[tab]||tab;
   if(tab==="dashboard")carregarDashboard();
-  
+  if(tab==="dash_gc"){carregarDashGC();}
   if(tab==="escalas"){const hoje=new Date();document.getElementById("escala_mes").value=hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");carregarVisualizacaoEscala();carregarVoluntarios();}
   if(tab==="visitantes"){carregarVisitantes();popularSelectVisitantes();}
-  if(tab==="usuarios"&&_isAdmin)carregarUsuarios();
+  if(tab==="usuarios"&&_isAdmin){carregarUsuarios();carregarDeptosSelect();}
   if(tab==="gc"){carregarGCs();carregarDirecionamentos();popularSelectVisitantes();}
   if(tab==="estoque")carregarEstoque();
-  if(tab==="dashboard")carregarDashboard();
-  
-  
+  if(tab==="relatorios")buscarRelatorio();
 }
 
 // ── DATA / HORA ───────────────────────────────────────────────
@@ -855,7 +857,7 @@ function exportarPDF(){
 // ═══════════════════════════════════════════════════════
 async function carregarDashboard(){
   // Preenche seletor de ano
-  const anoSel = document.getElementById("resumo_ano");
+  const anoSel = document.getElementById("dash_ano");
   if(anoSel && anoSel.options.length <= 1){
     const anoAtual = new Date().getFullYear();
     for(let a=anoAtual; a>=2023; a--){
@@ -865,17 +867,24 @@ async function carregarDashboard(){
       anoSel.appendChild(o);
     }
   }
-  const ano = document.getElementById("resumo_ano")?.value || new Date().getFullYear();
-  const per = document.getElementById("resumo_periodo")?.value || "";
+  const ano = document.getElementById("dash_ano")?.value || new Date().getFullYear();
   const el  = (id,v)=>{ const e=document.getElementById(id); if(e)e.textContent=v??'—'; };
 
   // ── CULTOS ────────────────────────────────────────────
   try{
-    const r = await fetch(`/api/dashboard?ano=${ano}${per?"&periodo="+encodeURIComponent(per):""}`);
+    const r = await fetch(`/api/dashboard?ano=${ano}`);
     const d = await r.json();
     if(!r.ok) throw new Error(d.erro||"Erro");
 
     const res = d.resumo||{};
+    // Cards unificados (dashboard + resumo na mesma tela)
+    el("st_dash_cultos",     res.total_cultos);
+    el("st_dash_presentes",  res.total_presentes);
+    el("st_dash_visitantes", res.total_visitantes);
+    el("st_dash_criancas",   res.total_criancas);
+    el("st_dash_media_p",    res.media_presentes);
+    el("st_dash_media_v",    res.media_visitantes);
+    // Mantém IDs legados para compatibilidade
     el("st_cultos",           res.total_cultos);
     el("st_presentes",        res.total_presentes);
     el("st_visitantes",       res.total_visitantes);
@@ -884,7 +893,7 @@ async function carregarDashboard(){
     el("st_media_visitantes", res.media_visitantes);
     el("st_media_criancas",   res.media_criancas||"—");
 
-    // Tabela por tipo
+    // Tabela por período (usando dados de por_tipo agora)
     const bp = document.getElementById("bodyPeriodo");
     if(bp && d.por_tipo){
       bp.innerHTML = d.por_tipo.map(t=>`<tr>
@@ -900,7 +909,7 @@ async function carregarDashboard(){
     if(uc && d.ultimos){
       uc.innerHTML = d.ultimos.length ? d.ultimos.map(c=>`
         <div style="padding:9px 0;border-bottom:1px solid #EEF2F9;display:flex;align-items:center;gap:12px">
-          <div style="min-width:130px;font-weight:700;font-size:12px;color:#0A2463">${c.data||""} — ${c.periodo||""}</div>
+          <div style="min-width:130px;font-weight:700;font-size:12px;color:#0A2463">${c.data_br||c.data||""} — ${c.periodo||""}</div>
           <div style="flex:1;font-size:12px;color:#64748B">${c.tipo_culto||"Culto Regular"} · ${c.responsavel||"—"}</div>
           <div style="font-size:13px;font-weight:700;color:#1B4FA8">${c.presentes||0} pres.</div>
         </div>`).join("")
@@ -912,14 +921,17 @@ async function carregarDashboard(){
     if(gm && d.mensal && d.mensal.length){
       const maxVal = Math.max(...d.mensal.map(m=>m.presentes||0), 1);
       const MESES_BR = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-      gm.innerHTML = `<div style="display:flex;align-items:flex-end;gap:5px;height:120px;padding:8px 0 0;min-width:${d.mensal.length*48}px">
+      gm.innerHTML = `<div style="display:flex;align-items:flex-end;gap:5px;height:140px;padding:8px 0 0;min-width:${d.mensal.length*48}px">
         ${d.mensal.map(m=>{
-          const h = Math.max(6, Math.round((m.presentes||0)/maxVal*100));
+          const h = Math.max(6, Math.round((m.presentes||0)/maxVal*110));
           const mesLabel = m.mes ? MESES_BR[parseInt(m.mes.split("-")[1]||0)-1]||"?" : "?";
+          const isMax = (m.presentes||0) === maxVal;
           return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:40px">
-            <div style="font-size:10px;font-weight:700;color:#0A2463">${m.presentes||0}</div>
+            <div style="font-size:10px;font-weight:700;color:${isMax?'#059669':'#0A2463'}">${m.presentes||0}</div>
             <div style="width:100%;max-width:36px;height:${h}px;
-              background:linear-gradient(180deg,#1B4FA8,#56B4D3);border-radius:4px 4px 0 0"></div>
+              background:${isMax?'linear-gradient(180deg,#059669,#34D399)':'linear-gradient(180deg,#1B4FA8,#56B4D3)'};
+              border-radius:4px 4px 0 0;position:relative" title="${m.presentes||0} presentes">
+            </div>
             <div style="font-size:9px;color:#94A3B8">${mesLabel}</div>
           </div>`;
         }).join("")}
@@ -928,41 +940,60 @@ async function carregarDashboard(){
       gm.innerHTML = '<p style="color:#8ca0c0;font-size:12px;padding:12px 0">Sem dados para este ano.</p>';
     }
 
-    // Insights automáticos
-    const ins = document.getElementById("insights_lista");
+    // Gráfico por tipo de culto
+    const gt = document.getElementById("grafico_tipo");
+    if(gt && d.por_tipo && d.por_tipo.length){
+      const maxP = Math.max(...d.por_tipo.map(t=>t.total_presentes||0),1);
+      gt.innerHTML = d.por_tipo.map((t,i)=>{
+        const pct = Math.round((t.total_presentes||0)/maxP*100);
+        const cores = ["#1B4FA8","#059669","#F59E0B","#6366F1","#EF4444","#8B5CF6"];
+        const cor = cores[i%cores.length];
+        return `<div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+            <span style="font-weight:600;color:#0A2463">${t.tipo_culto||"—"}</span>
+            <span style="color:#64748B">${t.qtd||0} cultos · média ${t.media_presentes||0}</span>
+          </div>
+          <div style="background:#EEF2F9;border-radius:6px;height:10px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${cor};border-radius:6px;transition:width .5s ease"></div>
+          </div>
+        </div>`;
+      }).join("");
+    } else if(gt){
+      gt.innerHTML = '<p style="color:#8ca0c0;font-size:12px">Sem dados.</p>';
+    }
+
+    // Insights
+    const ins = document.getElementById("dash_insights");
     if(ins){
-      const insights = [];
+      const insights = d.insights || [];
       if(d.por_tipo && d.por_tipo.length){
         const top = d.por_tipo[0];
-        insights.push(`🎯 '${top.tipo_culto}' é o tipo com mais presença (média: ${top.media_presentes}).`);
+        if(!insights.find(x=>x.includes(top.tipo_culto)))
+          insights.push(`🎯 '${top.tipo_culto}' lidera com média de ${top.media_presentes} presentes.`);
       }
       if(d.mensal && d.mensal.length >= 2){
         const ult = d.mensal[d.mensal.length-1];
         const ant = d.mensal[d.mensal.length-2];
-        if(ant.presentes > 0){
+        if(ant.presentes > 0 && !insights.find(x=>x.includes("presença"))){
           const diff = Math.round((ult.presentes - ant.presentes)/ant.presentes*100);
           const icone = diff >= 0 ? "📈" : "📉";
-          const texto = diff >= 0 ? `cresceu ${diff}%` : `caiu ${Math.abs(diff)}%`;
-          insights.push(`${icone} A presença ${texto} em relação ao mês anterior.`);
+          insights.push(`${icone} A presença ${diff>=0?'cresceu':'caiu'} ${Math.abs(diff)}% em relação ao mês anterior.`);
         }
       }
-      if(res.media_visitantes > 0){
-        insights.push(`🙋 Média de ${res.media_visitantes} visitantes por culto este ano.`);
-      }
       ins.innerHTML = insights.length
-        ? insights.map(i=>`<div style="padding:7px 0;border-bottom:1px solid #EEF2F9;font-size:13px;color:#374151">• ${i}</div>`).join("")
+        ? insights.map(i=>`<div style="padding:8px 0;border-bottom:1px solid #EEF2F9;font-size:13px;color:#374151;display:flex;gap:6px"><span style="flex-shrink:0">${i.charAt(0)}</span><span>${i.substring(1)}</span></div>`).join("")
         : '<p style="color:#8ca0c0;font-size:13px">Dados insuficientes para insights.</p>';
     }
 
-    // Top GCs Direcionamentos
-    const tgc = document.getElementById("top_gcs_dir");
+    // Top GCs
+    const tgc = document.getElementById("dash_top_gcs");
     if(tgc && d.top_gcs){
       tgc.innerHTML = d.top_gcs.length
         ? d.top_gcs.map((g,i)=>`
-          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #EEF2F9;font-size:12px">
-            <span style="font-weight:800;color:#94A3B8;min-width:18px">${i+1}</span>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #EEF2F9;font-size:12px">
+            <span style="font-weight:800;color:${i===0?'#F59E0B':i===1?'#94A3B8':i===2?'#CD7F32':'#CBD5E1'};min-width:22px;font-size:15px">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span>
             <span style="flex:1;font-weight:600;color:#0A2463">${g.gc_nome||g.nome}</span>
-            <span style="background:#EBF5FF;color:#0A2463;padding:2px 8px;border-radius:6px;font-weight:700">${g.direcionamentos||0}</span>
+            <span style="background:#EBF5FF;color:#0A2463;padding:2px 9px;border-radius:6px;font-weight:700">${g.direcionamentos||0} dir.</span>
           </div>`).join("")
         : '<p style="color:#8ca0c0;font-size:13px">Sem direcionamentos ainda.</p>';
     }
@@ -977,28 +1008,29 @@ async function carregarDashboard(){
       const t = dg.totais||{};
       el("dg_relatorios",    t.total_relatorios);
       el("dg_membros",       t.total_membros);
-      el("dg_visitantes_gc", t.total_visitantes);
+      el("dg_visitantes",    t.total_visitantes);
       el("dg_lideres",       t.total_lideres_trein);
 
-      const gcs = document.getElementById("grafico_gcs");
+      // Gráfico comparativo GCs no Dashboard principal
+      const gcs = document.getElementById("grafico_gc_comp");
       if(gcs){
         if(dg.por_gc && dg.por_gc.length){
           const maxMem = Math.max(...dg.por_gc.map(g=>g.total_membros||0), 1);
-          gcs.innerHTML = dg.por_gc.map((g,i)=>`
-            <div style="display:grid;grid-template-columns:170px 1fr 110px 65px;
-              align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #EEF2F9">
-              <div style="font-weight:700;font-size:12px;color:#0A2463;overflow:hidden;
+          gcs.innerHTML = dg.por_gc.slice(0,8).map((g,i)=>`
+            <div style="display:grid;grid-template-columns:160px 1fr 90px 60px;
+              align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #EEF2F9">
+              <div style="font-weight:700;font-size:11px;color:#0A2463;overflow:hidden;
                 text-overflow:ellipsis;white-space:nowrap" title="${g.gc_nome}">${i+1}. ${g.gc_nome}</div>
               <div style="position:relative;height:10px;background:#EEF2F9;border-radius:6px;overflow:hidden">
                 <div style="position:absolute;left:0;top:0;height:100%;
                   width:${Math.round((g.total_membros||0)/maxMem*100)}%;
                   background:linear-gradient(90deg,#1B4FA8,#56B4D3);border-radius:6px"></div>
               </div>
-              <div style="font-size:12px;text-align:right">
+              <div style="font-size:11px;text-align:right">
                 <strong style="color:#0A2463">${g.total_membros||0}</strong>
-                <span style="color:#059669"> +${g.total_visitantes||0} vis.</span>
+                <span style="color:#059669"> +${g.total_visitantes||0}</span>
               </div>
-              <div style="font-size:10px;color:#8ca0c0;text-align:right">${g.total_reunioes||0} reun.</div>
+              <div style="font-size:10px;color:#64748B;text-align:center">${g.media_membros||0} méd.</div>
             </div>`).join("");
         }else{
           gcs.innerHTML='<p style="color:#8ca0c0;font-size:13px;padding:10px 0">Nenhum relatório de GC. <a href="/relatorio-gc" target="_blank" style="color:#1B4FA8">Enviar primeiro</a></p>';
@@ -1006,40 +1038,7 @@ async function carregarDashboard(){
       }
     }
   }catch(e){ console.warn("Erro GC:",e); }
-
-  // ── CONFIRMAÇÕES ──────────────────────────────────────
-  try{
-    const mes = new Date().toISOString().slice(0,7);
-    const rc = await fetch(`/api/escala/confirmacoes_admin?mes=${mes}`);
-    if(rc.ok){
-      const lc = await rc.json();
-      const confEl = document.getElementById("resumo_confirmacoes");
-      if(confEl){
-        if(!lc.length){
-          confEl.innerHTML='<p style="color:#8ca0c0;font-size:13px">Nenhuma confirmação de escala este mês.</p>';
-        }else{
-          const conf=lc.filter(c=>c.status==="confirmado").length;
-          const rec =lc.filter(c=>c.status==="recusado").length;
-          const pend=lc.filter(c=>c.status==="pendente").length;
-          confEl.innerHTML=`
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-              <span style="background:#D1FAE5;color:#065F46;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:700">✅ ${conf} confirmados</span>
-              <span style="background:#FEE2E2;color:#991B1B;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:700">🔄 ${rec} trocas</span>
-              <span style="background:#FEF3C7;color:#92400E;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:700">⏳ ${pend} pendentes</span>
-            </div>
-            ${lc.filter(c=>c.status==="recusado").slice(0,5).map(c=>`
-              <div style="padding:6px 0;border-bottom:1px solid #F1F5F9;font-size:12px">
-                <strong style="color:#991B1B">🔄</strong> ${c.voluntario_nome}
-                — ${c.data_br||c.culto_data} · ${c.culto_periodo} · ${c.departamento}
-                ${c.sugestao_troca?`<div style="color:#64748B;font-style:italic;margin-top:2px;font-size:11px">↪ ${c.sugestao_troca}</div>`:""}
-              </div>`).join("")}`;
-        }
-      }
-    }
-  }catch(e){ console.warn("Erro confirmações:",e); }
 }
-
-
 
 
 async function carregarDeptosSelect(){
@@ -1070,29 +1069,37 @@ async function criarUsuario(){
   else toast(d.erro||"Erro ao criar usuário.","error");
 }
 async function carregarUsuarios(){
-  const c = document.getElementById("listaUsuarios");
-  if(!c) return;
-  c.innerHTML = '<div class="loading-msg">Carregando usuários...</div>';
+  const c=document.getElementById("listaUsuarios"); if(!c)return;
+  c.innerHTML="<div class='loading-msg'>Carregando usuários...</div>";
   try{
-  const r=await fetch("/api/usuarios");
-  if(!r.ok){ c.innerHTML='<div class="permission-alert">Erro ao carregar usuários.</div>'; return; }
-  const list=await r.json();
-  const RL={"admin":"Administrador","lider":"Líder","voluntario":"Voluntário"};
-  const RC={"admin":"role-admin","lider":"role-lider","voluntario":"role-voluntario"};
-  c.innerHTML=list.length ? list.map(u=>`
-    <div class="usuario-card">
-      <div class="usuario-av">${u.nome.charAt(0).toUpperCase()}</div>
-      <div style="flex:1;min-width:0">
-        <div class="usuario-nome">${u.nome}<span class="badge-role ${RC[u.cargo]||""}">${RL[u.cargo]||u.cargo}</span>${u.departamento_nome?`<span style="font-size:10px;color:#4A6080;margin-left:4px">${u.departamento_nome}</span>`:""}${!u.ativo?'<span class="badge-role" style="background:#E53E3E">Inativo</span>':""}</div>
-        <div class="usuario-email">${u.email}</div>
-        ${u.ultimo_acesso?`<div style="font-size:10px;color:#8ca0c0">Último acesso: ${u.ultimo_acesso?.substring(0,16)||"—"}</div>`:""}
-      </div>
-      <div style="display:flex;gap:5px;flex-shrink:0">
-        <button class="btn-sm blue" onclick="modalSenha(${u.id},'${esc(u.nome)}')">🔑 Senha</button>
-        <button class="btn-sm red"  onclick="deletarUser(${u.id},'${esc(u.nome)}')">🗑️</button>
-      </div>
-    </div>`).join("") : '<p style="color:#8ca0c0;padding:14px">Nenhum usuário cadastrado.</p>';
-  }catch(e){ c.innerHTML='<div class="permission-alert">Erro: '+e.message+'</div>'; }
+    const r=await fetch("/api/usuarios");
+    if(!r.ok){ c.innerHTML="<div class='permission-alert'>❌ Erro ao carregar usuários.</div>"; return; }
+    const list=await r.json();
+    if(!list || !list.length){ c.innerHTML="<p style='color:#8ca0c0;padding:10px'>Nenhum usuário cadastrado.</p>"; return; }
+    const RL={"admin":"Administrador","lider":"Líder","voluntario":"Voluntário","lider_depto":"Líder Depto","voluntario_escala":"Vol. Escala"};
+    const RC={"admin":"role-admin","lider":"role-lider","voluntario":"role-voluntario","lider_depto":"role-lider","voluntario_escala":"role-voluntario"};
+    c.innerHTML=list.map(u=>`
+      <div class="usuario-card">
+        <div class="usuario-av">${u.nome.charAt(0).toUpperCase()}</div>
+        <div style="flex:1;min-width:0">
+          <div class="usuario-nome">${u.nome}
+            <span class="badge-role ${RC[u.cargo]||""}">${RL[u.cargo]||u.cargo}</span>
+            ${u.departamento_nome?`<span style="font-size:10px;color:#4A6080;margin-left:4px">${u.departamento_nome}</span>`:""}
+            ${!u.ativo?'<span class="badge-role" style="background:#E53E3E">Inativo</span>':""}
+          </div>
+          <div class="usuario-email">${u.email}</div>
+          ${u.ultimo_acesso?`<div style="font-size:10px;color:#8ca0c0">Último acesso: ${u.ultimo_acesso?.substring(0,16)||"—"}</div>`:""}
+        </div>
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          <button class="btn-sm blue" onclick="modalSenha(${u.id},'${esc(u.nome)}')">🔑 Senha</button>
+          ${_isAdmin&&u.ativo?`<button class="btn-sm" style="background:#F59E0B;color:#fff" onclick="toggleAtivoUser(${u.id},${u.ativo},'${esc(u.nome)}')">${u.ativo?'⏸ Desativar':'▶ Ativar'}</button>`:""}
+          <button class="btn-sm red"  onclick="deletarUser(${u.id},'${esc(u.nome)}')">🗑️</button>
+        </div>
+      </div>`).join("");
+  }catch(e){
+    c.innerHTML=`<div class='permission-alert'>❌ Erro ao carregar: ${e.message}</div>`;
+    console.error("Erro carregarUsuarios:",e);
+  }
 }
 function modalSenha(uid,nome){
   abrirModal(`🔑 Alterar Senha — ${nome}`,`
@@ -1122,6 +1129,17 @@ async function deletarUser(uid,nome){
   const r=await fetch(`/api/usuarios/${uid}`,{method:"DELETE"});
   const d=await r.json();
   if(r.ok&&d.ok){toast("Usuário removido.","info");carregarUsuarios();}
+  else toast(d.erro||"Erro.","error");
+}
+
+async function toggleAtivoUser(uid,ativo,nome){
+  const novoAtivo = ativo ? 0 : 1;
+  const acao = ativo ? "desativar" : "reativar";
+  if(!confirm(`Deseja ${acao} o usuário "${nome}"?`))return;
+  const r=await fetch(`/api/usuarios/${uid}`,{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ativo:novoAtivo})});
+  const d=await r.json();
+  if(r.ok&&d.ok){toast(`Usuário ${ativo?'desativado':'reativado'}.`,"info");carregarUsuarios();}
   else toast(d.erro||"Erro.","error");
 }
 
@@ -1789,67 +1807,204 @@ function copiarLinkRelatorio(){
 }
 
 async function carregarDashGC(){
-  // Mostra link do formulário
   const linkEl = document.getElementById("linkRelatorioGC");
   if(linkEl) linkEl.textContent = window.location.origin + "/relatorio-gc";
 
   try{
     const r = await fetch("/api/relatorios_gc/dashboard");
     if(!r.ok){
-      // Sem permissão ou erro
       document.getElementById("dash_gc_por_gc").innerHTML =
         `<div class="permission-alert">❌ Erro ao carregar. Tente recarregar a página.</div>`;
       return;
     }
     const d = await r.json();
-
-    // Stats
     const t = d.totais||{};
     document.getElementById("dg_relatorios").textContent = t.total_relatorios||0;
     document.getElementById("dg_membros").textContent    = t.total_membros||0;
     document.getElementById("dg_visitantes").textContent = t.total_visitantes||0;
     document.getElementById("dg_lideres").textContent    = t.total_lideres_trein||0;
 
-    // Por GC
+    // Ranking por GC
     const porGC = document.getElementById("dash_gc_por_gc");
     if(d.por_gc && d.por_gc.length){
       const maxMem = Math.max(...d.por_gc.map(g=>g.total_membros),1);
-      porGC.innerHTML = d.por_gc.map(g=>`
-        <div style="padding:10px 0;border-bottom:1px solid #EEF2F9;display:flex;align-items:center;gap:12px">
-          <div style="min-width:160px;font-weight:700;font-size:13px;color:#0A2463">${g.gc_nome}</div>
-          <div style="flex:1;background:#EEF2F9;border-radius:6px;height:10px;overflow:hidden">
-            <div style="height:100%;width:${Math.round(g.total_membros/maxMem*100)}%;background:linear-gradient(90deg,#1B4FA8,#56B4D3);border-radius:6px"></div>
-          </div>
-          <div style="text-align:right;min-width:100px;font-size:12px">
-            <span style="font-weight:700;color:#0A2463">${g.total_membros}</span> membros<br>
-            <span style="color:#059669;font-weight:600">${g.total_visitantes}</span> visit.
-          </div>
-          <div style="font-size:10px;color:#8ca0c0;min-width:60px;text-align:right">${g.total_reunioes} reun.<br>Ult: ${g.ultima_reuniao?g.ultima_reuniao.substring(0,10).split("-").reverse().join("/"):"—"}</div>
-        </div>`).join("");
+      porGC.innerHTML = `<div class="table-wrap"><table class="data-table">
+        <thead><tr><th>#</th><th>GC</th><th style="text-align:center">Reuniões</th><th style="text-align:center">Total Membros</th><th style="text-align:center">Visitantes</th><th style="text-align:center">Média/Reunião</th><th>Última Reunião</th></tr></thead>
+        <tbody>${d.por_gc.map((g,i)=>`<tr>
+          <td><strong style="color:${i===0?'#F59E0B':i===1?'#94A3B8':i===2?'#CD7F32':'#CBD5E1'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</strong></td>
+          <td><strong style="color:#0A2463">${g.gc_nome}</strong>
+            <div style="height:4px;background:#EEF2F9;border-radius:3px;margin-top:3px;overflow:hidden">
+              <div style="height:100%;width:${Math.round((g.total_membros||0)/maxMem*100)}%;background:linear-gradient(90deg,#1B4FA8,#56B4D3);border-radius:3px"></div>
+            </div>
+          </td>
+          <td style="text-align:center">${g.total_reunioes||0}</td>
+          <td style="text-align:center"><strong style="color:#0A2463;font-size:14px">${g.total_membros||0}</strong></td>
+          <td style="text-align:center"><strong style="color:#059669">${g.total_visitantes||0}</strong></td>
+          <td style="text-align:center">${g.media_membros||0}</td>
+          <td style="font-size:11px;color:#64748B">${g.ultima_reuniao?g.ultima_reuniao.substring(0,10).split("-").reverse().join("/"):"—"}</td>
+        </tr>`).join("")}</tbody></table></div>`;
     }else{
       porGC.innerHTML = '<p style="color:#8ca0c0;font-size:13px;padding:14px">Nenhum relatório enviado ainda.<br><a href="/relatorio-gc" target="_blank" style="color:#1B4FA8">👉 Abrir formulário de GC</a></p>';
     }
 
-    // Últimos
+    // Gráfico de evolução
+    const gEv = document.getElementById("grafico_gc_evolucao");
+    if(gEv && d.por_gc && d.por_gc.length){
+      const MESES_BR = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+      const maxM = Math.max(...d.por_gc.map(g=>g.media_membros||0),1);
+      gEv.innerHTML = d.por_gc.slice(0,6).map((g,i)=>{
+        const pct = Math.round((g.media_membros||0)/maxM*100);
+        const cores = ["#1B4FA8","#059669","#F59E0B","#6366F1","#EF4444","#8B5CF6"];
+        return `<div style="margin-bottom:9px">
+          <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px">
+            <span style="font-weight:600;color:#0A2463;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px" title="${g.gc_nome}">${i+1}. ${g.gc_nome}</span>
+            <span style="color:#64748B">méd. ${g.media_membros||0} · ${g.total_reunioes||0} reun.</span>
+          </div>
+          <div style="background:#EEF2F9;border-radius:6px;height:10px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${cores[i]};border-radius:6px;transition:width .6s ease"></div>
+          </div>
+        </div>`;
+      }).join("");
+    }
+
+    // Últimos relatórios
     const ult = document.getElementById("dash_gc_ultimos");
     if(d.ultimos && d.ultimos.length){
-      ult.innerHTML = `<table class="data-table">
-        <thead><tr><th>Data</th><th>GC</th><th>Líder</th><th>Membros</th><th>Visit.</th><th>Trein.</th><th>Obs</th><th></th></tr></thead>
+      ult.innerHTML = `<div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Data</th><th>GC</th><th>Líder</th><th>Anfitrião</th><th>Membros</th><th>Visit.</th><th>Trein.</th><th>Obs</th><th></th></tr></thead>
         <tbody>${d.ultimos.map(r=>`<tr>
           <td><strong>${r.dia_br||r.dia}</strong></td>
           <td>${r.gc_nome}</td>
           <td style="font-size:11px;color:#4A6080">${r.lider_nome}</td>
+          <td style="font-size:11px;color:#4A6080">${r.anfitriao||"—"}</td>
           <td><strong style="color:#0A2463">${r.membros_presentes}</strong></td>
           <td><strong style="color:#059669">${r.visitantes}</strong></td>
-          <td>${r.lider_treinamento?'<span style="color:#7C3AED;font-weight:700">✓ Sim</span>':'Não'}</td>
-          <td style="font-size:11px;color:#4A6080;max-width:150px;overflow:hidden;text-overflow:ellipsis">${r.observacoes||'—'}</td>
-          <td>${_isLider?`<button class="btn-sm red" onclick="delRelatorioGC(${r.id})" style="font-size:10px">✕</button>`:''}</td>
-        </tr>`).join("")}</tbody></table>`;
+          <td>${r.lider_treinamento?'<span style="color:#7C3AED;font-weight:700">✓</span>':'—'}</td>
+          <td style="font-size:11px;color:#4A6080;max-width:120px;overflow:hidden;text-overflow:ellipsis">${r.observacoes||"—"}</td>
+          <td>${_isLider?`<button class="btn-sm red" onclick="delRelatorioGC(${r.id})" style="font-size:10px">✕</button>`:""}</td>
+        </tr>`).join("")}</tbody></table></div>`;
     }else{
       ult.innerHTML = '<p style="color:#8ca0c0;padding:14px;font-size:13px">Sem relatórios ainda.</p>';
     }
   }catch(e){ console.error("Erro dashboard GC",e); }
+
+  // Carrega lista de GCs para filtro
+  await carregarFrequenciaGC();
 }
+
+async function carregarFrequenciaGC(){
+  const gcFiltro = document.getElementById("gc_freq_filtro")?.value||"";
+  const ini      = document.getElementById("gc_freq_ini")?.value||"";
+  const fim      = document.getElementById("gc_freq_fim")?.value||"";
+  const el       = document.getElementById("gc_freq_detalhado");
+  if(!el) return;
+  el.innerHTML='<div class="loading-msg">Carregando frequência...</div>';
+  try{
+    const params = new URLSearchParams();
+    if(gcFiltro) params.append("gc_nome",gcFiltro);
+    if(ini) params.append("data_ini",ini);
+    if(fim) params.append("data_fim",fim);
+    const r = await fetch("/api/relatorios_gc/frequencia?"+params);
+    if(!r.ok){ el.innerHTML='<div class="permission-alert">❌ Erro ao carregar frequência.</div>'; return; }
+    const d = await r.json();
+
+    // Popula select de GCs
+    const sel = document.getElementById("gc_freq_filtro");
+    if(sel && d.gcs_lista && sel.options.length <= 1){
+      d.gcs_lista.forEach(nome=>{
+        const o=document.createElement("option"); o.value=nome; o.textContent=nome; sel.appendChild(o);
+      });
+    }
+
+    if(!d.por_gc || !d.por_gc.length){
+      el.innerHTML='<p style="color:#8ca0c0;padding:10px">Nenhum relatório encontrado para os filtros selecionados.</p>';
+      return;
+    }
+
+    let html=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:16px">
+      <div style="background:#EBF5FF;border-radius:12px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:800;color:#0A2463">${d.totais.total_relatorios}</div>
+        <div style="font-size:11px;color:#4A6080;text-transform:uppercase">Relatórios</div>
+      </div>
+      <div style="background:#D1FAE5;border-radius:12px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:800;color:#065F46">${d.totais.total_gcs}</div>
+        <div style="font-size:11px;color:#4A6080;text-transform:uppercase">GCs Ativos</div>
+      </div>
+      <div style="background:#FEF3C7;border-radius:12px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:800;color:#92400E">${d.totais.media_geral_membros}</div>
+        <div style="font-size:11px;color:#4A6080;text-transform:uppercase">Média Geral/Reunião</div>
+      </div>
+    </div>`;
+
+    // Tabela por GC com frequência detalhada
+    d.por_gc.forEach((g,idx)=>{
+      const datas_html = g.datas.slice(-5).map(dt=>`
+        <tr style="font-size:11px">
+          <td style="padding:5px 8px;color:#4A6080">${dt.dia_br||dt.dia}</td>
+          <td style="padding:5px 8px;text-align:center;font-weight:700;color:#0A2463">${dt.membros||0}</td>
+          <td style="padding:5px 8px;text-align:center;color:#059669">${dt.visitantes||0}</td>
+          <td style="padding:5px 8px;font-size:10px;color:#64748B">${dt.anfitriao||"—"}</td>
+        </tr>`).join("");
+      html+=`<div style="border:1px solid #E2E8F0;border-radius:12px;margin-bottom:12px;overflow:hidden">
+        <div style="background:linear-gradient(135deg,#0A2463,#1B4FA8);padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:800;color:#fff;font-size:13px">${idx+1}. ${g.gc_nome}</span>
+          <div style="display:flex;gap:8px">
+            <span style="background:rgba(255,255,255,.2);color:#fff;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">${g.reunioes} reuniões</span>
+            <span style="background:#22C55E;color:#fff;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">Méd: ${g.media_membros}</span>
+          </div>
+        </div>
+        <div style="padding:10px 14px">
+          <div style="display:flex;gap:16px;margin-bottom:8px;font-size:12px">
+            <span>👥 Total membros: <strong>${g.total_membros}</strong></span>
+            <span>🙋 Total visitantes: <strong style="color:#059669">${g.total_visitantes}</strong></span>
+            <span>📊 Média visitantes: <strong>${g.media_visitantes}</strong></span>
+          </div>
+          ${g.datas.length?`<table style="width:100%;border-collapse:collapse">
+            <thead><tr style="background:#F8FAFF">
+              <th style="padding:5px 8px;text-align:left;font-size:10px;color:#4A6080">Data</th>
+              <th style="padding:5px 8px;text-align:center;font-size:10px;color:#4A6080">Membros</th>
+              <th style="padding:5px 8px;text-align:center;font-size:10px;color:#4A6080">Visitantes</th>
+              <th style="padding:5px 8px;text-align:left;font-size:10px;color:#4A6080">Anfitrião</th>
+            </tr></thead>
+            <tbody>${datas_html}</tbody>
+          </table>
+          ${g.datas.length>5?`<p style="font-size:10px;color:#94A3B8;text-align:center;margin-top:5px">Mostrando últimas 5 de ${g.datas.length} reuniões</p>`:""}
+          `:""}
+        </div>
+      </div>`;
+    });
+    el.innerHTML=html;
+  }catch(e){ el.innerHTML=`<div class="permission-alert">❌ Erro: ${e.message}</div>`; }
+}
+
+function exportarFrequenciaExcel(){
+  const gcFiltro = document.getElementById("gc_freq_filtro")?.value||"";
+  const ini      = document.getElementById("gc_freq_ini")?.value||"";
+  const fim      = document.getElementById("gc_freq_fim")?.value||"";
+  const p = new URLSearchParams();
+  if(gcFiltro) p.append("gc_nome",gcFiltro);
+  if(ini) p.append("data_ini",ini);
+  if(fim) p.append("data_fim",fim);
+  window.open("/api/relatorios_gc/frequencia/excel?"+p,"_blank");
+}
+
+function exportarFrequenciaPDF(){
+  const gcFiltro = document.getElementById("gc_freq_filtro")?.value||"";
+  const ini      = document.getElementById("gc_freq_ini")?.value||"";
+  const fim      = document.getElementById("gc_freq_fim")?.value||"";
+  const p = new URLSearchParams();
+  if(gcFiltro) p.append("gc_nome",gcFiltro);
+  if(ini) p.append("data_ini",ini);
+  if(fim) p.append("data_fim",fim);
+  window.open("/api/relatorios_gc/frequencia/pdf?"+p,"_blank");
+}
+
+function carregarGraficoGC(){
+  const el = document.getElementById("grafico_gc_comp");
+  if(el) el.innerHTML='<div class="loading-msg">Carregando...</div>';
+  carregarDashboard();
+}
+
 
 async function delRelatorioGC(id){
   if(!confirm("Excluir este relatório?"))return;
