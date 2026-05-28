@@ -1838,187 +1838,127 @@ def exportar_excel():
     ini = request.args.get("data_ini","")
     fim = request.args.get("data_fim","")
     with get_db() as conn:
-        sql = "SELECT * FROM cultos WHERE 1=1"
-        p = []
+        sql = "SELECT * FROM cultos WHERE 1=1"; p=[]
         if ini: sql+=" AND data>=?"; p.append(ini)
         if fim: sql+=" AND data<=?"; p.append(fim)
-        sql += " ORDER BY data ASC"
-        cultos = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
-        # Relatórios de GC
-        gc_rows = [dict(r) for r in conn.execute(
-            "SELECT * FROM relatorios_gc ORDER BY dia ASC"
-        ).fetchall()]
+        cultos = [dict(r) for r in conn.execute(qmark(sql+" ORDER BY data ASC"),p).fetchall()]
+        gc_rows = [dict(r) for r in conn.execute("SELECT * FROM relatorios_gc ORDER BY dia ASC").fetchall()]
 
     wb = openpyxl.Workbook()
+    azul   = PatternFill("solid",fgColor="0A2463")
+    azul2  = PatternFill("solid",fgColor="1B4FA8")
+    cinza  = PatternFill("solid",fgColor="EBF5FF")
+    verde  = PatternFill("solid",fgColor="D1FAE5")
+    amarelo= PatternFill("solid",fgColor="FEF3C7")
+    branco = PatternFill("solid",fgColor="FFFFFF")
+    fb = Font(color="FFFFFF",bold=True,name="Calibri",size=11)
+    fn = Font(name="Calibri",size=10)
+    fb2= Font(name="Calibri",size=10,bold=True)
+    fa = Font(color="0A2463",bold=True,name="Calibri",size=11)
+    centro = Alignment(horizontal="center",vertical="center")
+    esq    = Alignment(horizontal="left",vertical="center",wrap_text=True)
+    brd    = Border(left=Side(style="thin",color="D1D5DB"),right=Side(style="thin",color="D1D5DB"),
+                    top=Side(style="thin",color="D1D5DB"),bottom=Side(style="thin",color="D1D5DB"))
 
-    # ── Estilos ────────────────────────────────────────
-    azul     = PatternFill("solid", fgColor="0A2463")
-    azul2    = PatternFill("solid", fgColor="1B4FA8")
-    cinza    = PatternFill("solid", fgColor="EBF5FF")
-    verde    = PatternFill("solid", fgColor="D1FAE5")
-    amarelo  = PatternFill("solid", fgColor="FEF3C7")
-    branco   = PatternFill("solid", fgColor="FFFFFF")
-    txt_branco = Font(color="FFFFFF", bold=True, name="Calibri", size=11)
-    txt_azul   = Font(color="0A2463", bold=True, name="Calibri", size=11)
-    txt_normal = Font(name="Calibri", size=10)
-    txt_bold   = Font(name="Calibri", size=10, bold=True)
-    centro  = Alignment(horizontal="center", vertical="center")
-    esq     = Alignment(horizontal="left", vertical="center", wrap_text=True)
-    borda   = Border(
-        left=Side(style="thin",color="D1D5DB"),
-        right=Side(style="thin",color="D1D5DB"),
-        top=Side(style="thin",color="D1D5DB"),
-        bottom=Side(style="thin",color="D1D5DB")
-    )
+    def cab(ws,row,cols,fill=None):
+        for i,t in enumerate(cols,1):
+            c=ws.cell(row=row,column=i,value=t)
+            c.fill=fill or azul; c.font=fb; c.alignment=centro; c.border=brd
 
-    def estilizar_cabecalho(ws, row, colunas, fill=None):
-        fill = fill or azul
-        for col_idx, titulo in enumerate(colunas, 1):
-            c = ws.cell(row=row, column=col_idx, value=titulo)
-            c.fill = fill; c.font = txt_branco; c.alignment = centro; c.border = borda
+    def cel(ws,r,c,v,bold=False,fill=None,align=None):
+        x=ws.cell(row=r,column=c,value=v)
+        x.fill=fill or branco; x.font=fb2 if bold else fn
+        x.alignment=align or centro; x.border=brd; return x
 
-    def estilizar_celula(ws, row, col, valor, bold=False, fill=None, align=None):
-        c = ws.cell(row=row, column=col, value=valor)
-        c.fill = fill or branco
-        c.font = txt_bold if bold else txt_normal
-        c.alignment = align or centro
-        c.border = borda
-        return c
-
-    # ════════════════════════════════════════════════════
-    # ABA 1: Resumo Geral
-    # ════════════════════════════════════════════════════
-    ws1 = wb.active; ws1.title = "Resumo Geral"
-    ws1.column_dimensions["A"].width = 30
-    ws1.column_dimensions["B"].width = 18
-    ws1.row_dimensions[1].height = 35
-
-    # Título
-    ws1.merge_cells("A1:B1")
-    c = ws1["A1"]; c.value = "IGREJA ABA — Relatório de Cultos"
-    c.fill = azul; c.font = Font(color="FFFFFF", bold=True, name="Calibri", size=14)
-    c.alignment = centro
-
-    dados_resumo = [
-        ("Total de Cultos",           len(cultos)),
-        ("Total de Presentes",         sum(c["presentes"] for c in cultos)),
-        ("Total de Visitantes",        sum(c["visitantes"] for c in cultos)),
-        ("Total de Crianças",          sum(c["criancas"] for c in cultos)),
-        ("Média de Presentes/Culto",   round(sum(c["presentes"] for c in cultos)/max(len(cultos),1),1)),
-        ("Média de Visitantes/Culto",  round(sum(c["visitantes"] for c in cultos)/max(len(cultos),1),1)),
-        ("Média de Crianças/Culto",    round(sum(c["criancas"] for c in cultos)/max(len(cultos),1),1)),
-    ]
-    for i, (label, valor) in enumerate(dados_resumo, 3):
-        ws1.row_dimensions[i].height = 22
-        estilizar_celula(ws1, i, 1, label, bold=True, fill=cinza if i%2==0 else branco, align=esq)
-        estilizar_celula(ws1, i, 2, valor, bold=True, fill=cinza if i%2==0 else branco)
-
-    # Por período
-    ws1["A11"] = "POR PERÍODO"
-    ws1["A11"].fill = azul2; ws1["A11"].font = txt_branco; ws1["A11"].alignment = esq
-    ws1.merge_cells("A11:B11")
-    estilizar_cabecalho(ws1, 12, ["Período","Total Presentes"])
-    periodos = {}
-    for c in cultos:
-        p = c.get("periodo","—")
-        if p not in periodos: periodos[p] = 0
-        periodos[p] += c["presentes"]
-    for i,(per,tot) in enumerate(periodos.items(),13):
-        estilizar_celula(ws1,i,1,per,align=esq)
-        estilizar_celula(ws1,i,2,tot,bold=True)
-
-    # ════════════════════════════════════════════════════
-    # ABA 2: Todos os Cultos
-    # ════════════════════════════════════════════════════
-    ws2 = wb.create_sheet("Cultos")
-    colunas2 = ["Data","Dia","Período","Tipo","Responsável","Presentes","Visitantes","Crianças","Observações"]
-    larguras2 = [12,10,8,18,20,10,10,10,30]
-    for i,(c,l) in enumerate(zip(colunas2,larguras2),1):
-        ws2.column_dimensions[get_column_letter(i)].width = l
-    ws2.row_dimensions[1].height = 28
-    estilizar_cabecalho(ws2, 1, colunas2)
-
-    for i,c in enumerate(cultos,2):
-        fill = cinza if i%2==0 else branco
-        ws2.row_dimensions[i].height = 20
-        vals = [br(c["data"]),c.get("dia_semana",""),c.get("periodo",""),
-                c.get("tipo_culto","Culto Regular"),c.get("responsavel",""),
-                c["presentes"],c["visitantes"],c["criancas"],c.get("observacoes","")]
-        for j,v in enumerate(vals,1):
-            al = esq if j in (5,9) else centro
-            estilizar_celula(ws2,i,j,v,fill=fill,align=al)
-
-    # Linha de totais
-    tot_row = len(cultos)+2
-    ws2.row_dimensions[tot_row].height = 24
-    estilizar_celula(ws2,tot_row,1,"TOTAIS",bold=True,fill=amarelo)
-    ws2.merge_cells(f"A{tot_row}:E{tot_row}")
-    estilizar_celula(ws2,tot_row,6,sum(c["presentes"] for c in cultos),bold=True,fill=amarelo)
-    estilizar_celula(ws2,tot_row,7,sum(c["visitantes"] for c in cultos),bold=True,fill=amarelo)
-    estilizar_celula(ws2,tot_row,8,sum(c["criancas"] for c in cultos),bold=True,fill=amarelo)
-
-    media_row = tot_row+1
-    ws2.row_dimensions[media_row].height = 24
-    estilizar_celula(ws2,media_row,1,"MÉDIAS/CULTO",bold=True,fill=verde)
-    ws2.merge_cells(f"A{media_row}:E{media_row}")
     n = max(len(cultos),1)
-    estilizar_celula(ws2,media_row,6,round(sum(c["presentes"] for c in cultos)/n,1),bold=True,fill=verde)
-    estilizar_celula(ws2,media_row,7,round(sum(c["visitantes"] for c in cultos)/n,1),bold=True,fill=verde)
-    estilizar_celula(ws2,media_row,8,round(sum(c["criancas"] for c in cultos)/n,1),bold=True,fill=verde)
+    tp = sum(c["presentes"] for c in cultos)
+    tv = sum(c["visitantes"] for c in cultos)
+    tc = sum(c["criancas"] for c in cultos)
 
-    # ════════════════════════════════════════════════════
-    # ABA 3: Relatórios de GC
-    # ════════════════════════════════════════════════════
-    ws3 = wb.create_sheet("Relatórios GC")
-    colunas3 = ["Data","GC","Líder","Anfitrião","Membros","Visitantes","Líder Trein.","Nome Líder Trein.","Observações"]
-    larguras3 = [12,22,20,20,10,10,12,22,35]
-    for i,(c,l) in enumerate(zip(colunas3,larguras3),1):
-        ws3.column_dimensions[get_column_letter(i)].width = l
-    ws3.row_dimensions[1].height = 28
-    estilizar_cabecalho(ws3, 1, colunas3)
+    # ── ABA 1: Resumo Geral ─────────────────────────────
+    ws1=wb.active; ws1.title="Resumo Geral"
+    ws1.column_dimensions["A"].width=28; ws1.column_dimensions["B"].width=16
+    ws1.merge_cells("A1:B1")
+    c1=ws1["A1"]; c1.value="IGREJA ABA — Relatório Consolidado"
+    c1.fill=azul; c1.font=Font(color="FFFFFF",bold=True,name="Calibri",size=14); c1.alignment=centro
+    ws1.row_dimensions[1].height=32
+    dados=[("Total de Cultos",len(cultos)),("Total de Presentes",tp),
+           ("Total de Visitantes",tv),("Total de Crianças",tc),
+           ("Média Presentes/Culto",round(tp/n,1)),("Média Visitantes/Culto",round(tv/n,1)),
+           ("Média Crianças/Culto",round(tc/n,1))]
+    for i,(lb,vl) in enumerate(dados,3):
+        ws1.row_dimensions[i].height=22
+        cel(ws1,i,1,lb,bold=True,fill=cinza if i%2==0 else branco,align=esq)
+        cel(ws1,i,2,vl,bold=True,fill=cinza if i%2==0 else branco)
+    ws1["A11"]=None
+    ws1.merge_cells("A11:B11"); c11=ws1["A11"]
+    c11.value="POR PERÍODO"; c11.fill=azul2; c11.font=fb; c11.alignment=esq
+    cab(ws1,12,["Período","Total Presentes"],azul2)
+    periodos={}
+    for c in cultos:
+        p=c.get("periodo","—")
+        if p not in periodos: periodos[p]={"n":0,"total":0}
+        periodos[p]["n"]+=1; periodos[p]["total"]+=c["presentes"]
+    for i,(per,s) in enumerate(periodos.items(),13):
+        cel(ws1,i,1,per,align=esq); cel(ws1,i,2,s["total"],bold=True)
 
+    # ── ABA 2: Todos os Cultos ──────────────────────────
+    ws2=wb.create_sheet("Cultos")
+    cols2=["Data","Dia","Período","Tipo","Responsável","Presentes","Visitantes","Crianças","Observações"]
+    for i,(c,l) in enumerate(zip(cols2,[12,10,8,20,22,10,10,10,35]),1):
+        ws2.column_dimensions[get_column_letter(i)].width=l
+    ws2.row_dimensions[1].height=28; cab(ws2,1,cols2)
+    for i,c in enumerate(cultos,2):
+        fl=cinza if i%2==0 else branco; ws2.row_dimensions[i].height=20
+        vals=[br(c["data"]),c.get("dia_semana",""),c.get("periodo",""),
+              c.get("tipo_culto","Culto Regular"),c.get("responsavel",""),
+              c["presentes"],c["visitantes"],c["criancas"],c.get("observacoes","")]
+        for j,v in enumerate(vals,1):
+            cel(ws2,i,j,v,fill=fl,align=esq if j in(5,9) else centro)
+    tr=len(cultos)+2; ws2.row_dimensions[tr].height=24
+    ws2.merge_cells(f"A{tr}:E{tr}"); cel(ws2,tr,1,"TOTAIS",bold=True,fill=amarelo)
+    for j,v in enumerate([tp,tv,tc],6): cel(ws2,tr,j,v,bold=True,fill=amarelo)
+    mr=tr+1; ws2.row_dimensions[mr].height=24
+    ws2.merge_cells(f"A{mr}:E{mr}"); cel(ws2,mr,1,"MÉDIAS/CULTO",bold=True,fill=verde)
+    for j,v in enumerate([round(tp/n,1),round(tv/n,1),round(tc/n,1)],6): cel(ws2,mr,j,v,bold=True,fill=verde)
+
+    # ── ABA 3: Relatórios GC ────────────────────────────
+    ws3=wb.create_sheet("Relatórios GC")
+    cols3=["Data","GC","Líder","Anfitrião","Membros","Visitantes","Líder Trein.","Observações"]
+    for i,(c,l) in enumerate(zip(cols3,[12,22,22,20,10,10,12,40]),1):
+        ws3.column_dimensions[get_column_letter(i)].width=l
+    ws3.row_dimensions[1].height=28; cab(ws3,1,cols3)
     for i,r in enumerate(gc_rows,2):
-        fill = cinza if i%2==0 else branco
-        ws3.row_dimensions[i].height = 20
-        vals = [br(r.get("dia","")),r.get("gc_nome",""),r.get("lider_nome",""),
-                r.get("anfitriao",""),r.get("membros_presentes",0),r.get("visitantes",0),
-                "Sim" if r.get("lider_treinamento") else "Não",
-                r.get("nome_lider_trein",""),r.get("observacoes","")]
+        fl=cinza if i%2==0 else branco; ws3.row_dimensions[i].height=20
+        vals=[br(r.get("dia","")),r.get("gc_nome",""),r.get("lider_nome",""),
+              r.get("anfitriao",""),r.get("membros_presentes",0),r.get("visitantes",0),
+              "Sim" if r.get("lider_treinamento") else "Não",r.get("observacoes","")]
         for j,v in enumerate(vals,1):
-            al = esq if j in (2,3,4,8,9) else centro
-            estilizar_celula(ws3,i,j,v,fill=fill,align=al)
+            cel(ws3,i,j,v,fill=fl,align=esq if j in(2,3,4,8) else centro)
+    if not gc_rows:
+        ws3.merge_cells("A2:H2")
+        cel(ws3,2,1,"Nenhum relatório de GC enviado ainda.",fill=cinza,align=esq)
 
-    # ════════════════════════════════════════════════════
-    # ABA 4: Ranking GCs
-    # ════════════════════════════════════════════════════
-    ws4 = wb.create_sheet("Ranking GCs")
-    ws4.column_dimensions["A"].width = 25
-    for col in ["B","C","D","E","F"]: ws4.column_dimensions[col].width = 14
-    ws4.row_dimensions[1].height = 28
-    estilizar_cabecalho(ws4, 1, ["GC","Reuniões","Total Membros","Total Visit.","Média Membros","Média Visit."])
-
-    gc_stats = {}
+    # ── ABA 4: Ranking GCs ──────────────────────────────
+    ws4=wb.create_sheet("Ranking GCs")
+    for col,w in zip(["A","B","C","D","E","F"],[26,12,14,14,14,14]):
+        ws4.column_dimensions[col].width=w
+    ws4.row_dimensions[1].height=28
+    cab(ws4,1,["GC","Reuniões","Total Membros","Total Visitantes","Média Membros","Média Visitantes"])
+    gc_stats={}
     for r in gc_rows:
-        nome = r.get("gc_nome","—")
-        if nome not in gc_stats: gc_stats[nome] = {"reunioes":0,"membros":0,"visitantes":0}
-        gc_stats[nome]["reunioes"]   += 1
-        gc_stats[nome]["membros"]    += r.get("membros_presentes",0)
-        gc_stats[nome]["visitantes"] += r.get("visitantes",0)
+        nm=r.get("gc_nome","—")
+        if nm not in gc_stats: gc_stats[nm]={"r":0,"m":0,"v":0}
+        gc_stats[nm]["r"]+=1; gc_stats[nm]["m"]+=r.get("membros_presentes",0); gc_stats[nm]["v"]+=r.get("visitantes",0)
+    for i,(nm,s) in enumerate(sorted(gc_stats.items(),key=lambda x:x[1]["m"],reverse=True),2):
+        fl=cinza if i%2==0 else branco; nr=max(s["r"],1)
+        for j,v in enumerate([nm,s["r"],s["m"],s["v"],round(s["m"]/nr,1),round(s["v"]/nr,1)],1):
+            cel(ws4,i,j,v,bold=(j==1),fill=fl,align=esq if j==1 else centro)
+    if not gc_stats:
+        ws4.merge_cells("A2:F2"); cel(ws4,2,1,"Nenhum relatório de GC enviado ainda.",fill=cinza,align=esq)
 
-    ranking = sorted(gc_stats.items(), key=lambda x: x[1]["membros"], reverse=True)
-    for i,(nome,s) in enumerate(ranking,2):
-        fill = cinza if i%2==0 else branco
-        ws4.row_dimensions[i].height = 22
-        n_r = max(s["reunioes"],1)
-        vals = [nome,s["reunioes"],s["membros"],s["visitantes"],
-                round(s["membros"]/n_r,1),round(s["visitantes"]/n_r,1)]
-        for j,v in enumerate(vals,1):
-            al = esq if j==1 else centro
-            estilizar_celula(ws4,i,j,v,bold=(j==1),fill=fill,align=al)
-
-    buf = io.BytesIO()
-    wb.save(buf); buf.seek(0)
-    return send_file(buf, as_attachment=True,
+    buf=io.BytesIO(); wb.save(buf); buf.seek(0)
+    return send_file(buf,as_attachment=True,
                      download_name=f"igrejaaba_{date.today().isoformat()}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 

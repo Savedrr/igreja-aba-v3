@@ -1070,14 +1070,16 @@ async function criarUsuario(){
   else toast(d.erro||"Erro ao criar usuário.","error");
 }
 async function carregarUsuarios(){
-  const ul = document.getElementById("usuarios_lista");
-  if(ul) ul.innerHTML = '<div class="loading-msg">Carregando usuários...</div>';
-  const c=document.getElementById("listaUsuarios"); if(!c)return;
-  c.innerHTML="<div class='loading-msg'>Carregando...</div>";
-  const r=await fetch("/api/usuarios"); const list=await r.json();
+  const c = document.getElementById("listaUsuarios");
+  if(!c) return;
+  c.innerHTML = '<div class="loading-msg">Carregando usuários...</div>';
+  try{
+  const r=await fetch("/api/usuarios");
+  if(!r.ok){ c.innerHTML='<div class="permission-alert">Erro ao carregar usuários.</div>'; return; }
+  const list=await r.json();
   const RL={"admin":"Administrador","lider":"Líder","voluntario":"Voluntário"};
   const RC={"admin":"role-admin","lider":"role-lider","voluntario":"role-voluntario"};
-  c.innerHTML=list.map(u=>`
+  c.innerHTML=list.length ? list.map(u=>`
     <div class="usuario-card">
       <div class="usuario-av">${u.nome.charAt(0).toUpperCase()}</div>
       <div style="flex:1;min-width:0">
@@ -1089,7 +1091,8 @@ async function carregarUsuarios(){
         <button class="btn-sm blue" onclick="modalSenha(${u.id},'${esc(u.nome)}')">🔑 Senha</button>
         <button class="btn-sm red"  onclick="deletarUser(${u.id},'${esc(u.nome)}')">🗑️</button>
       </div>
-    </div>`).join("");
+    </div>`).join("") : '<p style="color:#8ca0c0;padding:14px">Nenhum usuário cadastrado.</p>';
+  }catch(e){ c.innerHTML='<div class="permission-alert">Erro: '+e.message+'</div>'; }
 }
 function modalSenha(uid,nome){
   abrirModal(`🔑 Alterar Senha — ${nome}`,`
