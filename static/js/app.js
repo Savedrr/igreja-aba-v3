@@ -71,7 +71,7 @@ async function logout(){await fetch("/api/logout",{method:"POST"});window.locati
 // ── TABS ──────────────────────────────────────────────────────
 const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:"Visitantes",
   gc:"Conecta GC",estoque:"Estoque",relatorios:"Relatórios",
-  resumo:"Resumo Geral",escalas:"Escalas",dashboard:"Dashboard",usuarios:"Usuários",logs:"Logs do Sistema"};
+  escalas:"Escalas",dashboard:"Dashboard",usuarios:"Usuários",logs:"Logs do Sistema"};
 
 function ativarTab(tab){
   document.querySelectorAll(".tab-content").forEach(t=>t.classList.remove("active"));
@@ -79,7 +79,7 @@ function ativarTab(tab){
   document.getElementById("tab-"+tab)?.classList.add("active");
   document.querySelector(`[data-tab="${tab}"]`)?.classList.add("active");
   document.getElementById("topbarTitle").textContent=TAB_TITLES[tab]||tab;
-  if(tab==="resumo")carregarResumo();
+  if(tab==="dashboard")carregarDashboard();
   // dash_gc integrado ao resumo
   if(tab==="escalas"){const hoje=new Date();document.getElementById("escala_mes").value=hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");carregarVisualizacaoEscala();carregarVoluntarios();}
   if(tab==="visitantes"){carregarVisitantes();popularSelectVisitantes();}
@@ -199,7 +199,7 @@ async function salvarEdicaoCulto(id){
   };
   const r=await fetch(`/api/cultos/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
   const d=await r.json();
-  if(r.ok&&d.ok){toast("✅ Relatório atualizado!","success");fecharModal();buscarRelatorio();carregarResumo();}
+  if(r.ok&&d.ok){toast("✅ Relatório atualizado!","success");fecharModal();buscarRelatorio();carregarDashboard();}
   else toast(d.erro||"Erro.","error");
 }
 
@@ -883,7 +883,197 @@ function exportarPDF(){
 }
 
 // ── RESUMO ────────────────────────────────────────────────────
-async function carregarResumo(){
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD UNIFICADO — Cultos + GCs + Escalas
+// ═══════════════════════════════════════════════════════
+async function carregarDashboard(){
+  // Preenche seletor de ano
+  const anoSel = document.getElementById("resumo_ano");
+  if(anoSel && anoSel.options.length <= 1){
+    const anoAtual = new Date().getFullYear();
+    for(let a=anoAtual; a>=2023; a--){
+      const o=document.createElement("option");
+      o.value=a; o.textContent=a;
+      if(a===anoAtual) o.selected=true;
+      anoSel.appendChild(o);
+    }
+  }
+  const ano = document.getElementById("resumo_ano")?.value || new Date().getFullYear();
+  const per = document.getElementById("resumo_periodo")?.value || "";
+  const el  = (id,v)=>{ const e=document.getElementById(id); if(e)e.textContent=v??'—'; };
+
+  // ── CULTOS ────────────────────────────────────────────
+  try{
+    const r = await fetch(`/api/dashboard?ano=${ano}${per?"&periodo="+encodeURIComponent(per):""}`);
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.erro||"Erro");
+
+    const res = d.resumo||{};
+    el("st_cultos",           res.total_cultos);
+    el("st_presentes",        res.total_presentes);
+    el("st_visitantes",       res.total_visitantes);
+    el("st_criancas",         res.total_criancas);
+    el("st_media_presentes",  res.media_presentes);
+    el("st_media_visitantes", res.media_visitantes);
+    el("st_media_criancas",   res.media_criancas||"—");
+
+    // Tabela por tipo
+    const bp = document.getElementById("bodyPeriodo");
+    if(bp && d.por_tipo){
+      bp.innerHTML = d.por_tipo.map(t=>`<tr>
+        <td><strong>${t.tipo_culto||"—"}</strong></td>
+        <td style="text-align:center">${t.qtd||0}</td>
+        <td style="text-align:center">${t.total_presentes||0}</td>
+        <td style="text-align:center">${t.media_presentes||0}</td>
+      </tr>`).join("") || '<tr><td colspan="4" class="loading-msg">Sem dados</td></tr>';
+    }
+
+    // Últimos cultos
+    const uc = document.getElementById("ultimosCultos");
+    if(uc && d.ultimos){
+      uc.innerHTML = d.ultimos.length ? d.ultimos.map(c=>`
+        <div style="padding:9px 0;border-bottom:1px solid #EEF2F9;display:flex;align-items:center;gap:12px">
+          <div style="min-width:130px;font-weight:700;font-size:12px;color:#0A2463">${c.data||""} — ${c.periodo||""}</div>
+          <div style="flex:1;font-size:12px;color:#64748B">${c.tipo_culto||"Culto Regular"} · ${c.responsavel||"—"}</div>
+          <div style="font-size:13px;font-weight:700;color:#1B4FA8">${c.presentes||0} pres.</div>
+        </div>`).join("")
+        : '<p style="color:#8ca0c0;font-size:13px">Sem registros.</p>';
+    }
+
+    // Gráfico mensal
+    const gm = document.getElementById("grafico_mensal");
+    if(gm && d.mensal && d.mensal.length){
+      const maxVal = Math.max(...d.mensal.map(m=>m.presentes||0), 1);
+      const MESES_BR = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+      gm.innerHTML = `<div style="display:flex;align-items:flex-end;gap:5px;height:120px;padding:8px 0 0;min-width:${d.mensal.length*48}px">
+        ${d.mensal.map(m=>{
+          const h = Math.max(6, Math.round((m.presentes||0)/maxVal*100));
+          const mesLabel = m.mes ? MESES_BR[parseInt(m.mes.split("-")[1]||0)-1]||"?" : "?";
+          return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:40px">
+            <div style="font-size:10px;font-weight:700;color:#0A2463">${m.presentes||0}</div>
+            <div style="width:100%;max-width:36px;height:${h}px;
+              background:linear-gradient(180deg,#1B4FA8,#56B4D3);border-radius:4px 4px 0 0"></div>
+            <div style="font-size:9px;color:#94A3B8">${mesLabel}</div>
+          </div>`;
+        }).join("")}
+      </div>`;
+    } else if(gm){
+      gm.innerHTML = '<p style="color:#8ca0c0;font-size:12px;padding:12px 0">Sem dados para este ano.</p>';
+    }
+
+    // Insights automáticos
+    const ins = document.getElementById("insights_lista");
+    if(ins){
+      const insights = [];
+      if(d.por_tipo && d.por_tipo.length){
+        const top = d.por_tipo[0];
+        insights.push(`🎯 '${top.tipo_culto}' é o tipo com mais presença (média: ${top.media_presentes}).`);
+      }
+      if(d.mensal && d.mensal.length >= 2){
+        const ult = d.mensal[d.mensal.length-1];
+        const ant = d.mensal[d.mensal.length-2];
+        if(ant.presentes > 0){
+          const diff = Math.round((ult.presentes - ant.presentes)/ant.presentes*100);
+          const icone = diff >= 0 ? "📈" : "📉";
+          const texto = diff >= 0 ? `cresceu ${diff}%` : `caiu ${Math.abs(diff)}%`;
+          insights.push(`${icone} A presença ${texto} em relação ao mês anterior.`);
+        }
+      }
+      if(res.media_visitantes > 0){
+        insights.push(`🙋 Média de ${res.media_visitantes} visitantes por culto este ano.`);
+      }
+      ins.innerHTML = insights.length
+        ? insights.map(i=>`<div style="padding:7px 0;border-bottom:1px solid #EEF2F9;font-size:13px;color:#374151">• ${i}</div>`).join("")
+        : '<p style="color:#8ca0c0;font-size:13px">Dados insuficientes para insights.</p>';
+    }
+
+    // Top GCs Direcionamentos
+    const tgc = document.getElementById("top_gcs_dir");
+    if(tgc && d.top_gcs){
+      tgc.innerHTML = d.top_gcs.length
+        ? d.top_gcs.map((g,i)=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #EEF2F9;font-size:12px">
+            <span style="font-weight:800;color:#94A3B8;min-width:18px">${i+1}</span>
+            <span style="flex:1;font-weight:600;color:#0A2463">${g.gc_nome||g.nome}</span>
+            <span style="background:#EBF5FF;color:#0A2463;padding:2px 8px;border-radius:6px;font-weight:700">${g.direcionamentos||0}</span>
+          </div>`).join("")
+        : '<p style="color:#8ca0c0;font-size:13px">Sem direcionamentos ainda.</p>';
+    }
+
+  }catch(e){ console.error("Erro dashboard cultos:",e); }
+
+  // ── GCs ───────────────────────────────────────────────
+  try{
+    const rg = await fetch("/api/relatorios_gc/dashboard");
+    if(rg.ok){
+      const dg = await rg.json();
+      const t = dg.totais||{};
+      el("dg_relatorios",    t.total_relatorios);
+      el("dg_membros",       t.total_membros);
+      el("dg_visitantes_gc", t.total_visitantes);
+      el("dg_lideres",       t.total_lideres_trein);
+
+      const gcs = document.getElementById("grafico_gcs");
+      if(gcs){
+        if(dg.por_gc && dg.por_gc.length){
+          const maxMem = Math.max(...dg.por_gc.map(g=>g.total_membros||0), 1);
+          gcs.innerHTML = dg.por_gc.map((g,i)=>`
+            <div style="display:grid;grid-template-columns:170px 1fr 110px 65px;
+              align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #EEF2F9">
+              <div style="font-weight:700;font-size:12px;color:#0A2463;overflow:hidden;
+                text-overflow:ellipsis;white-space:nowrap" title="${g.gc_nome}">${i+1}. ${g.gc_nome}</div>
+              <div style="position:relative;height:10px;background:#EEF2F9;border-radius:6px;overflow:hidden">
+                <div style="position:absolute;left:0;top:0;height:100%;
+                  width:${Math.round((g.total_membros||0)/maxMem*100)}%;
+                  background:linear-gradient(90deg,#1B4FA8,#56B4D3);border-radius:6px"></div>
+              </div>
+              <div style="font-size:12px;text-align:right">
+                <strong style="color:#0A2463">${g.total_membros||0}</strong>
+                <span style="color:#059669"> +${g.total_visitantes||0} vis.</span>
+              </div>
+              <div style="font-size:10px;color:#8ca0c0;text-align:right">${g.total_reunioes||0} reun.</div>
+            </div>`).join("");
+        }else{
+          gcs.innerHTML='<p style="color:#8ca0c0;font-size:13px;padding:10px 0">Nenhum relatório de GC. <a href="/relatorio-gc" target="_blank" style="color:#1B4FA8">Enviar primeiro</a></p>';
+        }
+      }
+    }
+  }catch(e){ console.warn("Erro GC:",e); }
+
+  // ── CONFIRMAÇÕES ──────────────────────────────────────
+  try{
+    const mes = new Date().toISOString().slice(0,7);
+    const rc = await fetch(`/api/escala/confirmacoes_admin?mes=${mes}`);
+    if(rc.ok){
+      const lc = await rc.json();
+      const confEl = document.getElementById("resumo_confirmacoes");
+      if(confEl){
+        if(!lc.length){
+          confEl.innerHTML='<p style="color:#8ca0c0;font-size:13px">Nenhuma confirmação de escala este mês.</p>';
+        }else{
+          const conf=lc.filter(c=>c.status==="confirmado").length;
+          const rec =lc.filter(c=>c.status==="recusado").length;
+          const pend=lc.filter(c=>c.status==="pendente").length;
+          confEl.innerHTML=`
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+              <span style="background:#D1FAE5;color:#065F46;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:700">✅ ${conf} confirmados</span>
+              <span style="background:#FEE2E2;color:#991B1B;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:700">🔄 ${rec} trocas</span>
+              <span style="background:#FEF3C7;color:#92400E;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:700">⏳ ${pend} pendentes</span>
+            </div>
+            ${lc.filter(c=>c.status==="recusado").slice(0,5).map(c=>`
+              <div style="padding:6px 0;border-bottom:1px solid #F1F5F9;font-size:12px">
+                <strong style="color:#991B1B">🔄</strong> ${c.voluntario_nome}
+                — ${c.data_br||c.culto_data} · ${c.culto_periodo} · ${c.departamento}
+                ${c.sugestao_troca?`<div style="color:#64748B;font-style:italic;margin-top:2px;font-size:11px">↪ ${c.sugestao_troca}</div>`:""}
+              </div>`).join("")}`;
+        }
+      }
+    }
+  }catch(e){ console.warn("Erro confirmações:",e); }
+}
+
+async function carregarDashboard_OLD(){
   // Preenche seletor de ano
   const anoSel = document.getElementById("resumo_ano");
   if(anoSel && anoSel.options.length <= 1){

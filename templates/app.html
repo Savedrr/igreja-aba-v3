@@ -69,9 +69,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="14"/><line x1="12" y1="14" x2="12" y2="14"/><line x1="16" y1="14" x2="16" y2="14"/></svg>
       Escalas</a></li>
     
-    <li><a class="nav-item" data-tab="resumo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-      Resumo Geral</a></li>
+    
     
     <li style="display:none" id="navUsuarios"><a class="nav-item" data-tab="usuarios">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -385,87 +383,112 @@
   </div>
 
   <!-- ═══ DASHBOARD ═══════════════════════════════════════════ -->
+  <!-- ═══ DASHBOARD UNIFICADO ══════════════════════════════ -->
   <div class="tab-content" id="tab-dashboard">
     <div class="page-header">
-      <div><h1 class="page-title">Dashboard</h1><p class="page-sub">Análises e métricas da Igreja ABA</p></div>
+      <div><h1 class="page-title">Dashboard</h1><p class="page-sub">Visão completa — Cultos, GCs e Escalas</p></div>
       <div class="page-header-right">
-        <select class="field-input" id="dash_ano" onchange="carregarDashboard()" style="width:100px">
-          <option>2025</option><option>2024</option><option>2026</option>
+        <select class="field-input" id="resumo_ano" onchange="carregarDashboard()" style="max-width:110px;font-size:13px"></select>
+        <select class="field-input" id="resumo_periodo" onchange="carregarDashboard()" style="max-width:110px;font-size:13px">
+          <option value="">Todos períodos</option>
+          <option value="Manhã">Manhã</option>
+          <option value="Noite">Noite</option>
         </select>
-        <button class="btn-secondary" onclick="carregarDashboard()">🔄 Atualizar</button>
+        <button class="btn-outline" onclick="carregarDashboard()">🔄 Atualizar</button>
+        <button class="btn-secondary" onclick="exportarExcel()">📊 Excel</button>
+        <button class="btn-pdf" onclick="exportarPDF()">📄 PDF</button>
       </div>
     </div>
-    <div class="stats-grid" style="margin-bottom:18px">
-      <div class="stat-card blue"><div class="stat-icon">🏛️</div><div class="stat-value" id="st_dash_cultos">—</div><div class="stat-label">Total Cultos</div></div>
-      <div class="stat-card green"><div class="stat-icon">👥</div><div class="stat-value" id="st_dash_presentes">—</div><div class="stat-label">Total Presentes</div></div>
-      <div class="stat-card"><div class="stat-icon">🙋</div><div class="stat-value" id="st_dash_visitantes">—</div><div class="stat-label">Total Visitantes</div></div>
-      <div class="stat-card purple"><div class="stat-icon">🧒</div><div class="stat-value" id="st_dash_criancas">—</div><div class="stat-label">Total Crianças</div></div>
-    </div>
-    <div class="dash-row">
-      <div class="dash-card">
-        <div class="dash-card-title">📈 Evolução Mensal</div>
-        <div class="chart-wrap" id="grafico_mensal"><div class="loading-msg">Carregando...</div></div>
-      </div>
-      <div class="dash-card">
-        <div class="dash-card-title">✝️ Por Tipo de Culto</div>
-        <div id="grafico_tipo"><div class="loading-msg">Carregando...</div></div>
-      </div>
-    </div>
-    <div class="dash-row">
-      <div class="dash-card">
-        <div class="dash-card-title">💡 Insights Automáticos</div>
-        <div class="insights-list" id="dash_insights"><div class="loading-msg">Carregando...</div></div>
-      </div>
-      <div class="dash-card">
-        <div class="dash-card-title">🌟 Top GCs — Direcionamentos</div>
-        <div id="dash_top_gcs"><div class="loading-msg">Carregando...</div></div>
-      </div>
-    </div>
-  </div>
 
-  <!-- ═══ RELATÓRIOS ══════════════════════════════════════════ -->
-  <div class="tab-content" id="tab-relatorios">
-    <div class="page-header"><h1 class="page-title">Relatórios</h1><p class="page-sub">Histórico completo com filtros e exportação</p></div>
+    <!-- ── STATS CULTOS ──────────────────────────────────── -->
+    <div class="section-label" style="padding:0 0 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748B">CULTOS</div>
+    <div class="stats-grid" style="margin-bottom:16px">
+      <div class="stat-card blue"><div class="stat-icon">🏛️</div><div class="stat-value" id="st_cultos">—</div><div class="stat-label">Total Cultos</div></div>
+      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" id="st_presentes">—</div><div class="stat-label">Total Presentes</div></div>
+      <div class="stat-card"><div class="stat-icon">🙋</div><div class="stat-value" id="st_visitantes">—</div><div class="stat-label">Total Visitantes</div></div>
+      <div class="stat-card"><div class="stat-icon">🧒</div><div class="stat-value" id="st_criancas">—</div><div class="stat-label">Total Crianças</div></div>
+      <div class="stat-card accent"><div class="stat-icon">📊</div><div class="stat-value" id="st_media_presentes">—</div><div class="stat-label">Média Pres./Culto</div></div>
+      <div class="stat-card accent"><div class="stat-icon">📈</div><div class="stat-value" id="st_media_visitantes">—</div><div class="stat-label">Média Visit./Culto</div></div>
+      <div class="stat-card accent"><div class="stat-icon">👶</div><div class="stat-value" id="st_media_criancas">—</div><div class="stat-label">Média Crian./Culto</div></div>
+    </div>
+
+    <!-- ── GRÁFICO + TIPO ────────────────────────────────── -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px" class="grid-responsive">
+      <div class="form-card">
+        <div class="form-section">
+          <div class="section-title">📈 Evolução Mensal</div>
+          <div id="grafico_mensal" style="overflow-x:auto"><div class="loading-msg">Carregando...</div></div>
+        </div>
+      </div>
+      <div class="form-card">
+        <div class="form-section">
+          <div class="section-title">Por Tipo / Período</div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Tipo</th><th>Cultos</th><th>Presentes</th><th>Média</th></tr></thead>
+              <tbody id="bodyPeriodo"><tr><td colspan="4" class="loading-msg">...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ÚLTIMOS CULTOS ────────────────────────────────── -->
+    <div class="form-card" style="margin-bottom:16px">
+      <div class="form-section">
+        <div class="section-title">Últimos Cultos</div>
+        <div id="ultimosCultos" class="loading-msg">Carregando...</div>
+      </div>
+    </div>
+
+    <!-- ── STATS GC ──────────────────────────────────────── -->
+    <div class="section-label" style="padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748B">GRUPOS DE CRESCIMENTO</div>
+    <div class="stats-grid" style="margin-bottom:14px">
+      <div class="stat-card green"><div class="stat-icon">📋</div><div class="stat-value" id="dg_relatorios">—</div><div class="stat-label">Relatórios GC</div></div>
+      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" id="dg_membros">—</div><div class="stat-label">Membros nos GCs</div></div>
+      <div class="stat-card"><div class="stat-icon">🙋</div><div class="stat-value" id="dg_visitantes_gc">—</div><div class="stat-label">Visitantes nos GCs</div></div>
+      <div class="stat-card accent"><div class="stat-icon">🌱</div><div class="stat-value" id="dg_lideres">—</div><div class="stat-label">Líderes em Trein.</div></div>
+    </div>
+
+    <!-- ── RANKING GCs ────────────────────────────────────── -->
+    <div class="form-card" style="margin-bottom:16px">
+      <div class="form-section">
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>🏆 Ranking dos GCs</span>
+          <a href="/relatorio-gc" target="_blank" style="font-size:11px;color:#1B4FA8;font-weight:600;text-decoration:none">+ Enviar Relatório</a>
+        </div>
+        <div id="grafico_gcs"><div class="loading-msg">Carregando GCs...</div></div>
+      </div>
+    </div>
+
+    <!-- ── INSIGHTS + TOP GCs DIRECIONAMENTOS ───────────────── -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px" class="grid-responsive">
+      <div class="form-card">
+        <div class="form-section">
+          <div class="section-title">💡 Insights Automáticos</div>
+          <div id="insights_lista"><div class="loading-msg">Calculando...</div></div>
+        </div>
+      </div>
+      <div class="form-card">
+        <div class="form-section">
+          <div class="section-title">📍 Top GCs — Direcionamentos</div>
+          <div id="top_gcs_dir"><div class="loading-msg">Carregando...</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CONFIRMAÇÕES ESCALA ───────────────────────────── -->
     <div class="form-card">
       <div class="form-section">
-        <div class="section-title">🔎 Filtros</div>
-        <div class="grid-4">
-          <div class="field-group"><label>Tipo de Culto</label>
-            <select class="field-input" id="f_tipo_culto">
-              <option value="">Todos</option>
-              <option>Culto Regular</option><option>NAREAL</option>
-              <option>Evento</option><option>Reunião de Líderes</option>
-              <option>Culto de GC</option><option>Outro</option>
-            </select></div>
-          <div class="field-group"><label>Período do Dia</label>
-            <select class="field-input" id="f_periodo">
-              <option value="">Todos</option><option>Manhã</option><option>Tarde</option><option>Noite</option>
-            </select></div>
-          <div class="field-group"><label>Data Início</label><input type="date" class="field-input" id="f_data_ini"></div>
-          <div class="field-group"><label>Data Fim</label><input type="date" class="field-input" id="f_data_fim"></div>
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>📋 Escala — Confirmações do Mês</span>
+          <button class="btn-outline" onclick="verConfirmacoes()" style="font-size:11px;padding:4px 10px">Ver todas</button>
         </div>
-        <div class="btn-row" style="margin-top:12px">
-          <button class="btn-secondary" onclick="buscarRelatorio()">🔍 Filtrar</button>
-          <button class="btn-excel" onclick="exportarExcel()">📥 Excel Completo</button>
-          <button class="btn-pdf" onclick="exportarPDF()">📄 Gerar PDF</button>
-        </div>
-      </div>
-    </div>
-    <div class="form-card" style="margin-top:16px">
-      <div class="form-section">
-        <div class="section-title">📋 Histórico de Cultos</div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr><th>Data</th><th>Dia</th><th>Tipo</th><th>Período</th><th>Hora</th><th>Responsável</th><th>Pres.</th><th>Visit.</th><th>Crian.</th><th>Ações</th></tr></thead>
-            <tbody id="bodyRelatorio"><tr><td colspan="10" style="text-align:center;padding:28px;color:#8ca0c0">Clique em Filtrar</td></tr></tbody>
-          </table>
-        </div>
+        <div id="resumo_confirmacoes"><div class="loading-msg">Carregando...</div></div>
       </div>
     </div>
   </div>
 
-
-  <!-- ═══ ESCALAS ══════════════════════════════════════════ -->
   <div class="tab-content" id="tab-escalas">
     <div class="page-header">
       <div>
@@ -582,10 +605,7 @@
   </div>
 
   <!-- ═══ RESUMO GERAL ═════════════════════════════════════ -->
-  <div class="tab-content" id="tab-resumo">
-    <div class="page-header">
-      <div><h1 class="page-title">Resumo Geral</h1><p class="page-sub">Dashboard completo — Cultos, GCs e Escalas</p></div>
-      <div class="page-header-right">
+        <div class="page-header-right">
         <button class="btn-outline" onclick="carregarResumo()">🔄 Atualizar</button>
         <button class="btn-secondary" onclick="exportarExcel()">📊 Excel</button>
         <button class="btn-pdf" onclick="exportarPDF()">📄 PDF</button>
