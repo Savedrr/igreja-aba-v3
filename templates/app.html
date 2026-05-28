@@ -581,13 +581,35 @@
     </div>
   </div>
 
-  <!-- ═══ RESUMO ══════════════════════════════════════════════ -->
+  <!-- ═══ RESUMO GERAL ═════════════════════════════════════ -->
   <div class="tab-content" id="tab-resumo">
     <div class="page-header">
-      <div><h1 class="page-title">Resumo Geral</h1><p class="page-sub">Estatísticas consolidadas da Igreja ABA</p></div>
-      <button class="btn-pdf" onclick="exportarPDF()">📄 Gerar PDF</button>
+      <div><h1 class="page-title">Resumo Geral</h1><p class="page-sub">Dashboard completo — Cultos, GCs e Escalas</p></div>
+      <div class="page-header-right">
+        <button class="btn-outline" onclick="carregarResumo()">🔄 Atualizar</button>
+        <button class="btn-secondary" onclick="exportarExcel()">📊 Excel</button>
+        <button class="btn-pdf" onclick="exportarPDF()">📄 PDF</button>
+      </div>
     </div>
-    <div class="stats-grid">
+
+    <!-- FILTRO DE ANO -->
+    <div class="form-card" style="margin-bottom:14px;padding:12px 16px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:12px;font-weight:600;color:#4A6080">Ano:</label>
+        <select class="field-input" id="resumo_ano" onchange="carregarResumo()" style="max-width:120px">
+        </select>
+        <label style="font-size:12px;font-weight:600;color:#4A6080">Período:</label>
+        <select class="field-input" id="resumo_periodo" onchange="carregarResumo()" style="max-width:120px">
+          <option value="">Todos</option>
+          <option value="Manhã">Manhã</option>
+          <option value="Noite">Noite</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- STATS CULTOS -->
+    <div class="section-label" style="padding:0 0 8px">CULTOS</div>
+    <div class="stats-grid" style="margin-bottom:18px">
       <div class="stat-card blue"><div class="stat-icon">🏛️</div><div class="stat-value" id="st_cultos">—</div><div class="stat-label">Total Cultos</div></div>
       <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" id="st_presentes">—</div><div class="stat-label">Total Presentes</div></div>
       <div class="stat-card"><div class="stat-icon">🙋</div><div class="stat-value" id="st_visitantes">—</div><div class="stat-label">Total Visitantes</div></div>
@@ -596,27 +618,72 @@
       <div class="stat-card accent"><div class="stat-icon">📈</div><div class="stat-value" id="st_media_visitantes">—</div><div class="stat-label">Média Visit./Culto</div></div>
       <div class="stat-card accent"><div class="stat-icon">👶</div><div class="stat-value" id="st_media_criancas">—</div><div class="stat-label">Média Crian./Culto</div></div>
     </div>
-    <div class="form-card" style="margin-top:18px">
+
+    <!-- GRÁFICO EVOLUÇÃO MENSAL -->
+    <div class="form-card" style="margin-bottom:16px">
       <div class="form-section">
-        <div class="section-title">Por Período</div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr><th>Período</th><th>Qtd. Cultos</th><th>Total Presentes</th><th>Média</th></tr></thead>
-            <tbody id="bodyPeriodo"><tr><td colspan="4" style="text-align:center;padding:18px;color:#8ca0c0">Carregando...</td></tr></tbody>
-          </table>
+        <div class="section-title">📈 Evolução Mensal de Presença</div>
+        <div id="grafico_mensal" style="overflow-x:auto;padding-bottom:4px">
+          <div class="loading-msg">Carregando gráfico...</div>
         </div>
       </div>
     </div>
-    <div class="form-card" style="margin-top:16px">
-      <div class="form-section">
-        <div class="section-title">Últimos Cultos</div>
-        <div id="ultimosCultos" class="loading-msg">Carregando...</div>
+
+    <!-- POR PERÍODO E ÚLTIMOS CULTOS -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px" class="grid-responsive">
+      <div class="form-card">
+        <div class="form-section">
+          <div class="section-title">Por Período</div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Período</th><th>Cultos</th><th>Presentes</th><th>Média</th></tr></thead>
+              <tbody id="bodyPeriodo"><tr><td colspan="4" class="loading-msg">...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="form-card">
+        <div class="form-section">
+          <div class="section-title">Últimos Cultos</div>
+          <div id="ultimosCultos" class="loading-msg">Carregando...</div>
+        </div>
       </div>
     </div>
+
+    <!-- STATS GC -->
+    <div class="section-label" style="padding:8px 0">GRUPOS DE CRESCIMENTO</div>
+    <div class="stats-grid" style="margin-bottom:14px">
+      <div class="stat-card green"><div class="stat-icon">📋</div><div class="stat-value" id="dg_relatorios">—</div><div class="stat-label">Relatórios GC</div></div>
+      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" id="dg_membros">—</div><div class="stat-label">Membros nos GCs</div></div>
+      <div class="stat-card"><div class="stat-icon">🙋</div><div class="stat-value" id="dg_visitantes_gc">—</div><div class="stat-label">Visitantes nos GCs</div></div>
+      <div class="stat-card accent"><div class="stat-icon">🌱</div><div class="stat-value" id="dg_lideres">—</div><div class="stat-label">Líderes em Trein.</div></div>
+    </div>
+
+    <!-- GRÁFICO RANKING GCs -->
+    <div class="form-card" style="margin-bottom:16px">
+      <div class="form-section">
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>🏆 Ranking dos GCs — Membros e Visitantes</span>
+          <a href="/relatorio-gc" target="_blank" style="font-size:11px;color:#1B4FA8;text-decoration:none;font-weight:600">+ Enviar Relatório</a>
+        </div>
+        <div id="grafico_gcs"><div class="loading-msg">Carregando GCs...</div></div>
+      </div>
+    </div>
+
+    <!-- CONFIRMAÇÕES ESCALA -->
+    <div class="form-card" style="margin-bottom:16px">
+      <div class="form-section">
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>📋 Escala — Confirmações do Mês</span>
+          <button class="btn-outline" onclick="verConfirmacoes()" style="font-size:11px;padding:4px 10px">Ver todas</button>
+        </div>
+        <div id="resumo_confirmacoes"><div class="loading-msg">Carregando...</div></div>
+      </div>
+    </div>
+
   </div>
 
-
-  <!-- ═══ USUÁRIOS (admin) ═════════════════════════════════════ -->
+  <!-- ═══ USUÁRIOS (admin)  <!-- ═══ USUÁRIOS (admin) ═════════════════════════════════════ -->
   <div class="tab-content" id="tab-usuarios">
     <div class="page-header"><h1 class="page-title">Usuários</h1><p class="page-sub">Gerencie quem acessa o sistema</p></div>
     <div class="form-card" style="margin-bottom:18px">

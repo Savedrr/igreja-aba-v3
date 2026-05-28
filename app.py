@@ -1833,95 +1833,196 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;b
     resp.headers["Content-Type"] = "text/html; charset=utf-8"
     return resp
 @app.route("/api/exportar_excel", methods=["GET"])
-@role_required("lider","admin")
+@login_required
 def exportar_excel():
-    ini = request.args.get("data_ini",""); fim=request.args.get("data_fim",""); per=request.args.get("periodo","")
-    sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos WHERE 1=1"; p=[]
-    if ini: sql+=" AND data>=?"; p.append(ini)
-    if fim: sql+=" AND data<=?"; p.append(fim)
-    if per: sql+=" AND periodo=?"; p.append(per)
-    sql+=" ORDER BY data ASC"
+    ini = request.args.get("data_ini","")
+    fim = request.args.get("data_fim","")
     with get_db() as conn:
-        cr  = [dict(r) for r in conn.execute(sql,p).fetchall()]
-        rr  = dict((conn.execute("""SELECT COUNT(*) as total_cultos,
-               COALESCE(SUM(presentes),0) as total_presentes,
-               COALESCE(SUM(visitantes),0) as total_visitantes,
-               COALESCE(SUM(criancas),0) as total_criancas,
-               ROUND(CAST(AVG(presentes) AS NUMERIC),1) as media_presentes,
-               ROUND(CAST(AVG(visitantes) AS NUMERIC),1) as media_visitantes,
-               ROUND(CAST(AVG(criancas) AS NUMERIC),1) as media_criancas
-               FROM cultos""").fetchone() if USE_PG else conn.execute("SELECT * FROM v_resumo_geral").fetchone()) or {})
-        er  = [dict(r) for r in conn.execute("SELECT * FROM estoque ORDER BY fixo DESC,categoria,nome").fetchall()]
-        cm  = {c["id"]:[dict(x) for x in conn.execute(qmark("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id"), (c["id"],)).fetchall()] for c in cr}
-        gcs = [dict(r) for r in conn.execute("SELECT * FROM grupos_crescimento ORDER BY setor,nome").fetchall()]
-        dirs= [dict(r) for r in conn.execute("SELECT * FROM gc_direcionamentos ORDER BY criado_em DESC").fetchall()]
+        sql = "SELECT * FROM cultos WHERE 1=1"
+        p = []
+        if ini: sql+=" AND data>=?"; p.append(ini)
+        if fim: sql+=" AND data<=?"; p.append(fim)
+        sql += " ORDER BY data ASC"
+        cultos = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+        # Relatórios de GC
+        gc_rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM relatorios_gc ORDER BY dia ASC"
+        ).fetchall()]
 
-    hf=PatternFill("solid",fgColor="0A2463"); hfont=Font(color="FFFFFF",bold=True,size=11)
-    gf=PatternFill("solid",fgColor="C6EFCE"); rf=PatternFill("solid",fgColor="FFC7CE"); of=PatternFill("solid",fgColor="FFEB9C")
-    bdr=Border(*[Side(style="thin")]*4)
-    wb=openpyxl.Workbook()
-    def hrow(ws,cols):
-        ws.append(cols)
-        for i in range(1,len(cols)+1):
-            c=ws.cell(ws.max_row,i); c.fill=hf; c.font=hfont
-            c.alignment=Alignment(horizontal="center"); c.border=bdr
+    wb = openpyxl.Workbook()
 
-    ws1=wb.active; ws1.title="Registros"
-    ws1.append(["IGREJA ABA – Registros de Culto"]); ws1["A1"].font=Font(bold=True,size=14,color="0A2463"); ws1.append([])
-    hrow(ws1,["Data","Dia","Tipo de Culto","Período","Responsável","Presentes","Visitantes","Crianças","Observações"])
-    for r in cr: ws1.append([br(r["data"]),r["dia_semana"],r.get("tipo_culto",""),r["periodo"],r["responsavel"],r["presentes"],r["visitantes"],r["criancas"],r["observacoes"]])
-    if cr:
-        ws1.append([]); ws1.append(["TOTAIS","","","","",sum(r["presentes"] for r in cr),sum(r["visitantes"] for r in cr),sum(r["criancas"] for r in cr),""])
-        for cell in ws1[ws1.max_row]: cell.font=Font(bold=True,color="0A2463")
-    for i,w in enumerate([14,16,18,10,22,12,12,12,35],1): ws1.column_dimensions[get_column_letter(i)].width=w
+    # ── Estilos ────────────────────────────────────────
+    azul     = PatternFill("solid", fgColor="0A2463")
+    azul2    = PatternFill("solid", fgColor="1B4FA8")
+    cinza    = PatternFill("solid", fgColor="EBF5FF")
+    verde    = PatternFill("solid", fgColor="D1FAE5")
+    amarelo  = PatternFill("solid", fgColor="FEF3C7")
+    branco   = PatternFill("solid", fgColor="FFFFFF")
+    txt_branco = Font(color="FFFFFF", bold=True, name="Calibri", size=11)
+    txt_azul   = Font(color="0A2463", bold=True, name="Calibri", size=11)
+    txt_normal = Font(name="Calibri", size=10)
+    txt_bold   = Font(name="Calibri", size=10, bold=True)
+    centro  = Alignment(horizontal="center", vertical="center")
+    esq     = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    borda   = Border(
+        left=Side(style="thin",color="D1D5DB"),
+        right=Side(style="thin",color="D1D5DB"),
+        top=Side(style="thin",color="D1D5DB"),
+        bottom=Side(style="thin",color="D1D5DB")
+    )
 
-    ws2=wb.create_sheet("Checklist"); ws2.append(["Checklist"]); ws2["A1"].font=Font(bold=True,size=14,color="0A2463"); ws2.append([])
-    hrow(ws2,["Data","Período","Responsável","Categoria","Item","Concluído"])
-    cl={"antes":"Antes","mesa_entrada":"Mesa de Entrada","banheiro":"Banheiros","durante":"Durante","final":"Final"}
-    for culto in cr:
-        for chk in cm.get(culto["id"],[]):
-            sn="SIM ✓" if chk["concluido"] else "NÃO ✗"; ri=ws2.max_row+1
-            ws2.append([br(culto["data"]),culto["periodo"],culto["responsavel"],cl.get(chk["categoria"],chk["categoria"]),chk["item_descricao"],sn])
-            cf=ws2.cell(ri,6); cf.fill=gf if chk["concluido"] else rf; cf.font=Font(bold=True,color="375623" if chk["concluido"] else "9C0006")
-    for col,w in zip("ABCDEF",[14,10,22,18,48,12]): ws2.column_dimensions[col].width=w
+    def estilizar_cabecalho(ws, row, colunas, fill=None):
+        fill = fill or azul
+        for col_idx, titulo in enumerate(colunas, 1):
+            c = ws.cell(row=row, column=col_idx, value=titulo)
+            c.fill = fill; c.font = txt_branco; c.alignment = centro; c.border = borda
 
-    ws3=wb.create_sheet("GCs"); ws3.append(["GCs"]); ws3["A1"].font=Font(bold=True,size=14,color="0A2463"); ws3.append([])
-    hrow(ws3,["Nome","Líder","Endereço","Bairro","Cidade","Setor","Lat","Lng"])
-    for gc in gcs: ws3.append([gc["nome"],gc.get("lider",""),gc["endereco"],gc["bairro"],gc["cidade"],gc["setor"],gc.get("lat",""),gc.get("lng","")])
-    for col,w in zip("ABCDEFGH",[28,22,30,20,15,12,12,12]): ws3.column_dimensions[col].width=w
+    def estilizar_celula(ws, row, col, valor, bold=False, fill=None, align=None):
+        c = ws.cell(row=row, column=col, value=valor)
+        c.fill = fill or branco
+        c.font = txt_bold if bold else txt_normal
+        c.alignment = align or centro
+        c.border = borda
+        return c
 
-    ws4=wb.create_sheet("Direcionamentos GC"); ws4.append(["Direcionamentos"]); ws4["A1"].font=Font(bold=True,size=14,color="0A2463"); ws4.append([])
-    hrow(ws4,["Data","Visitante","GC Indicado","Distância (km)"])
-    for dr in dirs: ws4.append([dr["criado_em"][:16],dr["visitante_nome"],dr["gc_nome"],dr.get("distancia_km","")])
-    for col,w in zip("ABCD",[18,28,28,15]): ws4.column_dimensions[col].width=w
+    # ════════════════════════════════════════════════════
+    # ABA 1: Resumo Geral
+    # ════════════════════════════════════════════════════
+    ws1 = wb.active; ws1.title = "Resumo Geral"
+    ws1.column_dimensions["A"].width = 30
+    ws1.column_dimensions["B"].width = 18
+    ws1.row_dimensions[1].height = 35
 
-    sc=[i for i in er if i["categoria"]=="Santa Ceia"]; ou=[i for i in er if i["categoria"]!="Santa Ceia"]
-    def aba_est(titulo,itens):
-        ws=wb.create_sheet(titulo); ws.append([titulo]); ws["A1"].font=Font(bold=True,size=14,color="0A2463"); ws.append([])
-        hrow(ws,["Item","Categoria","Quantidade","Qtd. Mínima","Unidade","Status"])
-        for item in itens:
-            baixo=item["quantidade"]<item["quantidade_minima"]; ri=ws.max_row+1
-            ws.append([item["nome"],item["categoria"],item["quantidade"],item["quantidade_minima"],item["unidade"],"⚠️ Baixo" if baixo else "✓ OK"])
-            ws.cell(ri,6).fill=of if baixo else gf; ws.cell(ri,6).font=Font(bold=True,color="9C5700" if baixo else "375623")
-        for col,w in zip("ABCDEF",[36,18,14,14,12,14]): ws.column_dimensions[col].width=w
-    if sc: aba_est("Estoque Santa Ceia",sc)
-    if ou: aba_est("Estoque Geral",ou)
+    # Título
+    ws1.merge_cells("A1:B1")
+    c = ws1["A1"]; c.value = "IGREJA ABA — Relatório de Cultos"
+    c.fill = azul; c.font = Font(color="FFFFFF", bold=True, name="Calibri", size=14)
+    c.alignment = centro
 
-    ws7=wb.create_sheet("Resumo Geral"); ws7.append(["RESUMO GERAL"]); ws7["A1"].font=Font(bold=True,size=14,color="0A2463"); ws7.append([])
-    for item in [["Total de Cultos",rr.get("total_cultos",0)],["Total Presentes",rr.get("total_presentes",0)],
-                 ["Total Visitantes",rr.get("total_visitantes",0)],["Total Crianças",rr.get("total_criancas",0)],
-                 ["Média Presentes/Culto",rr.get("media_presentes",0)],["Média Visitantes/Culto",rr.get("media_visitantes",0)],
-                 ["Total GCs Ativos",len([g for g in gcs if g["ativo"]])],["Total Direcionamentos",len(dirs)]]:
-        ws7.append(item); ws7.cell(ws7.max_row,1).font=Font(bold=True)
-    ws7.column_dimensions["A"].width=35; ws7.column_dimensions["B"].width=20
+    dados_resumo = [
+        ("Total de Cultos",           len(cultos)),
+        ("Total de Presentes",         sum(c["presentes"] for c in cultos)),
+        ("Total de Visitantes",        sum(c["visitantes"] for c in cultos)),
+        ("Total de Crianças",          sum(c["criancas"] for c in cultos)),
+        ("Média de Presentes/Culto",   round(sum(c["presentes"] for c in cultos)/max(len(cultos),1),1)),
+        ("Média de Visitantes/Culto",  round(sum(c["visitantes"] for c in cultos)/max(len(cultos),1),1)),
+        ("Média de Crianças/Culto",    round(sum(c["criancas"] for c in cultos)/max(len(cultos),1),1)),
+    ]
+    for i, (label, valor) in enumerate(dados_resumo, 3):
+        ws1.row_dimensions[i].height = 22
+        estilizar_celula(ws1, i, 1, label, bold=True, fill=cinza if i%2==0 else branco, align=esq)
+        estilizar_celula(ws1, i, 2, valor, bold=True, fill=cinza if i%2==0 else branco)
 
-    buf=io.BytesIO(); wb.save(buf); buf.seek(0)
-    return send_file(buf,as_attachment=True,download_name=f"igrejaaba_{date.today().isoformat()}.xlsx",
+    # Por período
+    ws1["A11"] = "POR PERÍODO"
+    ws1["A11"].fill = azul2; ws1["A11"].font = txt_branco; ws1["A11"].alignment = esq
+    ws1.merge_cells("A11:B11")
+    estilizar_cabecalho(ws1, 12, ["Período","Total Presentes"])
+    periodos = {}
+    for c in cultos:
+        p = c.get("periodo","—")
+        if p not in periodos: periodos[p] = 0
+        periodos[p] += c["presentes"]
+    for i,(per,tot) in enumerate(periodos.items(),13):
+        estilizar_celula(ws1,i,1,per,align=esq)
+        estilizar_celula(ws1,i,2,tot,bold=True)
+
+    # ════════════════════════════════════════════════════
+    # ABA 2: Todos os Cultos
+    # ════════════════════════════════════════════════════
+    ws2 = wb.create_sheet("Cultos")
+    colunas2 = ["Data","Dia","Período","Tipo","Responsável","Presentes","Visitantes","Crianças","Observações"]
+    larguras2 = [12,10,8,18,20,10,10,10,30]
+    for i,(c,l) in enumerate(zip(colunas2,larguras2),1):
+        ws2.column_dimensions[get_column_letter(i)].width = l
+    ws2.row_dimensions[1].height = 28
+    estilizar_cabecalho(ws2, 1, colunas2)
+
+    for i,c in enumerate(cultos,2):
+        fill = cinza if i%2==0 else branco
+        ws2.row_dimensions[i].height = 20
+        vals = [br(c["data"]),c.get("dia_semana",""),c.get("periodo",""),
+                c.get("tipo_culto","Culto Regular"),c.get("responsavel",""),
+                c["presentes"],c["visitantes"],c["criancas"],c.get("observacoes","")]
+        for j,v in enumerate(vals,1):
+            al = esq if j in (5,9) else centro
+            estilizar_celula(ws2,i,j,v,fill=fill,align=al)
+
+    # Linha de totais
+    tot_row = len(cultos)+2
+    ws2.row_dimensions[tot_row].height = 24
+    estilizar_celula(ws2,tot_row,1,"TOTAIS",bold=True,fill=amarelo)
+    ws2.merge_cells(f"A{tot_row}:E{tot_row}")
+    estilizar_celula(ws2,tot_row,6,sum(c["presentes"] for c in cultos),bold=True,fill=amarelo)
+    estilizar_celula(ws2,tot_row,7,sum(c["visitantes"] for c in cultos),bold=True,fill=amarelo)
+    estilizar_celula(ws2,tot_row,8,sum(c["criancas"] for c in cultos),bold=True,fill=amarelo)
+
+    media_row = tot_row+1
+    ws2.row_dimensions[media_row].height = 24
+    estilizar_celula(ws2,media_row,1,"MÉDIAS/CULTO",bold=True,fill=verde)
+    ws2.merge_cells(f"A{media_row}:E{media_row}")
+    n = max(len(cultos),1)
+    estilizar_celula(ws2,media_row,6,round(sum(c["presentes"] for c in cultos)/n,1),bold=True,fill=verde)
+    estilizar_celula(ws2,media_row,7,round(sum(c["visitantes"] for c in cultos)/n,1),bold=True,fill=verde)
+    estilizar_celula(ws2,media_row,8,round(sum(c["criancas"] for c in cultos)/n,1),bold=True,fill=verde)
+
+    # ════════════════════════════════════════════════════
+    # ABA 3: Relatórios de GC
+    # ════════════════════════════════════════════════════
+    ws3 = wb.create_sheet("Relatórios GC")
+    colunas3 = ["Data","GC","Líder","Anfitrião","Membros","Visitantes","Líder Trein.","Nome Líder Trein.","Observações"]
+    larguras3 = [12,22,20,20,10,10,12,22,35]
+    for i,(c,l) in enumerate(zip(colunas3,larguras3),1):
+        ws3.column_dimensions[get_column_letter(i)].width = l
+    ws3.row_dimensions[1].height = 28
+    estilizar_cabecalho(ws3, 1, colunas3)
+
+    for i,r in enumerate(gc_rows,2):
+        fill = cinza if i%2==0 else branco
+        ws3.row_dimensions[i].height = 20
+        vals = [br(r.get("dia","")),r.get("gc_nome",""),r.get("lider_nome",""),
+                r.get("anfitriao",""),r.get("membros_presentes",0),r.get("visitantes",0),
+                "Sim" if r.get("lider_treinamento") else "Não",
+                r.get("nome_lider_trein",""),r.get("observacoes","")]
+        for j,v in enumerate(vals,1):
+            al = esq if j in (2,3,4,8,9) else centro
+            estilizar_celula(ws3,i,j,v,fill=fill,align=al)
+
+    # ════════════════════════════════════════════════════
+    # ABA 4: Ranking GCs
+    # ════════════════════════════════════════════════════
+    ws4 = wb.create_sheet("Ranking GCs")
+    ws4.column_dimensions["A"].width = 25
+    for col in ["B","C","D","E","F"]: ws4.column_dimensions[col].width = 14
+    ws4.row_dimensions[1].height = 28
+    estilizar_cabecalho(ws4, 1, ["GC","Reuniões","Total Membros","Total Visit.","Média Membros","Média Visit."])
+
+    gc_stats = {}
+    for r in gc_rows:
+        nome = r.get("gc_nome","—")
+        if nome not in gc_stats: gc_stats[nome] = {"reunioes":0,"membros":0,"visitantes":0}
+        gc_stats[nome]["reunioes"]   += 1
+        gc_stats[nome]["membros"]    += r.get("membros_presentes",0)
+        gc_stats[nome]["visitantes"] += r.get("visitantes",0)
+
+    ranking = sorted(gc_stats.items(), key=lambda x: x[1]["membros"], reverse=True)
+    for i,(nome,s) in enumerate(ranking,2):
+        fill = cinza if i%2==0 else branco
+        ws4.row_dimensions[i].height = 22
+        n_r = max(s["reunioes"],1)
+        vals = [nome,s["reunioes"],s["membros"],s["visitantes"],
+                round(s["membros"]/n_r,1),round(s["visitantes"]/n_r,1)]
+        for j,v in enumerate(vals,1):
+            al = esq if j==1 else centro
+            estilizar_celula(ws4,i,j,v,bold=(j==1),fill=fill,align=al)
+
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    return send_file(buf, as_attachment=True,
+                     download_name=f"igrejaaba_{date.today().isoformat()}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-# ═══════════════════════════════════════════════════════════════
-# IA CONTAGEM
-# ═══════════════════════════════════════════════════════════════
+
 
 @app.route("/api/gcs/direcionamentos/<int:did>", methods=["DELETE"])
 @role_required("admin","lider")
@@ -2090,7 +2191,7 @@ def voluntarios_por_depto(did):
     return jsonify(rows)
 
 @app.route("/api/voluntarios", methods=["POST"])
-@role_required("admin","lider")
+@role_required("admin","lider","lider_depto")
 def criar_voluntario():
     d = request.get_json(force=True) or {}
     nome = d.get("nome","").strip()
@@ -2098,13 +2199,17 @@ def criar_voluntario():
     if not nome or not tel:
         return jsonify({"erro":"Nome e telefone são obrigatórios"}),400
     depto_id = d.get("departamento_id") or get_depto_usuario()
-    with get_db() as conn:
-        cur = conn.execute(
-            qmark("INSERT INTO voluntarios(nome,telefone,departamentos,departamento_id) VALUES(?,?,?,?)"),
-            (nome, tel, d.get("departamentos",""), depto_id)
-        )
-        conn.commit()
-    return jsonify({"ok":True,"id":cur.lastrowid})
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                qmark("INSERT INTO voluntarios(nome,telefone,departamentos,departamento_id) VALUES(?,?,?,?)"),
+                (nome, tel, d.get("departamentos",""), depto_id)
+            )
+            conn.commit()
+        return jsonify({"ok":True,"id":cur.lastrowid})
+    except Exception as e:
+        logger.error(f"Erro ao criar voluntário: {e}")
+        return jsonify({"erro":f"Erro ao salvar: {str(e)}"}),500
 
 @app.route("/api/voluntarios/<int:vid>", methods=["PUT"])
 @role_required("admin","lider")
@@ -2541,8 +2646,9 @@ def escala_publica():
 def salvar_escala_item():
     d = request.get_json(force=True) or {}
     did  = d.get("departamento_id")
-    # Lider de departamento só pode salvar no próprio departamento
-    depto_filtro = get_depto_usuario()
+    # Apenas lider_depto tem restrição — admin/lider salvam qualquer depto
+    cargo = session.get("usuario_cargo","")
+    depto_filtro = get_depto_usuario() if cargo == "lider_depto" else None
     if depto_filtro and str(did) != str(depto_filtro):
         return jsonify({"erro":"Sem permissão para editar este departamento"}),403
     data = d.get("culto_data","").strip()
@@ -2575,11 +2681,11 @@ def salvar_escala_lote():
     """Salva múltiplos itens de uma vez"""
     itens = request.get_json(force=True) or []
     if not isinstance(itens, list): return jsonify({"erro":"Lista esperada"}),400
-    depto_filtro = get_depto_usuario()
+    cargo = session.get("usuario_cargo","")
+    depto_filtro = get_depto_usuario() if cargo == "lider_depto" else None
     salvos = 0
     with get_db() as conn:
         for d in itens:
-            # Lider_depto só salva no próprio departamento
             if depto_filtro and str(d.get("departamento_id")) != str(depto_filtro):
                 continue
             did  = d.get("departamento_id")
@@ -2612,20 +2718,25 @@ def datas_culto_escala():
     mes = request.args.get("mes", datetime.now().strftime("%Y-%m"))
     # Gera todos os domingos e quartas do mês
     from calendar import monthrange
+    from datetime import date as dt
     ano, m = int(mes.split("-")[0]), int(mes.split("-")[1])
     _, dias = monthrange(ano, m)
     datas = []
     for dia in range(1, dias+1):
-        from datetime import date as dt
         d = dt(ano, m, dia)
-        # Domingo=6, Quarta=2
-        if d.weekday() in (6, 2):
-            periodo = "Manhã" if d.weekday() == 6 else "Noite"
+        # Apenas DOMINGOS — Manhã e Noite
+        if d.weekday() == 6:  # 6 = domingo
             datas.append({
                 "data": d.isoformat(),
                 "data_br": d.strftime("%d/%m"),
                 "dia_semana": DIAS[d.weekday()],
-                "periodo": periodo
+                "periodo": "Manhã"
+            })
+            datas.append({
+                "data": d.isoformat(),
+                "data_br": d.strftime("%d/%m"),
+                "dia_semana": DIAS[d.weekday()],
+                "periodo": "Noite"
             })
     return jsonify(datas)
 

@@ -884,99 +884,154 @@ function exportarPDF(){
 
 // ── RESUMO ────────────────────────────────────────────────────
 async function carregarResumo(){
-  // Carrega dados do GC junto com o resumo
+  // Preenche seletor de ano
+  const anoSel = document.getElementById("resumo_ano");
+  if(anoSel && anoSel.options.length <= 1){
+    const anoAtual = new Date().getFullYear();
+    for(let a=anoAtual; a>=2023; a--){
+      const o=document.createElement("option");
+      o.value=a; o.textContent=a;
+      if(a===anoAtual) o.selected=true;
+      anoSel.appendChild(o);
+    }
+  }
+  const ano = document.getElementById("resumo_ano")?.value || new Date().getFullYear();
+  const per = document.getElementById("resumo_periodo")?.value || "";
+
+  try{
+    // ── Dados dos cultos ──────────────────────────────
+    const r = await fetch(`/api/dashboard?ano=${ano}${per?"&periodo="+encodeURIComponent(per):""}`);
+    const d = await r.json();
+    if(!r.ok) return;
+
+    const res = d.resumo||{};
+    const el=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v??'—';};
+    el("st_cultos",          res.total_cultos);
+    el("st_presentes",       res.total_presentes);
+    el("st_visitantes",      res.total_visitantes);
+    el("st_criancas",        res.total_criancas);
+    el("st_media_presentes", res.media_presentes);
+    el("st_media_visitantes",res.media_visitantes);
+    el("st_media_criancas",  res.media_criancas||"—");
+
+    // ── Tabela por período ─────────────────────────────
+    const bp = document.getElementById("bodyPeriodo");
+    if(bp && d.por_tipo){
+      bp.innerHTML = d.por_tipo.map(t=>`<tr>
+        <td><strong>${t.tipo_culto||t.periodo||"—"}</strong></td>
+        <td>${t.qtd||0}</td>
+        <td>${t.total_presentes||0}</td>
+        <td>${t.media_presentes||0}</td>
+      </tr>`).join("") || '<tr><td colspan="4" class="loading-msg">Sem dados</td></tr>';
+    }
+
+    // ── Últimos cultos ─────────────────────────────────
+    const uc = document.getElementById("ultimosCultos");
+    if(uc && d.ultimos){
+      uc.innerHTML = d.ultimos.map(c=>`
+        <div style="padding:8px 0;border-bottom:1px solid #EEF2F9;font-size:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong style="color:#0A2463">${c.data} — ${c.periodo}</strong>
+            <span style="background:#EBF5FF;color:#0A2463;padding:2px 7px;border-radius:6px;font-size:11px">${c.presentes} pres.</span>
+          </div>
+          <div style="color:#64748B;margin-top:2px">${c.tipo_culto||"Culto Regular"} · ${c.responsavel||"—"}</div>
+        </div>`).join("") || '<p style="color:#8ca0c0">Sem registros.</p>';
+    }
+
+    // ── Gráfico de evolução mensal ─────────────────────
+    const gm = document.getElementById("grafico_mensal");
+    if(gm && d.mensal && d.mensal.length){
+      const maxVal = Math.max(...d.mensal.map(m=>m.presentes||0), 1);
+      const MESES_BR = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+      gm.innerHTML = `<div style="display:flex;align-items:flex-end;gap:6px;height:140px;padding:10px 0;min-width:${d.mensal.length*52}px">
+        ${d.mensal.map(m=>{
+          const h = Math.max(8, Math.round((m.presentes||0)/maxVal*120));
+          const mesLabel = m.mes ? MESES_BR[parseInt(m.mes.split("-")[1]||0)-1]||m.mes : "?";
+          return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:44px">
+            <div style="font-size:10px;font-weight:700;color:#0A2463">${m.presentes||0}</div>
+            <div title="${m.presentes} presentes" style="width:100%;max-width:40px;height:${h}px;
+              background:linear-gradient(180deg,#1B4FA8,#56B4D3);border-radius:4px 4px 0 0;
+              cursor:default;transition:.3s"></div>
+            <div style="font-size:10px;color:#64748B">${mesLabel}</div>
+          </div>`;
+        }).join("")}
+      </div>`;
+    }else if(gm){
+      gm.innerHTML='<p style="color:#8ca0c0;font-size:13px;padding:14px">Nenhum dado disponível.</p>';
+    }
+
+  }catch(e){ console.error("Erro resumo cultos:",e); }
+
+  // ── Dados dos GCs ─────────────────────────────────────
   try{
     const rg = await fetch("/api/relatorios_gc/dashboard");
-    const dg = await rg.json();
     if(rg.ok){
+      const dg = await rg.json();
       const t = dg.totais||{};
-      const el = (id,v)=>{ const e=document.getElementById(id); if(e)e.textContent=v||0; };
+      const el=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v??0;};
       el("dg_relatorios",    t.total_relatorios);
       el("dg_membros",       t.total_membros);
       el("dg_visitantes_gc", t.total_visitantes);
       el("dg_lideres",       t.total_lideres_trein);
 
-      // Por GC
-      const porGC = document.getElementById("dash_gc_por_gc_resumo");
-      if(porGC && dg.por_gc && dg.por_gc.length){
-        const maxMem = Math.max(...dg.por_gc.map(g=>g.total_membros),1);
-        porGC.innerHTML = dg.por_gc.map(g=>`
-          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #EEF2F9">
-            <div style="min-width:150px;font-weight:700;font-size:12px;color:#0A2463">${g.gc_nome}</div>
-            <div style="flex:1;background:#EEF2F9;border-radius:6px;height:8px;overflow:hidden">
-              <div style="height:100%;width:${Math.round(g.total_membros/maxMem*100)}%;background:linear-gradient(90deg,#1B4FA8,#56B4D3);border-radius:6px"></div>
+      // Gráfico ranking GCs
+      const gcs = document.getElementById("grafico_gcs");
+      if(gcs && dg.por_gc && dg.por_gc.length){
+        const maxMem = Math.max(...dg.por_gc.map(g=>g.total_membros||0), 1);
+        gcs.innerHTML = dg.por_gc.map((g,i)=>`
+          <div style="display:grid;grid-template-columns:160px 1fr 100px 70px;
+            align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #EEF2F9">
+            <div style="font-weight:700;font-size:12px;color:#0A2463;overflow:hidden;
+              text-overflow:ellipsis;white-space:nowrap" title="${g.gc_nome}">${i+1}. ${g.gc_nome}</div>
+            <div style="position:relative;height:12px;background:#EEF2F9;border-radius:6px;overflow:hidden">
+              <div style="position:absolute;left:0;top:0;height:100%;
+                width:${Math.round((g.total_membros||0)/maxMem*100)}%;
+                background:linear-gradient(90deg,#1B4FA8,#56B4D3);border-radius:6px;transition:.5s"></div>
             </div>
-            <div style="text-align:right;min-width:90px;font-size:12px">
-              <strong style="color:#0A2463">${g.total_membros}</strong> mem.
-              <span style="color:#059669"> · ${g.total_visitantes}</span> vis.
+            <div style="font-size:12px;text-align:right">
+              <strong style="color:#0A2463">${g.total_membros||0}</strong>
+              <span style="color:#059669"> +${g.total_visitantes||0}</span>
             </div>
-            <div style="font-size:10px;color:#8ca0c0;min-width:50px;text-align:right">${g.total_reunioes}x</div>
+            <div style="font-size:10px;color:#8ca0c0;text-align:right">${g.total_reunioes||0} reun.</div>
           </div>`).join("");
-      }else if(porGC){
-        porGC.innerHTML = '<p style="color:#8ca0c0;font-size:13px;padding:8px 0">Nenhum relatório de GC enviado ainda. <a href="/relatorio-gc" target="_blank" style="color:#1B4FA8">Abrir formulário</a></p>';
+      }else if(gcs){
+        gcs.innerHTML='<p style="color:#8ca0c0;font-size:13px;padding:10px 0">Nenhum relatório de GC ainda. <a href="/relatorio-gc" target="_blank" style="color:#1B4FA8">Enviar primeiro relatório</a></p>';
       }
     }
-  }catch(e){ console.warn("Erro GC resumo:",e); }
+  }catch(e){ console.warn("Erro GC:",e); }
 
-  // Confirmações de escala recentes
+  // ── Confirmações de escala ─────────────────────────────
   try{
     const mes = new Date().toISOString().slice(0,7);
     const rc = await fetch(`/api/escala/confirmacoes_admin?mes=${mes}`);
-    const lc = await rc.json();
-    const confEl = document.getElementById("resumo_confirmacoes");
-    if(confEl){
-      if(!lc.length){
-        confEl.innerHTML = '<p style="color:#8ca0c0;font-size:13px;padding:8px 0">Nenhuma confirmação de escala este mês.</p>';
-      }else{
-        const conf = lc.filter(c=>c.status==="confirmado").length;
-        const rec  = lc.filter(c=>c.status==="recusado").length;
-        const pend = lc.filter(c=>c.status==="pendente").length;
-        confEl.innerHTML = `
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-            <span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">✅ ${conf} confirmados</span>
-            <span style="background:#FEE2E2;color:#991B1B;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">🔄 ${rec} trocas</span>
-            <span style="background:#FEF3C7;color:#92400E;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">⏳ ${pend} pendentes</span>
-          </div>
-          ${lc.filter(c=>c.status==="recusado").map(c=>`
-          <div style="padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12px">
-            <strong style="color:#991B1B">🔄 Troca solicitada:</strong> ${c.voluntario_nome}
-            — ${c.data_br} · ${c.culto_periodo} · ${c.departamento}
-            ${c.sugestao_troca?`<div style="color:#64748B;font-style:italic;font-size:11px;margin-top:2px">↪ ${c.sugestao_troca}</div>`:""}
-          </div>`).join("")}`;
+    if(rc.ok){
+      const lc = await rc.json();
+      const confEl = document.getElementById("resumo_confirmacoes");
+      if(confEl){
+        if(!lc.length){
+          confEl.innerHTML='<p style="color:#8ca0c0;font-size:13px">Nenhuma confirmação de escala este mês.</p>';
+        }else{
+          const conf=lc.filter(c=>c.status==="confirmado").length;
+          const rec =lc.filter(c=>c.status==="recusado").length;
+          const pend=lc.filter(c=>c.status==="pendente").length;
+          confEl.innerHTML=`
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+              <span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">✅ ${conf} confirmados</span>
+              <span style="background:#FEE2E2;color:#991B1B;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">🔄 ${rec} trocas</span>
+              <span style="background:#FEF3C7;color:#92400E;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">⏳ ${pend} pendentes</span>
+            </div>
+            ${lc.filter(c=>c.status==="recusado").map(c=>`
+              <div style="padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12px">
+                <strong style="color:#991B1B">🔄</strong> ${c.voluntario_nome}
+                — ${c.data_br||c.culto_data} · ${c.culto_periodo} · ${c.departamento}
+                ${c.sugestao_troca?`<div style="color:#64748B;font-style:italic;margin-top:2px">↪ ${c.sugestao_troca}</div>`:""}
+              </div>`).join("")}`;
+        }
       }
     }
   }catch(e){ console.warn("Erro confirmações:",e); }
-
-
-  const r=await fetch("/api/resumo"); const d=await r.json(); const g=d.geral;
-  ["st_cultos","st_presentes","st_visitantes","st_criancas","st_media_presentes","st_media_visitantes","st_media_criancas"]
-    .forEach((id,i)=>{const keys=["total_cultos","total_presentes","total_visitantes","total_criancas","media_presentes","media_visitantes","media_criancas"];const el=document.getElementById(id);if(el)el.textContent=g[keys[i]]||0;});
-  const bp=document.getElementById("bodyPeriodo");
-  if(bp)bp.innerHTML=d.por_periodo.length?d.por_periodo.map(p=>`<tr><td><strong>${p.periodo}</strong></td><td>${p.qtd}</td><td>${p.tp}</td><td>${p.mp}</td></tr>`).join("")
-    :`<tr><td colspan="4" style="text-align:center;padding:16px;color:#8ca0c0">Sem dados</td></tr>`;
-  const uc=document.getElementById("ultimosCultos");
-  if(uc)uc.innerHTML=d.ultimos.length?d.ultimos.map(c=>`
-    <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid #EEF2F9">
-      <div style="background:#EBF8FF;border-radius:8px;padding:6px 9px;text-align:center;min-width:50px">
-        <div style="font-size:18px;font-weight:800;color:#0A2463;font-family:'Bebas Neue',sans-serif">${c.presentes}</div>
-        <div style="font-size:9px;color:#8ca0c0;text-transform:uppercase">pres.</div></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:700;font-size:13px">${c.data_br||fmtBR(c.data)} — ${c.dia_semana}</div>
-        <div style="font-size:11px;color:#8ca0c0">${c.tipo_culto||c.periodo} · ${c.responsavel}</div></div>
-      <div style="text-align:right;font-size:11px;color:#8ca0c0">${c.visitantes} vis.<br>${c.criancas} cr.</div>
-    </div>`).join(""):"<p style='text-align:center;padding:20px;color:#8ca0c0'>Nenhum culto registrado.</p>";
 }
 
-// ── USUÁRIOS (admin) ──────────────────────────────────────────
-
-// ── CARGO LIDER_DEPTO — campo de departamento ──────────────
-function toggleDeptoField(){
-  const cargo = document.getElementById("nu_cargo")?.value;
-  const wrap  = document.getElementById("nu_depto_wrap");
-  if(!wrap) return;
-  wrap.style.display = cargo==="lider_depto" ? "block" : "none";
-  if(cargo==="lider_depto") carregarDeptosSelect();
-}
 
 async function carregarDeptosSelect(){
   const sel = document.getElementById("nu_depto_id"); if(!sel) return;
@@ -1006,6 +1061,8 @@ async function criarUsuario(){
   else toast(d.erro||"Erro ao criar usuário.","error");
 }
 async function carregarUsuarios(){
+  const ul = document.getElementById("usuarios_lista");
+  if(ul) ul.innerHTML = '<div class="loading-msg">Carregando usuários...</div>';
   const c=document.getElementById("listaUsuarios"); if(!c)return;
   c.innerHTML="<div class='loading-msg'>Carregando...</div>";
   const r=await fetch("/api/usuarios"); const list=await r.json();
@@ -1380,6 +1437,7 @@ async function abrirEditorEscala(){
 
   const per = document.getElementById("escala_periodo")?.value||"";
   const datasF = per ? _escalaDatas.filter(d=>d.periodo===per) : _escalaDatas;
+  if(!datasF.length){ toast('Nenhuma data de culto neste mês.','info'); return; }
 
   if(!datasF.length){
     toast("Nenhuma data de culto neste mês.","info"); return;

@@ -120,10 +120,18 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     </div>
 
     <div class="divider"></div>
-    <div class="section-label">Observações</div>
+    <div class="section-label">Observações e Anotações Livres</div>
     <div class="field">
-      <label>Observações</label>
-      <textarea id="observacoes" placeholder="Pedidos de oração, destaques da reunião, necessidades..."></textarea>
+      <label>Pedidos de Oração / Destaques</label>
+      <textarea id="observacoes" placeholder="Descreva pedidos de oração, destaques da reunião, palavras compartilhadas..."></textarea>
+    </div>
+    <div class="field">
+      <label>Necessidades do GC</label>
+      <textarea id="necessidades" placeholder="Necessidades materiais, espirituais, pessoas que precisam de visita..." style="min-height:70px"></textarea>
+    </div>
+    <div class="field">
+      <label>Próximos Passos</label>
+      <textarea id="proximos_passos" placeholder="Planejamento para o próximo encontro, metas, eventos..." style="min-height:70px"></textarea>
     </div>
 
     <div class="err" id="errMsg"></div>
@@ -208,7 +216,9 @@ async function enviarRelatorio(){
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({gc_nome, lider_nome: lider_nome||anfitriao,
         anfitriao, dia, membros_presentes:membros, visitantes,
-        lider_treinamento:trein, nome_lider_trein:nome_trein, observacoes:obs})
+        lider_treinamento:trein, nome_lider_trein:nome_trein,
+        observacoes:[obs, document.getElementById('necessidades')?.value||'',
+          document.getElementById('proximos_passos')?.value||''].filter(Boolean).join(' | ')})
     });
     const d = await r.json();
     if(r.ok && d.ok){
