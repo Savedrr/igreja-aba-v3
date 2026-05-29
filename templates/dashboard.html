@@ -59,11 +59,8 @@
     <li><a class="nav-item" data-tab="estoque">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
       Estoque</a></li>
-    <li><a class="nav-item" data-tab="dashboard">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-      Dashboard</a></li>
     <li><a class="nav-item" data-tab="relatorios">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       Relatórios</a></li>
     <li><a class="nav-item" data-tab="escalas">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="14"/><line x1="12" y1="14" x2="12" y2="14"/><line x1="16" y1="14" x2="16" y2="14"/></svg>
@@ -71,9 +68,6 @@
     <li><a class="nav-item" data-tab="dash_gc">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
       Dashboard GC</a></li>
-    <li><a class="nav-item" data-tab="ia">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
-      IA Contagem</a></li>
     <li style="display:none" id="navUsuarios"><a class="nav-item" data-tab="usuarios">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
       Usuários</a></li>
@@ -386,16 +380,36 @@
   </div>
 
   <!-- ═══ DASHBOARD ═══════════════════════════════════════════ -->
-  <div class="tab-content" id="tab-dashboard">
+  <div class="tab-content" id="tab-dashboard" style="display:none">
+  </div>
+
+  <!-- ═══ RELATÓRIOS (UNIFICADO: Dashboard + Relatórios) ══════════ -->
+  <div class="tab-content" id="tab-relatorios">
     <div class="page-header">
-      <div><h1 class="page-title">Dashboard</h1><p class="page-sub">Análises, métricas e resumo completo da Igreja ABA</p></div>
+      <div><h1 class="page-title">Relatórios</h1><p class="page-sub">Análises, métricas, histórico e exportação da Igreja ABA</p></div>
       <div class="page-header-right">
-        <select class="field-input" id="dash_ano" onchange="carregarDashboard()" style="width:100px">
-          <option>2025</option><option>2024</option><option>2026</option>
-        </select>
         <button class="btn-secondary" onclick="carregarDashboard()">🔄 Atualizar</button>
         <button class="btn-excel" onclick="exportarExcel()">📥 Excel</button>
         <button class="btn-pdf" onclick="exportarPDF()">📄 PDF</button>
+      </div>
+    </div>
+
+    <!-- FILTROS DO DASHBOARD -->
+    <div class="form-card" style="margin-bottom:16px">
+      <div class="form-section" style="padding:14px 16px">
+        <div class="section-title">🔎 Filtros do Painel</div>
+        <div class="grid-4" style="margin-top:8px">
+          <div class="field-group"><label>Ano</label>
+            <select class="field-input" id="dash_ano" onchange="carregarDashboard()">
+              <option>2026</option><option>2025</option><option>2024</option>
+            </select></div>
+          <div class="field-group"><label>Período do Dia</label>
+            <select class="field-input" id="dash_periodo" onchange="carregarDashboard()">
+              <option value="">Todos</option><option>Manhã</option><option>Tarde</option><option>Noite</option>
+            </select></div>
+          <div class="field-group"><label>Data Início</label><input type="date" class="field-input" id="dash_data_ini" onchange="carregarDashboard()"></div>
+          <div class="field-group"><label>Data Fim</label><input type="date" class="field-input" id="dash_data_fim" onchange="carregarDashboard()"></div>
+        </div>
       </div>
     </div>
 
@@ -421,9 +435,8 @@
       </div>
     </div>
 
-    <!-- GRÁFICO COMPARATIVO GC (novo) -->
-    <div class="dash-row">
-      <div class="dash-card" style="flex:2">
+    <div class="dash-row wide-left">
+      <div class="dash-card">
         <div class="dash-card-title" style="display:flex;justify-content:space-between;align-items:center">
           <span>📊 Evolução dos GCs — Comparativo</span>
           <button class="btn-sm blue" onclick="carregarGraficoGC()">🔄</button>
@@ -436,7 +449,6 @@
       </div>
     </div>
 
-    <!-- POR PERÍODO + TOP GCs -->
     <div class="dash-row">
       <div class="dash-card">
         <div class="dash-card-title">🕐 Por Período do Dia</div>
@@ -453,35 +465,30 @@
       </div>
     </div>
 
-    <!-- ÚLTIMOS CULTOS -->
+    <!-- HISTÓRICO COM FILTROS -->
     <div class="form-card" style="margin-top:4px">
       <div class="form-section">
-        <div class="section-title">🕒 Últimos Cultos</div>
-        <div id="ultimosCultos"><div class="loading-msg">Carregando...</div></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ RELATÓRIOS ══════════════════════════════════════════ -->
-  <div class="tab-content" id="tab-relatorios">
-    <div class="page-header"><h1 class="page-title">Relatórios</h1><p class="page-sub">Histórico completo com filtros e exportação</p></div>
-    <div class="form-card">
-      <div class="form-section">
-        <div class="section-title">🔎 Filtros</div>
+        <div class="section-title">🔎 Filtros do Histórico</div>
         <div class="grid-4">
           <div class="field-group"><label>Tipo de Culto</label>
-            <select class="field-input" id="f_tipo_culto">
+            <select class="field-input" id="f_tipo_culto" onchange="atualizarSelectCultos()">
               <option value="">Todos</option>
               <option>Culto Regular</option><option>NAREAL</option>
               <option>Evento</option><option>Reunião de Líderes</option>
               <option>Culto de GC</option><option>Outro</option>
             </select></div>
           <div class="field-group"><label>Período do Dia</label>
-            <select class="field-input" id="f_periodo">
+            <select class="field-input" id="f_periodo" onchange="atualizarSelectCultos()">
               <option value="">Todos</option><option>Manhã</option><option>Tarde</option><option>Noite</option>
             </select></div>
-          <div class="field-group"><label>Data Início</label><input type="date" class="field-input" id="f_data_ini"></div>
-          <div class="field-group"><label>Data Fim</label><input type="date" class="field-input" id="f_data_fim"></div>
+          <div class="field-group"><label>Data Início</label><input type="date" class="field-input" id="f_data_ini" onchange="atualizarSelectCultos()"></div>
+          <div class="field-group"><label>Data Fim</label><input type="date" class="field-input" id="f_data_fim" onchange="atualizarSelectCultos()"></div>
+        </div>
+        <div class="grid-2" style="margin-top:10px">
+          <div class="field-group"><label>Culto Específico</label>
+            <select class="field-input" id="f_culto_id">
+              <option value="">Todos os cultos</option>
+            </select></div>
         </div>
         <div class="btn-row" style="margin-top:12px">
           <button class="btn-secondary" onclick="buscarRelatorio()">🔍 Filtrar</button>
@@ -499,6 +506,14 @@
             <tbody id="bodyRelatorio"><tr><td colspan="10" style="text-align:center;padding:28px;color:#8ca0c0">Clique em Filtrar</td></tr></tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- ÚLTIMOS CULTOS -->
+    <div class="form-card" style="margin-top:16px">
+      <div class="form-section">
+        <div class="section-title">🕒 Últimos Cultos</div>
+        <div id="ultimosCultos"><div class="loading-msg">Carregando...</div></div>
       </div>
     </div>
   </div>
@@ -636,8 +651,8 @@
     </div>
 
     <!-- GRÁFICO COMPARATIVO + RANKING -->
-    <div class="dash-row">
-      <div class="dash-card" style="flex:2">
+    <div class="dash-row wide-left">
+      <div class="dash-card">
         <div class="dash-card-title">📊 Ranking e Desempenho dos GCs</div>
         <div id="dash_gc_por_gc">
           <div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg><p>Nenhum relatório ainda.<br>Compartilhe o link com os líderes.</p></div>

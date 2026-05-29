@@ -1296,6 +1296,15 @@ def listar_gcs():
         ).fetchall()
     return jsonify([dict(r) for r in rows])
 
+@app.route("/api/gcs/publica", methods=["GET"])
+def listar_gcs_publica():
+    """Rota pública — usada pelo formulário /relatorio-gc (líderes sem login)"""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id,nome,lider,telefone_lider,setor,cor_hex FROM grupos_crescimento WHERE ativo=1 ORDER BY setor,nome"
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
 @app.route("/api/gcs", methods=["POST"])
 @role_required("admin")
 def criar_gc():
@@ -1499,19 +1508,28 @@ def dashboard():
     ano  = request.args.get("ano",  str(date.today().year))
     mes  = request.args.get("mes",  "")
     tpc  = request.args.get("tipo", "")
+    per  = request.args.get("periodo", "")
+    ini  = request.args.get("data_ini", "")
+    fim  = request.args.get("data_fim", "")
+
+    # Monta cláusula WHERE comum para resumo/por_tipo
+    where = " WHERE 1=1"
+    wparams = []
+    if per: where += " AND periodo=?"; wparams.append(per)
+    if ini: where += " AND data>=?"; wparams.append(ini)
+    if fim: where += " AND data<=?"; wparams.append(fim)
+
     with get_db() as conn:
-        # Resumo geral
+        # Resumo geral (com filtros)
         try:
-            if USE_PG:
-                resumo = dict(conn.execute("""SELECT COUNT(*) as total_cultos,
-                   COALESCE(SUM(presentes),0) as total_presentes,
-                   COALESCE(SUM(visitantes),0) as total_visitantes,
-                   COALESCE(SUM(criancas),0) as total_criancas,
-                   COALESCE(ROUND(CAST(AVG(presentes) AS NUMERIC),1),0) as media_presentes,
-                   COALESCE(ROUND(CAST(AVG(visitantes) AS NUMERIC),1),0) as media_visitantes
-                   FROM cultos""").fetchone() or {})
-            else:
-                resumo = dict(conn.execute("SELECT * FROM v_resumo_geral").fetchone() or {})
+            resumo = dict(conn.execute(qmark(f"""SELECT COUNT(*) as total_cultos,
+               COALESCE(SUM(presentes),0) as total_presentes,
+               COALESCE(SUM(visitantes),0) as total_visitantes,
+               COALESCE(SUM(criancas),0) as total_criancas,
+               COALESCE(ROUND(CAST(AVG(presentes) AS {'NUMERIC' if USE_PG else 'REAL'}),1),0) as media_presentes,
+               COALESCE(ROUND(CAST(AVG(visitantes) AS {'NUMERIC' if USE_PG else 'REAL'}),1),0) as media_visitantes,
+               COALESCE(ROUND(CAST(AVG(criancas) AS {'NUMERIC' if USE_PG else 'REAL'}),1),0) as media_criancas
+               FROM cultos{where}"""), wparams).fetchone() or {})
         except Exception as e:
             logger.warning(f"Dashboard resumo erro: {e}")
             resumo = {}
@@ -1537,15 +1555,15 @@ def dashboard():
             logger.warning(f"Dashboard mensal erro: {e}")
             mensal = []
 
-        # Por tipo de culto
+        # Por tipo de culto (com filtros)
         try:
-            por_tipo = [dict(r) for r in conn.execute(
-                """SELECT COALESCE(tipo_culto,'Culto Regular') as tipo_culto,
+            por_tipo = [dict(r) for r in conn.execute(qmark(
+                f"""SELECT COALESCE(tipo_culto,'Culto Regular') as tipo_culto,
                    COUNT(*) as qtd,
                    COALESCE(SUM(presentes),0) as total_presentes,
                    COALESCE(SUM(visitantes),0) as total_visitantes
-                   FROM cultos GROUP BY tipo_culto ORDER BY total_presentes DESC"""
-            ).fetchall()]
+                   FROM cultos{where} GROUP BY tipo_culto ORDER BY total_presentes DESC"""
+            ), wparams).fetchall()]
             # Adiciona media_presentes manualmente
             for t in por_tipo:
                 t['media_presentes'] = round(t['total_presentes']/max(t['qtd'],1),1)
@@ -2301,9 +2319,14 @@ def listar_voluntarios():
 @login_required
 def voluntarios_por_depto(did):
     with get_db() as conn:
+        # Busca nome do departamento para também casar pelo campo texto 'departamentos'
+        dep = conn.execute(qmark("SELECT nome FROM departamentos WHERE id=?"), (did,)).fetchone()
+        dep_nome = dep["nome"] if dep else ""
         rows = [dict(r) for r in conn.execute(
-            qmark("SELECT id,nome,telefone FROM voluntarios WHERE ativo=1 AND departamento_id=? ORDER BY nome"),
-            (did,)
+            qmark("""SELECT id,nome,telefone FROM voluntarios
+                     WHERE ativo=1 AND (departamento_id=? OR (departamento_id IS NULL AND departamentos LIKE ?))
+                     ORDER BY nome"""),
+            (did, f"%{dep_nome}%")
         ).fetchall()]
     return jsonify(rows)
 

@@ -142,10 +142,26 @@ async function carregarDeptos(){
   const r = await fetch("/api/departamentos?todos=1");
   _deptos = await r.json();
 
+  // Busca todos os voluntários (fallback caso o vínculo por departamento esteja vazio)
+  let todosVols = [];
+  try{
+    const rt = await fetch("/api/voluntarios?todos=1");
+    todosVols = await rt.json();
+  }catch(e){ todosVols = []; }
+
   // Carrega voluntários de cada departamento
   for(const dep of _deptos){
-    const rv = await fetch(`/api/voluntarios/por_departamento/${dep.id}`);
-    _voluntarios[dep.id] = await rv.json();
+    try{
+      const rv = await fetch(`/api/voluntarios/por_departamento/${dep.id}`);
+      let vols = await rv.json();
+      // Se nenhum voluntário vinculado ao depto, oferece todos como opção
+      if((!vols || !vols.length) && todosVols.length){
+        vols = todosVols.map(v=>({id:v.id, nome:v.nome, telefone:v.telefone}));
+      }
+      _voluntarios[dep.id] = vols || [];
+    }catch(e){
+      _voluntarios[dep.id] = todosVols.map(v=>({id:v.id, nome:v.nome, telefone:v.telefone}));
+    }
   }
 }
 

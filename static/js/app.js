@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded",async()=>{
   initData(); atualizarTopbarDate(); setInterval(atualizarTopbarDate,60000);
   await carregarCultosParaSelects();
   carregarVisitantes(); carregarEstoque(); carregarGCs();
-  carregarDirecionamentos(); carregarSessoesIA(); carregarCameras();
+  carregarDirecionamentos();
   carregarDashboard(); buscarRelatorio();
   document.querySelectorAll(".nav-item").forEach(item=>{
     item.addEventListener("click",e=>{
@@ -48,14 +48,14 @@ async function verificarAuth(){
   if(_isAdmin){carregarUsuarios();}
   // Voluntário: oculta abas restritas no menu
   if(d.cargo==="voluntario"){
-    ["gc","estoque","dashboard","usuarios","escalas"].forEach(tab=>{
+    ["gc","estoque","relatorios","usuarios","escalas","dash_gc"].forEach(tab=>{
       const nav=document.querySelector(`[data-tab="${tab}"]`);
       if(nav)nav.closest("li").style.display="none";
     });
   }
   // Lider de departamento: vê só a aba de escalas
   if(d.cargo==="lider_depto"){
-    ["registro","checklist","visitantes","gc","estoque","dashboard","usuarios"].forEach(tab=>{
+    ["registro","checklist","visitantes","gc","estoque","relatorios","usuarios","dash_gc"].forEach(tab=>{
       const nav=document.querySelector(`[data-tab="${tab}"]`);
       if(nav)nav.closest("li").style.display="none";
     });
@@ -70,26 +70,25 @@ async function logout(){await fetch("/api/logout",{method:"POST"});window.locati
 
 // ── TABS ──────────────────────────────────────────────────────
 const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:"Visitantes",
-  gc:"Conecta GC",estoque:"Estoque",escalas:"Escalas",dashboard:"Dashboard",usuarios:"Usuários",
+  gc:"Conecta GC",estoque:"Estoque",escalas:"Escalas",dashboard:"Relatórios",usuarios:"Usuários",
   dash_gc:"Dashboard GC",relatorios:"Relatórios",ia:"IA Contagem"};
 
 function ativarTab(tab){
-  // Redireciona resumo para dashboard (unificado)
-  if(tab==="resumo") tab="dashboard";
+  // Dashboard e resumo agora vivem dentro de Relatórios (unificado)
+  if(tab==="resumo"||tab==="dashboard") tab="relatorios";
   document.querySelectorAll(".tab-content").forEach(t=>t.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
   const tabEl = document.getElementById("tab-"+tab);
   if(tabEl) tabEl.classList.add("active");
   document.querySelector(`[data-tab="${tab}"]`)?.classList.add("active");
   document.getElementById("topbarTitle").textContent=TAB_TITLES[tab]||tab;
-  if(tab==="dashboard")carregarDashboard();
+  if(tab==="relatorios"){carregarDashboard();buscarRelatorio();atualizarSelectCultos();}
   if(tab==="dash_gc"){carregarDashGC();}
   if(tab==="escalas"){const hoje=new Date();document.getElementById("escala_mes").value=hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");carregarVisualizacaoEscala();carregarVoluntarios();}
   if(tab==="visitantes"){carregarVisitantes();popularSelectVisitantes();}
   if(tab==="usuarios"&&_isAdmin){carregarUsuarios();carregarDeptosSelect();}
   if(tab==="gc"){carregarGCs();carregarDirecionamentos();popularSelectVisitantes();}
   if(tab==="estoque")carregarEstoque();
-  if(tab==="relatorios")buscarRelatorio();
 }
 
 // ── DATA / HORA ───────────────────────────────────────────────
@@ -783,10 +782,13 @@ async function buscarRelatorio(){
   const ini=document.getElementById("f_data_ini")?.value;
   const fim=document.getElementById("f_data_fim")?.value;
   const tpc=document.getElementById("f_tipo_culto")?.value;
+  const cultoId=document.getElementById("f_culto_id")?.value;
   const params=new URLSearchParams();
   if(per)params.append("periodo",per); if(ini)params.append("data_ini",ini);
   if(fim)params.append("data_fim",fim); if(tpc)params.append("tipo_culto",tpc);
-  const r=await fetch(`/api/cultos?${params}`); const list=await r.json();
+  const r=await fetch(`/api/cultos?${params}`); let list=await r.json();
+  // Filtro de culto específico (client-side)
+  if(cultoId) list = list.filter(c=>String(c.id)===String(cultoId));
   const body=document.getElementById("bodyRelatorio");
   if(!list.length){body.innerHTML=`<tr><td colspan="10" style="text-align:center;padding:28px;color:#8ca0c0">Nenhum registro encontrado</td></tr>`;return;}
   body.innerHTML=list.map(c=>`<tr>
@@ -805,6 +807,32 @@ async function buscarRelatorio(){
         ${_isLider?`<button class="btn-sm red" onclick="deletarCulto(${c.id})">✕</button>`:""}
       </div>
     </td></tr>`).join("");
+}
+
+// Popula o select de culto específico conforme os filtros atuais
+async function atualizarSelectCultos(){
+  const sel = document.getElementById("f_culto_id");
+  if(!sel) return;
+  const per=document.getElementById("f_periodo")?.value;
+  const ini=document.getElementById("f_data_ini")?.value;
+  const fim=document.getElementById("f_data_fim")?.value;
+  const tpc=document.getElementById("f_tipo_culto")?.value;
+  const params=new URLSearchParams();
+  if(per)params.append("periodo",per); if(ini)params.append("data_ini",ini);
+  if(fim)params.append("data_fim",fim); if(tpc)params.append("tipo_culto",tpc);
+  try{
+    const r=await fetch(`/api/cultos?${params}`); const list=await r.json();
+    const atual = sel.value;
+    sel.innerHTML='<option value="">Todos os cultos</option>';
+    list.forEach(c=>{
+      const o=document.createElement("option");
+      o.value=c.id;
+      o.textContent=`${c.data_br||fmtBR(c.data)} · ${c.periodo} · ${c.tipo_culto||"Culto"} (${c.responsavel})`;
+      sel.appendChild(o);
+    });
+    // Mantém seleção se ainda existir
+    if(atual && [...sel.options].some(o=>o.value===atual)) sel.value=atual;
+  }catch(e){ console.warn("Erro ao popular cultos:",e); }
 }
 async function verDetalhes(id){
   const r=await fetch(`/api/cultos/${id}`); const d=await r.json(); const c=d.culto;
@@ -868,11 +896,20 @@ async function carregarDashboard(){
     }
   }
   const ano = document.getElementById("dash_ano")?.value || new Date().getFullYear();
+  const per = document.getElementById("dash_periodo")?.value || "";
+  const ini = document.getElementById("dash_data_ini")?.value || "";
+  const fim = document.getElementById("dash_data_fim")?.value || "";
   const el  = (id,v)=>{ const e=document.getElementById(id); if(e)e.textContent=v??'—'; };
+
+  const params = new URLSearchParams();
+  params.append("ano",ano);
+  if(per) params.append("periodo",per);
+  if(ini) params.append("data_ini",ini);
+  if(fim) params.append("data_fim",fim);
 
   // ── CULTOS ────────────────────────────────────────────
   try{
-    const r = await fetch(`/api/dashboard?ano=${ano}`);
+    const r = await fetch(`/api/dashboard?${params}`);
     const d = await r.json();
     if(!r.ok) throw new Error(d.erro||"Erro");
 
@@ -1053,6 +1090,18 @@ async function carregarDeptosSelect(){
     sel.appendChild(o);
   });
 }
+
+// Mostra/oculta campo de departamento conforme o cargo selecionado
+function toggleDeptoField(){
+  const cargo = document.getElementById("nu_cargo")?.value || "";
+  const wrap  = document.getElementById("nu_depto_wrap");
+  if(!wrap) return;
+  // Líder de departamento e voluntário de escala precisam de departamento
+  const precisa = (cargo === "lider_depto");
+  wrap.style.display = precisa ? "" : "none";
+  if(precisa) carregarDeptosSelect();
+}
+
 async function criarUsuario(){
   const nome =document.getElementById("nu_nome").value.trim();
   const email=document.getElementById("nu_email").value.trim().toLowerCase();

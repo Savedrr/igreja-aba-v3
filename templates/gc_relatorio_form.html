@@ -161,9 +161,14 @@ let _gcs = [];
 // Carrega GCs do sistema
 async function carregarGCs(){
   try{
-    const r = await fetch("/api/gcs");
+    const r = await fetch("/api/gcs/publica");
+    if(!r.ok) throw new Error("Falha ao buscar GCs");
     _gcs = await r.json();
     const sel = document.getElementById("gc_nome");
+    if(!_gcs.length){
+      console.warn("Nenhum GC retornado");
+      return;
+    }
     _gcs.forEach(gc=>{
       const o = document.createElement("option");
       o.value = gc.nome; o.textContent = gc.nome;
