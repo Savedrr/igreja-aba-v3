@@ -387,28 +387,39 @@
   <div class="tab-content" id="tab-relatorios">
     <div class="page-header">
       <div><h1 class="page-title">Relatórios</h1><p class="page-sub">Análises, métricas, histórico e exportação da Igreja ABA</p></div>
-      <div class="page-header-right">
-        <button class="btn-secondary" onclick="carregarDashboard()">🔄 Atualizar</button>
-        <button class="btn-excel" onclick="exportarExcel()">📥 Excel</button>
-        <button class="btn-pdf" onclick="exportarPDF()">📄 PDF</button>
-      </div>
     </div>
 
-    <!-- FILTROS DO DASHBOARD -->
+    <!-- FILTROS ÚNICOS E COMPLETOS (controlam painel + histórico + exportação) -->
     <div class="form-card" style="margin-bottom:16px">
-      <div class="form-section" style="padding:14px 16px">
-        <div class="section-title">🔎 Filtros do Painel</div>
+      <div class="form-section" style="padding:16px">
+        <div class="section-title">🔎 Filtros</div>
         <div class="grid-4" style="margin-top:8px">
           <div class="field-group"><label>Ano</label>
-            <select class="field-input" id="dash_ano" onchange="carregarDashboard()">
+            <select class="field-input" id="dash_ano" onchange="aplicarFiltrosRelatorio()">
               <option>2026</option><option>2025</option><option>2024</option>
             </select></div>
+          <div class="field-group"><label>Tipo de Culto</label>
+            <select class="field-input" id="f_tipo_culto" onchange="aplicarFiltrosRelatorio()">
+              <option value="">Todos</option>
+              <option>Culto Regular</option><option>NAREAL</option>
+              <option>Evento</option><option>Reunião de Líderes</option>
+              <option>Culto de GC</option><option>Outro</option>
+            </select></div>
           <div class="field-group"><label>Período do Dia</label>
-            <select class="field-input" id="dash_periodo" onchange="carregarDashboard()">
+            <select class="field-input" id="f_periodo" onchange="aplicarFiltrosRelatorio()">
               <option value="">Todos</option><option>Manhã</option><option>Tarde</option><option>Noite</option>
             </select></div>
-          <div class="field-group"><label>Data Início</label><input type="date" class="field-input" id="dash_data_ini" onchange="carregarDashboard()"></div>
-          <div class="field-group"><label>Data Fim</label><input type="date" class="field-input" id="dash_data_fim" onchange="carregarDashboard()"></div>
+          <div class="field-group"><label>Culto Específico</label>
+            <select class="field-input" id="f_culto_id" onchange="buscarRelatorio()">
+              <option value="">Todos os cultos</option>
+            </select></div>
+          <div class="field-group"><label>Data Início</label><input type="date" class="field-input" id="f_data_ini" onchange="aplicarFiltrosRelatorio()"></div>
+          <div class="field-group"><label>Data Fim</label><input type="date" class="field-input" id="f_data_fim" onchange="aplicarFiltrosRelatorio()"></div>
+        </div>
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn-secondary" onclick="aplicarFiltrosRelatorio()">🔍 Aplicar Filtros</button>
+          <button class="btn-excel" onclick="exportarExcel()">📥 Excel Completo</button>
+          <button class="btn-pdf" onclick="exportarPDF()">📄 Gerar PDF</button>
         </div>
       </div>
     </div>
@@ -465,45 +476,13 @@
       </div>
     </div>
 
-    <!-- HISTÓRICO COM FILTROS -->
-    <div class="form-card" style="margin-top:4px">
-      <div class="form-section">
-        <div class="section-title">🔎 Filtros do Histórico</div>
-        <div class="grid-4">
-          <div class="field-group"><label>Tipo de Culto</label>
-            <select class="field-input" id="f_tipo_culto" onchange="atualizarSelectCultos()">
-              <option value="">Todos</option>
-              <option>Culto Regular</option><option>NAREAL</option>
-              <option>Evento</option><option>Reunião de Líderes</option>
-              <option>Culto de GC</option><option>Outro</option>
-            </select></div>
-          <div class="field-group"><label>Período do Dia</label>
-            <select class="field-input" id="f_periodo" onchange="atualizarSelectCultos()">
-              <option value="">Todos</option><option>Manhã</option><option>Tarde</option><option>Noite</option>
-            </select></div>
-          <div class="field-group"><label>Data Início</label><input type="date" class="field-input" id="f_data_ini" onchange="atualizarSelectCultos()"></div>
-          <div class="field-group"><label>Data Fim</label><input type="date" class="field-input" id="f_data_fim" onchange="atualizarSelectCultos()"></div>
-        </div>
-        <div class="grid-2" style="margin-top:10px">
-          <div class="field-group"><label>Culto Específico</label>
-            <select class="field-input" id="f_culto_id">
-              <option value="">Todos os cultos</option>
-            </select></div>
-        </div>
-        <div class="btn-row" style="margin-top:12px">
-          <button class="btn-secondary" onclick="buscarRelatorio()">🔍 Filtrar</button>
-          <button class="btn-excel" onclick="exportarExcel()">📥 Excel Completo</button>
-          <button class="btn-pdf" onclick="exportarPDF()">📄 Gerar PDF</button>
-        </div>
-      </div>
-    </div>
     <div class="form-card" style="margin-top:16px">
       <div class="form-section">
         <div class="section-title">📋 Histórico de Cultos</div>
         <div class="table-wrap">
           <table class="data-table">
             <thead><tr><th>Data</th><th>Dia</th><th>Tipo</th><th>Período</th><th>Hora</th><th>Responsável</th><th>Pres.</th><th>Visit.</th><th>Crian.</th><th>Ações</th></tr></thead>
-            <tbody id="bodyRelatorio"><tr><td colspan="10" style="text-align:center;padding:28px;color:#8ca0c0">Clique em Filtrar</td></tr></tbody>
+            <tbody id="bodyRelatorio"><tr><td colspan="10" style="text-align:center;padding:28px;color:#8ca0c0">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>

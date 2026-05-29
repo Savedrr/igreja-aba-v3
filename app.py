@@ -1305,6 +1305,75 @@ def listar_gcs_publica():
         ).fetchall()
     return jsonify([dict(r) for r in rows])
 
+@app.route("/api/departamentos/publica", methods=["GET"])
+def listar_departamentos_publica():
+    """Rota pública — usada no auto-cadastro de voluntário na tela de login"""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id,nome,icone FROM departamentos WHERE ativo=1 ORDER BY ordem,nome"
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/api/voluntarios/auto_cadastro", methods=["POST"])
+def auto_cadastro_voluntario():
+    """Auto-cadastro público: cria usuário (voluntario_escala) + voluntário vinculado"""
+    d = request.get_json(force=True) or {}
+    nome    = d.get("nome","").strip()
+    celular = d.get("celular","").strip()
+    email   = d.get("email","").strip().lower()
+    senha   = d.get("senha","")
+    deptos  = d.get("departamentos",[])  # lista de {id,nome}
+
+    if not nome or not celular or not email or not senha:
+        return jsonify({"erro":"Preencha todos os campos."}),400
+    if len(senha) < 8:
+        return jsonify({"erro":"Senha deve ter no mínimo 8 caracteres."}),400
+    if not re.search(r'[A-Z]', senha):
+        return jsonify({"erro":"Senha deve ter ao menos uma letra maiúscula."}),400
+    if not re.search(r'[0-9]', senha):
+        return jsonify({"erro":"Senha deve ter ao menos um número."}),400
+    if not deptos:
+        return jsonify({"erro":"Selecione pelo menos um departamento."}),400
+
+    # Normaliza departamentos
+    nomes_deptos = []
+    primeiro_id = None
+    for dep in deptos:
+        if isinstance(dep, dict):
+            if dep.get("nome"): nomes_deptos.append(dep["nome"])
+            if primeiro_id is None and dep.get("id"): primeiro_id = dep["id"]
+    deptos_txt = ", ".join(nomes_deptos)
+
+    try:
+        with get_db() as conn:
+            # Verifica e-mail duplicado
+            existe = conn.execute(qmark("SELECT id FROM usuarios WHERE email=?"), (email,)).fetchone()
+            if existe:
+                return jsonify({"erro":"Este e-mail já está cadastrado. Faça login."}),400
+
+            # Cria usuário com cargo voluntario_escala
+            cur = conn.execute(
+                qmark("INSERT INTO usuarios(nome,email,senha_hash,cargo) VALUES(?,?,?,?)"),
+                (nome, email, hs(senha), "voluntario_escala")
+            )
+            uid = cur.lastrowid
+            if USE_PG:
+                row = conn.execute(qmark("SELECT id FROM usuarios WHERE email=?"), (email,)).fetchone()
+                uid = row["id"] if row else uid
+
+            # Cria voluntário vinculado
+            conn.execute(
+                qmark("INSERT INTO voluntarios(nome,telefone,departamentos,departamento_id,usuario_id) VALUES(?,?,?,?,?)"),
+                (nome, celular, deptos_txt, primeiro_id, uid)
+            )
+            conn.commit()
+        return jsonify({"ok":True,"msg":"Cadastro realizado com sucesso!"})
+    except Exception as e:
+        logger.error(f"Erro auto_cadastro: {e}")
+        if "UNIQUE" in str(e) or "duplicate" in str(e).lower():
+            return jsonify({"erro":"Este e-mail já está cadastrado."}),400
+        return jsonify({"erro":"Erro ao cadastrar. Tente novamente."}),500
+
 @app.route("/api/gcs", methods=["POST"])
 @role_required("admin")
 def criar_gc():
@@ -1518,6 +1587,7 @@ def dashboard():
     if per: where += " AND periodo=?"; wparams.append(per)
     if ini: where += " AND data>=?"; wparams.append(ini)
     if fim: where += " AND data<=?"; wparams.append(fim)
+    if tpc: where += " AND tipo_culto=?"; wparams.append(tpc)
 
     with get_db() as conn:
         # Resumo geral (com filtros)
@@ -1715,8 +1785,10 @@ def exportar_pdf():
     fim = request.args.get("data_fim","")
     per = request.args.get("periodo","")
     tpc = request.args.get("tipo_culto","")
+    culto_id = request.args.get("culto_id","")
 
     sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes FROM cultos WHERE 1=1"; p=[]
+    if culto_id: sql+=" AND id=?"; p.append(culto_id)
     if ini: sql+=" AND data>=?"; p.append(ini)
     if fim: sql+=" AND data<=?"; p.append(fim)
     if per: sql+=" AND periodo=?"; p.append(per)
@@ -1876,11 +1948,17 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;b
 def exportar_excel():
     ini = request.args.get("data_ini","")
     fim = request.args.get("data_fim","")
+    per = request.args.get("periodo","")
+    tpc = request.args.get("tipo_culto","")
+    culto_id = request.args.get("culto_id","")
     with get_db() as conn:
         sql = "SELECT * FROM cultos WHERE 1=1"
         p = []
+        if culto_id: sql+=" AND id=?"; p.append(culto_id)
         if ini: sql+=" AND data>=?"; p.append(ini)
         if fim: sql+=" AND data<=?"; p.append(fim)
+        if per: sql+=" AND periodo=?"; p.append(per)
+        if tpc: sql+=" AND tipo_culto=?"; p.append(tpc)
         sql += " ORDER BY data ASC"
         cultos = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
         # Relatórios de GC
@@ -2587,45 +2665,46 @@ def minha_escala():
     """Retorna a escala do voluntário logado — todos os deptos onde está"""
     mes = request.args.get("mes", datetime.now().strftime("%Y-%m"))
     uid = session["usuario_id"]
-    with get_db() as conn:
-        # Busca o voluntário pelo usuario_id
-        vol = conn.execute(
-            qmark("SELECT id,nome FROM voluntarios WHERE usuario_id=? AND ativo=1"), (uid,)
-        ).fetchone()
-        if not vol:
-            return jsonify({"erro":"Voluntário não encontrado","itens":[]})
-        vol_nome = vol["nome"]
-        # Busca escala pelo nome do voluntário no mês
-        if USE_PG:
+    try:
+        with get_db() as conn:
+            # Busca o voluntário pelo usuario_id
+            vol = conn.execute(
+                qmark("SELECT id,nome FROM voluntarios WHERE usuario_id=? AND ativo=1"), (uid,)
+            ).fetchone()
+            if not vol:
+                return jsonify({"erro":"Voluntário não encontrado","nome":session.get("usuario_nome",""),"mes":mes,"itens":[]})
+            vol_nome = vol["nome"]
+            # Busca escala pelo nome do voluntário no mês.
+            # Usa LIKE no mês (texto) para evitar erros de cast em PG com datas inválidas.
             sql = """SELECT e.*, d.nome as depto_nome, d.icone as depto_icone
                      FROM escala_itens e
                      JOIN departamentos d ON d.id=e.departamento_id
-                     WHERE e.responsavel=%s
-                     AND to_char(e.culto_data::date,'YYYY-MM')=%s
+                     WHERE e.responsavel=? AND e.culto_data LIKE ?
                      ORDER BY e.culto_data"""
-        else:
-            sql = """SELECT e.*, d.nome as depto_nome, d.icone as depto_icone
-                     FROM escala_itens e
-                     JOIN departamentos d ON d.id=e.departamento_id
-                     WHERE e.responsavel=?
-                     AND strftime('%Y-%m',e.culto_data)=?
-                     ORDER BY e.culto_data"""
-        rows = [dict(r) for r in conn.execute(qmark(sql),(vol_nome,mes)).fetchall()]
-        # Busca confirmações do voluntário
-        confs = {}
-        try:
-            for c in conn.execute(
-                qmark("SELECT culto_data,culto_periodo,departamento,status FROM escala_confirmacoes WHERE voluntario_id=?"),
-                (vol["id"],)
-            ).fetchall():
-                key = f"{c['culto_data']}_{c['culto_periodo']}_{c['departamento']}"
-                confs[key] = c["status"]
-        except: pass
-    for r in rows:
-        r["data_br"] = br(r["culto_data"])
-        key = f"{r['culto_data']}_{r['culto_periodo']}_{r['depto_nome']}"
-        r["status_confirmacao"] = confs.get(key,"pendente")
-    return jsonify({"nome":vol_nome,"mes":mes,"itens":rows})
+            try:
+                rows = [dict(r) for r in conn.execute(qmark(sql),(vol_nome, f"{mes}%")).fetchall()]
+            except Exception as e:
+                logger.warning(f"minha_escala query erro: {e}")
+                rows = []
+            # Busca confirmações do voluntário
+            confs = {}
+            try:
+                for c in conn.execute(
+                    qmark("SELECT culto_data,culto_periodo,departamento,status FROM escala_confirmacoes WHERE voluntario_id=?"),
+                    (vol["id"],)
+                ).fetchall():
+                    key = f"{c['culto_data']}_{c['culto_periodo']}_{c['departamento']}"
+                    confs[key] = c["status"]
+            except Exception:
+                pass
+        for r in rows:
+            r["data_br"] = br(r["culto_data"])
+            key = f"{r['culto_data']}_{r['culto_periodo']}_{r['depto_nome']}"
+            r["status_confirmacao"] = confs.get(key,"pendente")
+        return jsonify({"nome":vol_nome,"mes":mes,"itens":rows})
+    except Exception as e:
+        logger.error(f"Erro minha_escala: {e}")
+        return jsonify({"erro":"Erro ao carregar escala","nome":session.get("usuario_nome",""),"mes":mes,"itens":[]})
 
 @app.route("/api/escala/verificar_conflito", methods=["POST"])
 @login_required
@@ -2639,26 +2718,19 @@ def verificar_conflito():
     if not nome or not data: return jsonify({"conflito":False})
 
     with get_db() as conn:
-        if USE_PG:
-            sql = """SELECT e.responsavel, d.nome as depto_nome
-                     FROM escala_itens e
-                     JOIN departamentos d ON d.id=e.departamento_id
-                     WHERE e.responsavel=%s AND e.culto_data=%s
-                     AND e.culto_periodo=%s AND e.departamento_id!=%s"""
-        else:
-            sql = """SELECT e.responsavel, d.nome as depto_nome
-                     FROM escala_itens e
-                     JOIN departamentos d ON d.id=e.departamento_id
-                     WHERE e.responsavel=? AND e.culto_data=?
-                     AND e.culto_periodo=? AND e.departamento_id!=?"""
+        sql = """SELECT e.responsavel, d.nome as depto_nome
+                 FROM escala_itens e
+                 JOIN departamentos d ON d.id=e.departamento_id
+                 WHERE e.responsavel=? AND e.culto_data=?
+                 AND e.culto_periodo=? AND e.departamento_id!=?"""
         conflitos = [dict(r) for r in conn.execute(
             qmark(sql), (nome, data, periodo, depto_id or 0)
         ).fetchall()]
     if conflitos:
-        deptos = ", ".join(set(c["depto_nome"] for c in conflitos))
+        deptos = ", ".join(sorted(set(c["depto_nome"] for c in conflitos)))
         return jsonify({
             "conflito": True,
-            "mensagem": f"{nome} já está escalado em: {deptos} neste dia"
+            "mensagem": f"{nome} já está escalado(a) em: {deptos} neste mesmo dia e período"
         })
     return jsonify({"conflito":False})
 

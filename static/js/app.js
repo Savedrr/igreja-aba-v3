@@ -82,7 +82,7 @@ function ativarTab(tab){
   if(tabEl) tabEl.classList.add("active");
   document.querySelector(`[data-tab="${tab}"]`)?.classList.add("active");
   document.getElementById("topbarTitle").textContent=TAB_TITLES[tab]||tab;
-  if(tab==="relatorios"){carregarDashboard();buscarRelatorio();atualizarSelectCultos();}
+  if(tab==="relatorios"){carregarDashboard();atualizarSelectCultos();buscarRelatorio();}
   if(tab==="dash_gc"){carregarDashGC();}
   if(tab==="escalas"){const hoje=new Date();document.getElementById("escala_mes").value=hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");carregarVisualizacaoEscala();carregarVoluntarios();}
   if(tab==="visitantes"){carregarVisitantes();popularSelectVisitantes();}
@@ -777,6 +777,13 @@ function renderGraficoPorTipo(porTipo){
 }
 
 // ── RELATÓRIOS ────────────────────────────────────────────────
+// Aplica todos os filtros de uma vez: painel + histórico + select de cultos
+async function aplicarFiltrosRelatorio(){
+  await atualizarSelectCultos();
+  carregarDashboard();
+  buscarRelatorio();
+}
+
 async function buscarRelatorio(){
   const per=document.getElementById("f_periodo")?.value;
   const ini=document.getElementById("f_data_ini")?.value;
@@ -863,8 +870,11 @@ function exportarExcel(){
   const per=document.getElementById("f_periodo")?.value;
   const ini=document.getElementById("f_data_ini")?.value;
   const fim=document.getElementById("f_data_fim")?.value;
+  const tpc=document.getElementById("f_tipo_culto")?.value;
+  const cultoId=document.getElementById("f_culto_id")?.value;
   const p=new URLSearchParams();
   if(per)p.append("periodo",per); if(ini)p.append("data_ini",ini); if(fim)p.append("data_fim",fim);
+  if(tpc)p.append("tipo_culto",tpc); if(cultoId)p.append("culto_id",cultoId);
   window.location.href=`/api/exportar_excel?${p}`;
   toast("⬇️ Gerando Excel...","info");
 }
@@ -872,8 +882,11 @@ function exportarPDF(){
   const per=document.getElementById("f_periodo")?.value;
   const ini=document.getElementById("f_data_ini")?.value;
   const fim=document.getElementById("f_data_fim")?.value;
+  const tpc=document.getElementById("f_tipo_culto")?.value;
+  const cultoId=document.getElementById("f_culto_id")?.value;
   const p=new URLSearchParams();
   if(per)p.append("periodo",per); if(ini)p.append("data_ini",ini); if(fim)p.append("data_fim",fim);
+  if(tpc)p.append("tipo_culto",tpc); if(cultoId)p.append("culto_id",cultoId);
   window.open(`/api/exportar_pdf?${p}`,"_blank");
   toast("📄 PDF aberto! Use Ctrl+P → Salvar como PDF.","info");
 }
@@ -896,9 +909,11 @@ async function carregarDashboard(){
     }
   }
   const ano = document.getElementById("dash_ano")?.value || new Date().getFullYear();
-  const per = document.getElementById("dash_periodo")?.value || "";
-  const ini = document.getElementById("dash_data_ini")?.value || "";
-  const fim = document.getElementById("dash_data_fim")?.value || "";
+  // Filtros unificados (mesmos do histórico)
+  const per = document.getElementById("f_periodo")?.value || "";
+  const ini = document.getElementById("f_data_ini")?.value || "";
+  const fim = document.getElementById("f_data_fim")?.value || "";
+  const tpc = document.getElementById("f_tipo_culto")?.value || "";
   const el  = (id,v)=>{ const e=document.getElementById(id); if(e)e.textContent=v??'—'; };
 
   const params = new URLSearchParams();
@@ -906,6 +921,7 @@ async function carregarDashboard(){
   if(per) params.append("periodo",per);
   if(ini) params.append("data_ini",ini);
   if(fim) params.append("data_fim",fim);
+  if(tpc) params.append("tipo",tpc);
 
   // ── CULTOS ────────────────────────────────────────────
   try{

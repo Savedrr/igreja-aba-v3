@@ -171,12 +171,14 @@ function getDomingos(mes){
   const result = [];
   for(let d=1;d<=dias;d++){
     const dt = new Date(ano,m-1,d);
-    if(dt.getDay()===0 || dt.getDay()===3){
+    // Apenas DOMINGOS — Manhã e Noite
+    if(dt.getDay()===0){
       const iso = `${ano}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
       const br  = `${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}`;
       const diasNome = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
-      const per = dt.getDay()===0 ? "Manhã" : "Noite";
-      result.push({iso,br,dia:diasNome[dt.getDay()],periodo:per,mesNum:m});
+      // Cada domingo gera duas entradas: Manhã e Noite
+      result.push({iso,br,dia:diasNome[0],periodo:"Manhã",mesNum:m});
+      result.push({iso,br,dia:diasNome[0],periodo:"Noite",mesNum:m});
     }
   }
   return result;
@@ -283,15 +285,11 @@ async function aoSelecionarVol(sel){
   const periodo= sel.dataset.periodo;
   const depId  = parseInt(sel.dataset.depid);
 
-  sel.classList.toggle("preenchido", !!sel.value);
-  _dados[key] = nome;
-  mostrarInfoVol(sel);
-
   // Limpa badge de conflito anterior
   let badge = document.getElementById("conf_"+key);
   if(badge){ badge.classList.remove("show"); sel.classList.remove("conflito"); }
 
-  // Verifica conflito se selecionou alguém
+  // Verifica conflito ANTES de confirmar a seleção
   if(nome){
     try{
       const r = await fetch("/api/escala/verificar_conflito",{
@@ -300,18 +298,21 @@ async function aoSelecionarVol(sel){
       });
       const d = await r.json();
       if(d.conflito){
-        sel.classList.add("conflito");
-        if(!badge){
-          badge = document.createElement("div");
-          badge.id = "conf_"+key;
-          badge.className = "conflito-badge";
-          sel.parentNode.insertBefore(badge, sel.nextSibling);
-        }
-        badge.innerHTML = "⚠️ "+d.mensagem;
-        badge.classList.add("show");
+        // Bloqueia: reverte a seleção e avisa
+        alert("⚠️ " + d.mensagem + ".\n\nA mesma pessoa não pode ser escalada em mais de um departamento no mesmo dia e período.");
+        sel.value = "";
+        sel.classList.remove("preenchido");
+        _dados[key] = "";
+        mostrarInfoVol(sel);
+        return;
       }
     }catch(e){ console.warn("Conflito check falhou",e); }
   }
+
+  // Sem conflito — confirma a seleção
+  sel.classList.toggle("preenchido", !!sel.value);
+  _dados[key] = nome;
+  mostrarInfoVol(sel);
 }
 
 function mostrarInfoVol(sel){

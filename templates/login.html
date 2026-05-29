@@ -260,24 +260,74 @@
 
   <div class="err-box" id="errBox"></div>
 
-  <!-- Dica voluntário -->
+  <!-- Auto-cadastro de voluntário -->
   <div style="margin-top:18px;text-align:center">
-    <button type="button" onclick="toggleDicaVol()" style="background:none;border:none;
-      color:rgba(255,255,255,.35);font-size:12px;cursor:pointer;padding:4px 8px;
+    <button type="button" onclick="abrirCadastroVol()" style="background:none;border:none;
+      color:#56B4D3;font-size:13px;cursor:pointer;padding:6px 10px;font-weight:600;
       text-decoration:underline;text-underline-offset:3px;">
-      Sou voluntário — como faço login?
+      Sou voluntário — Me cadastrar
     </button>
   </div>
-  <div id="dicaVol" style="display:none;margin-top:10px;background:rgba(86,180,211,.1);
-    border:1px solid rgba(86,180,211,.25);border-radius:12px;padding:12px 14px;
-    font-size:12px;color:rgba(255,255,255,.75);line-height:1.7">
-    <strong style="color:#56B4D3;display:block;margin-bottom:4px">👋 Acesso de voluntário</strong>
-    Use o <strong>email e senha</strong> criados pelo seu coordenador.<br>
-    Ao entrar, você verá apenas a sua escala pessoal.
-    <br><br>
-    Não tem acesso? Peça ao coordenador para criar seu login em <strong>Usuários</strong>.
-  </div>
 </div>
+
+<!-- MODAL DE AUTO-CADASTRO DE VOLUNTÁRIO -->
+<div id="modalCadastroVol" style="display:none;position:fixed;inset:0;z-index:1000;
+  background:rgba(10,20,40,.75);backdrop-filter:blur(4px);
+  align-items:center;justify-content:center;padding:16px;overflow-y:auto">
+  <div style="background:#0F1F3D;border:1px solid rgba(86,180,211,.3);border-radius:18px;
+    max-width:420px;width:100%;padding:24px 22px;box-shadow:0 20px 60px rgba(0,0,0,.5);margin:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h2 style="color:#fff;font-size:19px;font-weight:800;margin:0">Cadastro de Voluntário</h2>
+      <button onclick="fecharCadastroVol()" style="background:none;border:none;color:rgba(255,255,255,.5);
+        font-size:22px;cursor:pointer;line-height:1">✕</button>
+    </div>
+    <p style="color:rgba(255,255,255,.55);font-size:12px;margin:0 0 16px">
+      Crie seu acesso para visualizar sua escala pessoal.
+    </p>
+
+    <div style="display:grid;gap:12px">
+      <div>
+        <label style="color:rgba(255,255,255,.7);font-size:12px;font-weight:600;display:block;margin-bottom:4px">Nome Completo *</label>
+        <input type="text" id="cv_nome" placeholder="Seu nome completo"
+          style="width:100%;padding:11px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.15);
+          background:rgba(255,255,255,.06);color:#fff;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:rgba(255,255,255,.7);font-size:12px;font-weight:600;display:block;margin-bottom:4px">Celular (WhatsApp) *</label>
+        <input type="tel" id="cv_celular" placeholder="(51) 99999-9999"
+          style="width:100%;padding:11px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.15);
+          background:rgba(255,255,255,.06);color:#fff;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:rgba(255,255,255,.7);font-size:12px;font-weight:600;display:block;margin-bottom:4px">E-mail *</label>
+        <input type="email" id="cv_email" placeholder="seu@email.com"
+          style="width:100%;padding:11px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.15);
+          background:rgba(255,255,255,.06);color:#fff;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:rgba(255,255,255,.7);font-size:12px;font-weight:600;display:block;margin-bottom:4px">Senha *</label>
+        <input type="password" id="cv_senha" placeholder="Mín. 8 caracteres, 1 maiúscula e 1 número"
+          style="width:100%;padding:11px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.15);
+          background:rgba(255,255,255,.06);color:#fff;font-size:14px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="color:rgba(255,255,255,.7);font-size:12px;font-weight:600;display:block;margin-bottom:6px">Departamentos * <span style="font-weight:400;opacity:.6">(escolha um ou mais)</span></label>
+        <div id="cv_deptos" style="display:flex;flex-wrap:wrap;gap:7px;max-height:160px;overflow-y:auto;
+          padding:4px;background:rgba(255,255,255,.04);border-radius:10px">
+          <span style="color:rgba(255,255,255,.4);font-size:12px;padding:6px">Carregando departamentos...</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="cv_err" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);
+      color:#FCA5A5;border-radius:9px;padding:9px 12px;font-size:12px;margin-top:12px"></div>
+
+    <button onclick="enviarCadastroVol()" id="cv_btn"
+      style="width:100%;margin-top:16px;padding:13px;border:none;border-radius:11px;
+      background:linear-gradient(135deg,#1B4FA8,#56B4D3);color:#fff;font-size:15px;font-weight:700;cursor:pointer">
+      Criar meu cadastro
+    </button>
+  </div>
 
 <script>
   // Registra Service Worker para PWA
@@ -351,9 +401,79 @@
     }
   }
 
-  function toggleDicaVol() {
-    var d = document.getElementById('dicaVol');
-    d.style.display = d.style.display === 'block' ? 'none' : 'block';
+  // ── AUTO-CADASTRO DE VOLUNTÁRIO ──────────────────────────
+  let _deptosCarregados = false;
+  async function abrirCadastroVol() {
+    document.getElementById('modalCadastroVol').style.display = 'flex';
+    if (!_deptosCarregados) {
+      try {
+        const r = await fetch('/api/departamentos/publica');
+        const list = await r.json();
+        const cont = document.getElementById('cv_deptos');
+        if (!list.length) {
+          cont.innerHTML = '<span style="color:rgba(255,255,255,.4);font-size:12px;padding:6px">Nenhum departamento disponível.</span>';
+          return;
+        }
+        cont.innerHTML = list.map(d => `
+          <label style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.07);
+            border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 10px;cursor:pointer;
+            font-size:12px;color:#fff" onclick="this.classList.toggle('sel-depto')">
+            <input type="checkbox" value="${d.id}" data-nome="${d.nome}" class="cv-depto-chk"
+              style="accent-color:#56B4D3;width:15px;height:15px;cursor:pointer">
+            <span>${d.icone || '👥'} ${d.nome}</span>
+          </label>`).join('');
+        _deptosCarregados = true;
+      } catch(e) {
+        document.getElementById('cv_deptos').innerHTML =
+          '<span style="color:#FCA5A5;font-size:12px;padding:6px">Erro ao carregar departamentos.</span>';
+      }
+    }
+  }
+  function fecharCadastroVol() {
+    document.getElementById('modalCadastroVol').style.display = 'none';
+  }
+  function mostrarErroVol(msg) {
+    const e = document.getElementById('cv_err');
+    e.textContent = msg; e.style.display = 'block';
+  }
+  async function enviarCadastroVol() {
+    const nome    = document.getElementById('cv_nome').value.trim();
+    const celular = document.getElementById('cv_celular').value.trim();
+    const email   = document.getElementById('cv_email').value.trim().toLowerCase();
+    const senha   = document.getElementById('cv_senha').value;
+    const deptos  = [...document.querySelectorAll('.cv-depto-chk:checked')].map(c => ({
+      id: parseInt(c.value), nome: c.dataset.nome
+    }));
+    const err = document.getElementById('cv_err');
+    err.style.display = 'none';
+
+    if (!nome || !celular || !email || !senha) return mostrarErroVol('Preencha todos os campos.');
+    if (senha.length < 8) return mostrarErroVol('A senha deve ter no mínimo 8 caracteres.');
+    if (!/[A-Z]/.test(senha)) return mostrarErroVol('A senha deve ter ao menos uma letra maiúscula.');
+    if (!/[0-9]/.test(senha)) return mostrarErroVol('A senha deve ter ao menos um número.');
+    if (!deptos.length) return mostrarErroVol('Selecione pelo menos um departamento.');
+
+    const btn = document.getElementById('cv_btn');
+    btn.textContent = 'Cadastrando...'; btn.disabled = true;
+
+    try {
+      const r = await fetch('/api/voluntarios/auto_cadastro', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ nome, celular, email, senha, departamentos: deptos })
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) {
+        alert('✅ Cadastro realizado! Agora faça login com seu e-mail e senha.');
+        fecharCadastroVol();
+        document.getElementById('email').value = email;
+        document.getElementById('senha').focus();
+      } else {
+        mostrarErroVol(d.erro || 'Erro ao cadastrar.');
+      }
+    } catch(e) {
+      mostrarErroVol('Erro de conexão. Tente novamente.');
+    }
+    btn.textContent = 'Criar meu cadastro'; btn.disabled = false;
   }
 
   function mostrarErro(msg) {
