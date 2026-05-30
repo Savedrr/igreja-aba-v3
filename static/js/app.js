@@ -496,6 +496,7 @@ function renderizarResultadoGC(data){
         <div class="gc-km">${gc.distancia_km}<span> km</span></div>
         <button class="btn-sm blue" style="margin-top:4px;font-size:10px" onclick="copiarLink('${gc.rota_link}')">📋 Rota</button>
         <a href="${gc.wa_rota||''}" target="_blank" style="text-decoration:none;display:block;margin-top:3px"><button class="btn-sm green" style="font-size:10px;background:#25D366;color:#fff;border:none;width:100%">📲 WhatsApp</button></a>
+        ${vidId?`<button class="btn-sm orange" style="margin-top:3px;font-size:10px;width:100%" onclick="confirmarDirecionamento('${vidId}','${gc.id}','${esc(gc.nome)}',${gc.distancia_km},'${gc.rota_link}')">✅ Confirmar</button>`:""}
       </div>
     </div>`;
   });
@@ -1497,6 +1498,17 @@ async function notificarVoluntarios(){
 }
 
 // ── CONFIRMAÇÕES ────────────────────────────────────────────
+function exportarEscalaPDF(){
+  const mes = document.getElementById("escala_mes")?.value||"";
+  const per = document.getElementById("escala_periodo")?.value||"";
+  if(!mes){ toast("Selecione um mês primeiro.","error"); return; }
+  const p = new URLSearchParams();
+  p.append("mes",mes);
+  if(per && per!=="Todos") p.append("periodo",per);
+  window.open(`/api/escala/pdf?${p}`,"_blank");
+  toast("📄 PDF aberto! Use Imprimir → Salvar como PDF.","info");
+}
+
 let _confData = [];
 let _confFiltro = "todos";
 

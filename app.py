@@ -2886,6 +2886,95 @@ def escala_publica():
     for r in rows: r["data_br"] = br(r["culto_data"]) if r.get("culto_data") else ""
     return jsonify({"itens": rows, "departamentos": deptos})
 
+@app.route("/api/escala/pdf", methods=["GET"])
+@role_required("admin","lider","lider_depto")
+def exportar_escala_pdf():
+    """Gera PDF da escala mensal organizada por departamento"""
+    mes = request.args.get("mes","")
+    per = request.args.get("periodo","")
+    sql = """SELECT e.*, d.nome as depto_nome, d.icone as depto_icone, d.ordem as depto_ordem
+             FROM escala_itens e
+             JOIN departamentos d ON d.id=e.departamento_id
+             WHERE e.culto_data LIKE ?"""
+    p = [f"{mes}%"] if mes else ["%"]
+    if per: sql += " AND e.culto_periodo=?"; p.append(per)
+    sql += " ORDER BY d.ordem, d.nome, e.culto_data"
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+
+    # Agrupa por departamento
+    por_depto = {}
+    datas_set = set()
+    for r in rows:
+        dep = r["depto_nome"]
+        if dep not in por_depto:
+            por_depto[dep] = {"icone": r.get("depto_icone","👥"), "itens": []}
+        por_depto[dep]["itens"].append(r)
+        datas_set.add(r["culto_data"])
+
+    # Monta cabeçalho do mês
+    try:
+        ano_m, mes_m = mes.split("-")
+        MESES_BR = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+        titulo_mes = f"{MESES_BR[int(mes_m)]} de {ano_m}"
+    except Exception:
+        titulo_mes = mes or "Escala"
+
+    cards_html = ""
+    for dep, info in por_depto.items():
+        linhas = ""
+        for it in info["itens"]:
+            per_cor = {"Manhã":"#F59E0B","Tarde":"#3B82F6","Noite":"#6366F1"}.get(it.get("culto_periodo"),"#64748B")
+            resp = it.get("responsavel") or "<span style='color:#CBD5E1'>— vago —</span>"
+            linhas += f"""<tr>
+              <td style="padding:7px 10px;font-weight:700;color:#0A2463">{br(it['culto_data'])}</td>
+              <td style="padding:7px 10px"><span style="background:{per_cor}1A;color:{per_cor};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700">{it.get('culto_periodo','')}</span></td>
+              <td style="padding:7px 10px;font-weight:600">{resp}</td>
+            </tr>"""
+        cards_html += f"""<div class="depto-card">
+          <div class="depto-header">{info['icone']} {dep}</div>
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr style="background:#F1F5F9">
+              <th style="padding:6px 10px;text-align:left;font-size:11px;color:#4A6080">Data</th>
+              <th style="padding:6px 10px;text-align:left;font-size:11px;color:#4A6080">Período</th>
+              <th style="padding:6px 10px;text-align:left;font-size:11px;color:#4A6080">Responsável</th>
+            </tr></thead>
+            <tbody>{linhas}</tbody>
+          </table>
+        </div>"""
+
+    if not cards_html:
+        cards_html = '<p style="text-align:center;color:#94A3B8;padding:40px">Nenhuma escala cadastrada para este mês.</p>'
+
+    html = f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Escala — {titulo_mes}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#F1F5F9;color:#1E293B}}
+.btn-print{{display:block;width:calc(100% - 32px);margin:16px auto 0;padding:14px;background:#0A2463;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer}}
+.hint{{text-align:center;font-size:11px;color:#94A3B8;margin:6px 16px 14px}}
+.header{{background:linear-gradient(135deg,#0A2463,#1B4FA8);color:#fff;padding:22px 16px;margin-bottom:16px}}
+.header h1{{font-size:21px;font-weight:900;letter-spacing:1px}}
+.header .meta{{font-size:12px;opacity:.7;margin-top:4px}}
+.depto-card{{background:#fff;border-radius:12px;margin:0 16px 14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
+.depto-header{{font-size:15px;font-weight:800;color:#0A2463;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid #EEF2F9}}
+.depto-card tbody tr{{border-bottom:1px solid #F1F5F9}}
+.footer{{text-align:center;font-size:10px;color:#94A3B8;padding:16px}}
+@media print{{.btn-print,.hint{{display:none}}body{{background:#fff}}}}
+</style></head><body>
+<button class="btn-print" onclick="window.print()">💾 Salvar como PDF</button>
+<p class="hint">Toque nos 3 pontos → Imprimir → Salvar como PDF</p>
+<div class="header">
+  <h1>ESCALA — {titulo_mes.upper()}</h1>
+  <div class="meta">Igreja ABA · {len(por_depto)} departamentos · Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
+</div>
+{cards_html}
+<div class="footer">Igreja ABA — Um Lar Para Pertencer</div>
+</body></html>"""
+    resp = make_response(html)
+    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    return resp
+
 @app.route("/api/escala", methods=["POST"])
 @login_required
 def salvar_escala_item():

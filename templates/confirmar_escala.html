@@ -79,6 +79,7 @@ const MES   = "{{ mes }}";
 document.getElementById("nomeBox").textContent = NOME || "Voluntário";
 
 const MESES = ["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+function statusLabel(s){if(s==="pendente")return "⏳ Pendente";if(s==="confirmado")return "✅ Confirmado";if(s==="recusado")return "❌ Recusado";return s;}
 
 async function carregar(){
   const r = await fetch(`/api/escala/confirmacoes/${TOKEN}?nome=${encodeURIComponent(NOME)}&mes=${MES}`);
@@ -113,7 +114,7 @@ async function carregar(){
           <div class="item-depto">${e.departamento}</div>
           <div class="item-per">${e.culto_periodo === "Manha" ? "☀️ Manhã" : "🌙 Noite"}</div>
         </div>
-        <span class="status-badge s-${e.status}">${{pendente:"⏳ Pendente",confirmado:"✅ Confirmado",recusado:"❌ Recusado"}[e.status]||e.status}</span>
+        <span class="status-badge s-${e.status}">${statusLabel(e.status)}</span>
       </div>
       ${e.status==="pendente" ? `
       <div class="btns">
