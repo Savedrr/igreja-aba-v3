@@ -780,8 +780,19 @@ function renderGraficoPorTipo(porTipo){
 // Aplica todos os filtros de uma vez: painel + histórico + select de cultos
 async function aplicarFiltrosRelatorio(){
   await atualizarSelectCultos();
-  carregarDashboard();
+  const cultoId=document.getElementById("f_culto_id")?.value;
+  // Se um culto específico está selecionado, os cards vêm de buscarRelatorio (client-side).
+  // Senão, o dashboard recalcula os cards normalmente.
+  if(!cultoId) await carregarDashboard();
+  else await carregarDashboardSemCards();
   buscarRelatorio();
+}
+
+// Versão do dashboard que NÃO sobrescreve os cards (usada quando há culto específico)
+async function carregarDashboardSemCards(){
+  window._pularCards = true;
+  await carregarDashboard();
+  window._pularCards = false;
 }
 
 async function buscarRelatorio(){
@@ -797,23 +808,47 @@ async function buscarRelatorio(){
   // Filtro de culto específico (client-side)
   if(cultoId) list = list.filter(c=>String(c.id)===String(cultoId));
   const body=document.getElementById("bodyRelatorio");
-  if(!list.length){body.innerHTML=`<tr><td colspan="10" style="text-align:center;padding:28px;color:#8ca0c0">Nenhum registro encontrado</td></tr>`;return;}
-  body.innerHTML=list.map(c=>`<tr>
-    <td><strong>${c.data_br||fmtBR(c.data)}</strong></td>
-    <td style="color:#4A6080">${c.dia_semana}</td>
-    <td><span class="badge ${tipoBadgeClass(c.tipo_culto)}">${c.tipo_culto||"—"}</span></td>
-    <td><span class="badge badge-${c.periodo==="Manhã"?"manha":c.periodo==="Tarde"?"tarde":"noite"}">${c.periodo}</span></td>
-    <td>${c.hora}</td><td><strong>${c.responsavel}</strong></td>
-    <td><strong style="color:#0A2463">${c.presentes}</strong></td>
-    <td><strong style="color:#1B4FA8">${c.visitantes}</strong></td>
-    <td><strong style="color:#3E7CB1">${c.criancas}</strong></td>
-    <td>
-      <div style="display:flex;gap:4px;flex-wrap:wrap">
-        <button class="btn-sm blue" onclick="verDetalhes(${c.id})">Ver</button>
-        ${_isLider?`<button class="btn-sm purple" onclick="abrirEdicaoCulto(${c.id})">✏️</button>`:""}
-        ${_isLider?`<button class="btn-sm red" onclick="deletarCulto(${c.id})">✕</button>`:""}
-      </div>
-    </td></tr>`).join("");
+  if(!list.length){body.innerHTML=`<tr><td colspan="10" style="text-align:center;padding:28px;color:#8ca0c0">Nenhum registro encontrado</td></tr>`;}
+  else{
+    body.innerHTML=list.map(c=>`<tr>
+      <td><strong>${c.data_br||fmtBR(c.data)}</strong></td>
+      <td style="color:#4A6080">${c.dia_semana}</td>
+      <td><span class="badge ${tipoBadgeClass(c.tipo_culto)}">${c.tipo_culto||"—"}</span></td>
+      <td><span class="badge badge-${c.periodo==="Manhã"?"manha":c.periodo==="Tarde"?"tarde":"noite"}">${c.periodo}</span></td>
+      <td>${c.hora}</td><td><strong>${c.responsavel}</strong></td>
+      <td><strong style="color:#0A2463">${c.presentes}</strong></td>
+      <td><strong style="color:#1B4FA8">${c.visitantes}</strong></td>
+      <td><strong style="color:#3E7CB1">${c.criancas}</strong></td>
+      <td>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn-sm blue" onclick="verDetalhes(${c.id})">Ver</button>
+          ${_isLider?`<button class="btn-sm purple" onclick="abrirEdicaoCulto(${c.id})">✏️</button>`:""}
+          ${_isLider?`<button class="btn-sm red" onclick="deletarCulto(${c.id})">✕</button>`:""}
+        </div>
+      </td></tr>`).join("");
+  }
+  // Atualiza os cards de resumo com base na lista filtrada (reflete o culto selecionado)
+  atualizarCardsResumo(list);
+}
+
+// Recalcula os cards de resumo a partir de uma lista de cultos
+function atualizarCardsResumo(list){
+  const el=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  const n=list.length;
+  const sp=list.reduce((s,c)=>s+(c.presentes||0),0);
+  const sv=list.reduce((s,c)=>s+(c.visitantes||0),0);
+  const sc=list.reduce((s,c)=>s+(c.criancas||0),0);
+  el("st_dash_cultos",n);
+  el("st_dash_presentes",sp);
+  el("st_dash_visitantes",sv);
+  el("st_dash_criancas",sc);
+  el("st_dash_media_p", n?Math.round(sp/n*10)/10:0);
+  el("st_dash_media_v", n?Math.round(sv/n*10)/10:0);
+}
+
+// Chamado quando o usuário seleciona um culto específico
+function onSelecionarCulto(){
+  buscarRelatorio();
 }
 
 // Popula o select de culto específico conforme os filtros atuais
@@ -897,18 +932,8 @@ function exportarPDF(){
 // DASHBOARD UNIFICADO — Cultos + GCs + Escalas
 // ═══════════════════════════════════════════════════════
 async function carregarDashboard(){
-  // Preenche seletor de ano
-  const anoSel = document.getElementById("dash_ano");
-  if(anoSel && anoSel.options.length <= 1){
-    const anoAtual = new Date().getFullYear();
-    for(let a=anoAtual; a>=2023; a--){
-      const o=document.createElement("option");
-      o.value=a; o.textContent=a;
-      if(a===anoAtual) o.selected=true;
-      anoSel.appendChild(o);
-    }
-  }
-  const ano = document.getElementById("dash_ano")?.value || new Date().getFullYear();
+  // Ano fixo em 2026 (único ano com dados)
+  const ano = document.getElementById("dash_ano")?.value || "2026";
   // Filtros unificados (mesmos do histórico)
   const per = document.getElementById("f_periodo")?.value || "";
   const ini = document.getElementById("f_data_ini")?.value || "";
@@ -931,12 +956,14 @@ async function carregarDashboard(){
 
     const res = d.resumo||{};
     // Cards unificados (dashboard + resumo na mesma tela)
-    el("st_dash_cultos",     res.total_cultos);
-    el("st_dash_presentes",  res.total_presentes);
-    el("st_dash_visitantes", res.total_visitantes);
-    el("st_dash_criancas",   res.total_criancas);
-    el("st_dash_media_p",    res.media_presentes);
-    el("st_dash_media_v",    res.media_visitantes);
+    if(!window._pularCards){
+      el("st_dash_cultos",     res.total_cultos);
+      el("st_dash_presentes",  res.total_presentes);
+      el("st_dash_visitantes", res.total_visitantes);
+      el("st_dash_criancas",   res.total_criancas);
+      el("st_dash_media_p",    res.media_presentes);
+      el("st_dash_media_v",    res.media_visitantes);
+    }
     // Mantém IDs legados para compatibilidade
     el("st_cultos",           res.total_cultos);
     el("st_presentes",        res.total_presentes);
@@ -1470,31 +1497,93 @@ async function notificarVoluntarios(){
 }
 
 // ── CONFIRMAÇÕES ────────────────────────────────────────────
+let _confData = [];
+let _confFiltro = "todos";
+
 async function verConfirmacoes(){
+  await carregarConfirmacoes(true);
+}
+
+async function carregarConfirmacoes(abrirModalNovo){
   const mes = document.getElementById("escala_mes")?.value||"";
   const r = await fetch(`/api/escala/confirmacoes_admin?mes=${mes}`);
-  const list = await r.json();
-  if(!list.length){toast("Nenhuma resposta ainda.","info");return;}
-  const pend = list.filter(c=>c.status==="pendente").length;
-  const conf = list.filter(c=>c.status==="confirmado").length;
-  const rec  = list.filter(c=>c.status==="recusado").length;
-  const html = `
-    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">✅ ${conf} confirmados</span>
-      <span style="background:#FEE2E2;color:#991B1B;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">❌ ${rec} trocas</span>
-      <span style="background:#FEF3C7;color:#92400E;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">⏳ ${pend} pendentes</span>
-    </div>
-    <div style="max-height:55vh;overflow-y:auto">
-      ${list.map(c=>`<div style="padding:9px 0;border-bottom:1px solid #EEF2F9;display:flex;align-items:flex-start;gap:10px">
-        <span style="padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;background:${c.status==="confirmado"?"#D1FAE5":c.status==="recusado"?"#FEE2E2":"#FEF3C7"};color:${c.status==="confirmado"?"#065F46":c.status==="recusado"?"#991B1B":"#92400E"};flex-shrink:0">${c.status}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:13px">${c.voluntario_nome}</div>
-          <div style="font-size:11px;color:#8ca0c0">${c.data_br} · ${c.culto_periodo} · ${c.departamento}</div>
-          ${c.sugestao_troca?`<div style="font-size:11px;color:#991B1B;margin-top:3px;font-style:italic">↪ ${c.sugestao_troca}</div>`:""}
-        </div>
-      </div>`).join("")}
+  _confData = await r.json();
+  const html = renderConfirmacoes(mes);
+  if(abrirModalNovo){
+    abrirModal(`Respostas da escala — ${mes}`, html, "wide");
+  }else{
+    // Atualiza o conteúdo do modal já aberto
+    const corpo = document.getElementById("confCorpo");
+    if(corpo) corpo.outerHTML = html;
+  }
+}
+
+function renderConfirmacoes(mes){
+  const list = _confData;
+  const conf = list.filter(c=>c.status==="confirmado");
+  const rec  = list.filter(c=>c.status==="recusado");
+  const pend = list.filter(c=>c.status==="pendente");
+  const total = list.length;
+  const pctConf = total? Math.round(conf.length/total*100):0;
+
+  // Aplica filtro
+  let visiveis = list;
+  if(_confFiltro==="confirmado") visiveis = conf;
+  else if(_confFiltro==="recusado") visiveis = rec;
+  else if(_confFiltro==="pendente") visiveis = pend;
+
+  const fBtn=(id,label,cor,n)=>`
+    <button onclick="filtrarConf('${id}')" style="flex:1;min-width:90px;padding:10px 8px;border-radius:10px;cursor:pointer;
+      border:2px solid ${_confFiltro===id?cor:'transparent'};
+      background:${_confFiltro===id?cor+'22':'#F8FAFF'};transition:all .15s">
+      <div style="font-size:20px;font-weight:800;color:${cor}">${n}</div>
+      <div style="font-size:10px;color:#64748B;text-transform:uppercase;font-weight:600;margin-top:2px">${label}</div>
+    </button>`;
+
+  // Agrupa por status para visual mais claro
+  const cardConf = (c)=>{
+    const cor = c.status==="confirmado"?"#059669":c.status==="recusado"?"#DC2626":"#D97706";
+    const bg  = c.status==="confirmado"?"#F0FDF4":c.status==="recusado"?"#FEF2F2":"#FFFBEB";
+    const ic  = c.status==="confirmado"?"✅":c.status==="recusado"?"🔄":"⏳";
+    const lbl = c.status==="confirmado"?"Confirmado":c.status==="recusado"?"Pediu troca":"Aguardando";
+    return `<div style="background:${bg};border-left:4px solid ${cor};border-radius:10px;padding:11px 13px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="font-weight:700;font-size:14px;color:#0F2747">${ic} ${c.voluntario_nome}</div>
+        <span style="font-size:10px;font-weight:700;color:${cor};background:${cor}1A;padding:3px 9px;border-radius:20px;white-space:nowrap">${lbl}</span>
+      </div>
+      <div style="font-size:12px;color:#64748B;margin-top:4px">📅 ${c.data_br} · ${c.culto_periodo} · <strong>${c.departamento}</strong></div>
+      ${c.sugestao_troca?`<div style="font-size:12px;color:#B91C1C;margin-top:6px;background:#fff;border-radius:8px;padding:6px 9px">💬 <em>${c.sugestao_troca}</em></div>`:""}
     </div>`;
-  abrirModal(`Respostas da escala — ${mes}`, html, "wide");
+  };
+
+  return `<div id="confCorpo">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="flex:1;min-width:160px">
+        <div style="font-size:12px;color:#64748B;margin-bottom:4px">Taxa de confirmação: <strong style="color:#059669">${pctConf}%</strong></div>
+        <div style="background:#EEF2F9;border-radius:8px;height:8px;overflow:hidden">
+          <div style="width:${pctConf}%;height:100%;background:linear-gradient(90deg,#059669,#34D399);border-radius:8px;transition:width .5s"></div>
+        </div>
+      </div>
+      <button onclick="carregarConfirmacoes(false)" class="btn-sm blue" style="padding:8px 14px;font-size:12px">🔄 Atualizar</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      ${fBtn("todos","Todos","#1B4FA8",total)}
+      ${fBtn("confirmado","Confirmados","#059669",conf.length)}
+      ${fBtn("recusado","Trocas","#DC2626",rec.length)}
+      ${fBtn("pendente","Pendentes","#D97706",pend.length)}
+    </div>
+    <div style="max-height:50vh;overflow-y:auto;padding-right:4px">
+      ${visiveis.length? visiveis.map(cardConf).join("")
+        : '<p style="text-align:center;color:#8ca0c0;padding:30px;font-size:13px">Nenhuma resposta nesta categoria.</p>'}
+    </div>
+  </div>`;
+}
+
+function filtrarConf(f){
+  _confFiltro = f;
+  const mes = document.getElementById("escala_mes")?.value||"";
+  const corpo = document.getElementById("confCorpo");
+  if(corpo) corpo.outerHTML = renderConfirmacoes(mes);
 }
 
 // ── EDITOR DE ESCALA INLINE ────────────────────────────────
@@ -1865,6 +1954,16 @@ async function delDepto(id,nome){
   if(r.ok&&d.ok){toast("Departamento removido.","info");carregarVisualizacaoEscala();}
   else toast(d.erro||"Erro.","error");
 }
+// Stub seguro de geocodificação (campo de endereço de visitante — opcional)
+async function geocodificarCampo(idEnd, idResult, idLat, idLng, idDisplay){
+  const end = document.getElementById(idEnd)?.value?.trim();
+  const res = document.getElementById(idResult);
+  if(!end){ if(res) res.textContent="Digite um endereço primeiro."; return; }
+  if(res) res.textContent="Endereço salvo: "+end;
+  const disp = document.getElementById(idDisplay);
+  if(disp) disp.textContent = end;
+}
+
 // ── DASHBOARD GC ──────────────────────────────────────────────
 function copiarLinkRelatorio(){
   const url = window.location.origin + "/relatorio-gc";

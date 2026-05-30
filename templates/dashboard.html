@@ -396,7 +396,7 @@
         <div class="grid-4" style="margin-top:8px">
           <div class="field-group"><label>Ano</label>
             <select class="field-input" id="dash_ano" onchange="aplicarFiltrosRelatorio()">
-              <option>2026</option><option>2025</option><option>2024</option>
+              <option>2026</option>
             </select></div>
           <div class="field-group"><label>Tipo de Culto</label>
             <select class="field-input" id="f_tipo_culto" onchange="aplicarFiltrosRelatorio()">
@@ -410,7 +410,7 @@
               <option value="">Todos</option><option>Manhã</option><option>Tarde</option><option>Noite</option>
             </select></div>
           <div class="field-group"><label>Culto Específico</label>
-            <select class="field-input" id="f_culto_id" onchange="buscarRelatorio()">
+            <select class="field-input" id="f_culto_id" onchange="onSelecionarCulto()">
               <option value="">Todos os cultos</option>
             </select></div>
           <div class="field-group"><label>Data Início</label><input type="date" class="field-input" id="f_data_ini" onchange="aplicarFiltrosRelatorio()"></div>

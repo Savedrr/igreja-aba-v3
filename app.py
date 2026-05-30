@@ -800,17 +800,22 @@ def login():
             return jsonify({"erro":"Preencha e-mail e senha"}),400
         with get_db() as conn:
             u = conn.execute(
-                "SELECT * FROM usuarios WHERE email=? AND ativo=1",(email,)
+                qmark("SELECT * FROM usuarios WHERE email=? AND ativo=1"),(email,)
             ).fetchone()
         if not u:
             return jsonify({"erro":"Usuário não encontrado ou inativo"}),401
         if u["senha_hash"] != hs(senha):
             return jsonify({"erro":"Senha incorreta"}),401
+        # Acesso seguro a departamento_id (Row não tem .get())
+        try:
+            dep_id = u["departamento_id"]
+        except (KeyError, IndexError):
+            dep_id = None
         session.permanent = True
         session["usuario_id"]    = u["id"]
         session["usuario_nome"]  = u["nome"]
         session["usuario_cargo"] = u["cargo"]
-        session["usuario_departamento_id"] = u.get("departamento_id") if isinstance(u, dict) else None
+        session["usuario_departamento_id"] = dep_id
         # Define redirect baseado no cargo
         redirect_map = {
             "voluntario_escala": "/minha-escala",
@@ -908,11 +913,15 @@ def criar_usuario():
         return jsonify({"erro":"Senha deve ter ao menos um número"}),400
     if cargo not in ("voluntario","lider","admin","lider_depto","voluntario_escala"):
         return jsonify({"erro":"Cargo inválido"}),400
+    # Departamento obrigatório para líder de departamento
+    depto_id = d.get("departamento_id")
+    if cargo == "lider_depto" and not depto_id:
+        return jsonify({"erro":"Selecione o departamento do líder."}),400
     try:
         with get_db() as conn:
             conn.execute(
-                "INSERT INTO usuarios(nome,email,senha_hash,cargo) VALUES(?,?,?,?)",
-                (nome, email, hs(senha), cargo)
+                qmark("INSERT INTO usuarios(nome,email,senha_hash,cargo,departamento_id) VALUES(?,?,?,?,?)"),
+                (nome, email, hs(senha), cargo, depto_id if cargo=="lider_depto" else None)
             )
             conn.commit()
         return jsonify({"ok":True})
@@ -1018,9 +1027,9 @@ def criar_culto():
         tc = f"Outro: {tc_outro}"
     with get_db() as conn:
         cur = conn.execute(
-            """INSERT INTO cultos(data,hora,dia_semana,periodo,tipo_culto,responsavel,
+            qmark("""INSERT INTO cultos(data,hora,dia_semana,periodo,tipo_culto,responsavel,
                presentes,visitantes,criancas,observacoes,usuario_id)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES(?,?,?,?,?,?,?,?,?,?,?)"""),
             (dc,hc,dia_pt(dc),d.get("periodo","Noite"),tc,resp,
              int(d.get("presentes",0)),int(d.get("visitantes",0)),int(d.get("criancas",0)),
              d.get("observacoes",""),session["usuario_id"])
@@ -1030,7 +1039,7 @@ def criar_culto():
             "SELECT * FROM itens_checklist_padrao ORDER BY categoria,ordem"
         ).fetchall():
             conn.execute(
-                "INSERT INTO checklists(culto_id,categoria,item_key,item_descricao,concluido,responsavel) VALUES(?,?,?,?,0,?)",
+                qmark("INSERT INTO checklists(culto_id,categoria,item_key,item_descricao,concluido,responsavel) VALUES(?,?,?,?,0,?)"),
                 (cid,item["categoria"],item["item_key"],item["descricao"],resp)
             )
         conn.commit()
@@ -1071,7 +1080,7 @@ def atualizar_culto(cid):
             vel      = str(antigo[campo] or "")
             if novo_val != vel:
                 conn.execute(
-                    "INSERT INTO cultos_historico(culto_id,campo,valor_antes,valor_depois,alterado_por) VALUES(?,?,?,?,?)",
+                    qmark("INSERT INTO cultos_historico(culto_id,campo,valor_antes,valor_depois,alterado_por) VALUES(?,?,?,?,?)"),
                     (cid, campo, vel, novo_val, session.get("usuario_nome","?"))
                 )
 
@@ -1085,9 +1094,9 @@ def atualizar_culto(cid):
             tc = f"Outro: {tc_outro}"
 
         conn.execute(
-            """UPDATE cultos SET presentes=?,visitantes=?,criancas=?,observacoes=?,
+            qmark("""UPDATE cultos SET presentes=?,visitantes=?,criancas=?,observacoes=?,
                periodo=?,tipo_culto=?,responsavel=?,editado_em=?,editado_por=?
-               WHERE id=?""",
+               WHERE id=?"""),
             (int(d.get("presentes",  antigo["presentes"])),
              int(d.get("visitantes", antigo["visitantes"])),
              int(d.get("criancas",   antigo["criancas"])),
@@ -1135,7 +1144,7 @@ def qrcode_culto(cid):
 def get_checklist(cid):
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id",(cid,)
+            qmark("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id"),(cid,)
         ).fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -1237,7 +1246,7 @@ def criar_estoque():
             qtd     = int(d.get("quantidade",0))
             qtd_min = int(d.get("quantidade_minima",0))
             cur = conn.execute(
-                "INSERT INTO estoque(nome,categoria,quantidade,quantidade_minima,unidade,descricao,fixo) VALUES(?,?,?,?,?,?,0)",
+                qmark("INSERT INTO estoque(nome,categoria,quantidade,quantidade_minima,unidade,descricao,fixo) VALUES(?,?,?,?,?,?,0)"),
                 (nome, d.get("categoria","Geral"), qtd, qtd_min,
                  d.get("unidade","unidade"), d.get("descricao",""))
             )
@@ -1258,8 +1267,8 @@ def update_estoque(iid):
         if not item: return jsonify({"erro":"Item não encontrado"}),404
         if is_admin():
             conn.execute(
-                """UPDATE estoque SET nome=?,categoria=?,quantidade=?,quantidade_minima=?,
-                   unidade=?,descricao=?,atualizado_em=? WHERE id=?""",
+                qmark("""UPDATE estoque SET nome=?,categoria=?,quantidade=?,quantidade_minima=?,
+                   unidade=?,descricao=?,atualizado_em=? WHERE id=?"""),
                 (d.get("nome",item["nome"]),d.get("categoria",item["categoria"]),
                  int(d.get("quantidade",item["quantidade"])),
                  int(d.get("quantidade_minima",item["quantidade_minima"])),
@@ -1267,7 +1276,7 @@ def update_estoque(iid):
             )
         else:
             conn.execute(
-                "UPDATE estoque SET quantidade=?,atualizado_em=? WHERE id=?",
+                qmark("UPDATE estoque SET quantidade=?,atualizado_em=? WHERE id=?"),
                 (int(d.get("quantidade",item["quantidade"])),datetime.now().strftime('%Y-%m-%d %H:%M:%S'),iid)
             )
         conn.commit()
@@ -2763,20 +2772,44 @@ def pagina_escala():
 @app.route("/api/departamentos", methods=["GET"])
 @login_required
 def listar_departamentos():
-    depto_filtro = get_depto_usuario()
     todos = request.args.get("todos","")
-    # Admin e lider sempre veem todos os departamentos
     cargo = session.get("usuario_cargo","")
-    if cargo in ("admin","lider") or todos:
-        depto_filtro = None
-    with get_db() as conn:
-        if depto_filtro:
+
+    # Admin e líder geral veem todos
+    if cargo in ("admin","lider"):
+        with get_db() as conn:
+            rows = conn.execute("SELECT * FROM departamentos WHERE ativo=1 ORDER BY ordem,nome").fetchall()
+        return jsonify([dict(r) for r in rows])
+
+    # Líder de departamento: SOMENTE o departamento dele (ignora ?todos=1)
+    if cargo == "lider_depto":
+        dep_id = session.get("usuario_departamento_id")
+        if not dep_id:
+            return jsonify([])
+        with get_db() as conn:
             rows = conn.execute(
                 qmark("SELECT * FROM departamentos WHERE ativo=1 AND id=? ORDER BY ordem,nome"),
-                (depto_filtro,)
+                (dep_id,)
             ).fetchall()
-        else:
-            rows = conn.execute("SELECT * FROM departamentos WHERE ativo=1 ORDER BY ordem,nome").fetchall()
+        return jsonify([dict(r) for r in rows])
+
+    # Voluntário de escala: SOMENTE os departamentos que escolheu no cadastro
+    if cargo == "voluntario_escala":
+        uid = session.get("usuario_id")
+        with get_db() as conn:
+            vol = conn.execute(
+                qmark("SELECT departamentos FROM voluntarios WHERE usuario_id=? AND ativo=1"),
+                (uid,)
+            ).fetchone()
+            deptos_txt = (vol["departamentos"] if vol else "") or ""
+            todos_dep = conn.execute("SELECT * FROM departamentos WHERE ativo=1 ORDER BY ordem,nome").fetchall()
+        nomes = [n.strip().lower() for n in deptos_txt.split(",") if n.strip()]
+        filtrados = [dict(r) for r in todos_dep if r["nome"].strip().lower() in nomes]
+        return jsonify(filtrados)
+
+    # Demais: todos (fallback)
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM departamentos WHERE ativo=1 ORDER BY ordem,nome").fetchall()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/departamentos", methods=["POST"])
