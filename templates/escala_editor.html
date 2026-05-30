@@ -23,6 +23,12 @@ body{font-family:'Inter',sans-serif;background:#F1F5F9;min-height:100vh;}
 .btn-save{background:#22C55E;border:none;color:#fff;border-radius:8px;padding:8px 16px;
   font-size:13px;font-weight:700;cursor:pointer;}
 .btn-save:disabled{opacity:.5;cursor:not-allowed;}
+.btn-acao{border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;}
+.btn-publicar{background:#16A34A;}
+.btn-whats{background:#25D366;}
+.btn-resp{background:#fff;color:#0A2463;border:1.5px solid #CBD5E1;}
+.btn-pdf{background:#DC2626;}
+.btn-acao:disabled{opacity:.5;cursor:not-allowed;}
 .content{padding:12px;max-width:100%;margin:0 auto;}
 
 /* Cards de departamento */
@@ -98,7 +104,23 @@ body{font-family:'Inter',sans-serif;background:#F1F5F9;min-height:100vh;}
       <option value="Manhã">Manhã</option>
       <option value="Noite">Noite</option>
     </select>
-    <button class="btn-save" id="btnSalvar" onclick="salvarTudo()">Salvar</button>
+    <button class="btn-save" id="btnSalvar" onclick="salvarTudo()">💾 Salvar</button>
+    <button class="btn-acao btn-publicar" id="btnPublicar" onclick="publicarEscala()">📢 Publicar</button>
+    <button class="btn-acao btn-whats" id="btnWhats" onclick="notificarWhats()">📲 WhatsApp</button>
+    <button class="btn-acao btn-resp" id="btnResp" onclick="verRespostas()">📋 Respostas</button>
+    <button class="btn-acao btn-pdf" id="btnPdf" onclick="exportarPDF()">📄 PDF</button>
+  </div>
+</div>
+
+<!-- Modal de respostas -->
+<div id="modalResp" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(10,20,40,.7);
+  backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:16px;max-width:480px;width:100%;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
+    <div style="background:linear-gradient(135deg,#0A2463,#1B4FA8);color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:center">
+      <strong id="respTitulo" style="font-size:16px">Respostas da escala</strong>
+      <button onclick="document.getElementById('modalResp').style.display='none'" style="background:none;border:none;color:#fff;font-size:22px;cursor:pointer">✕</button>
+    </div>
+    <div id="respCorpo" style="padding:16px;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -356,13 +378,128 @@ async function salvarTudo(){
   });
   const d = await r.json();
 
-  btn.textContent = "Salvar"; btn.disabled = false;
+  btn.textContent = "💾 Salvar"; btn.disabled = false;
 
   if(r.ok && d.ok){
     toast(`Escala salva! ${d.salvos} itens.`, "ok");
   } else {
     toast(d.erro||"Erro ao salvar.", "err");
   }
+}
+
+// ── AÇÕES: Publicar, WhatsApp, Respostas, PDF ────────────────
+async function publicarEscala(){
+  const mes = document.getElementById("mesSel").value;
+  if(!mes){ toast("Selecione um mês primeiro.","err"); return; }
+  // Salva antes de publicar
+  await salvarTudo();
+  const btn = document.getElementById("btnPublicar");
+  btn.disabled = true; btn.textContent = "Publicando...";
+  try{
+    const r = await fetch("/api/escala/publicar",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({mes})
+    });
+    const d = await r.json();
+    if(r.ok && d.ok) toast(`✅ Escala publicada! ${d.confirmacoes||0} voluntários notificados.`,"ok");
+    else toast(d.erro||"Erro ao publicar.","err");
+  }catch(e){ toast("Erro de conexão.","err"); }
+  btn.disabled = false; btn.textContent = "📢 Publicar";
+}
+
+async function notificarWhats(){
+  const mes = document.getElementById("mesSel").value;
+  if(!mes){ toast("Selecione um mês primeiro.","err"); return; }
+  const btn = document.getElementById("btnWhats");
+  btn.disabled = true; btn.textContent = "Gerando...";
+  try{
+    const r = await fetch("/api/escala/notificar",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({mes, publicar:true})
+    });
+    const d = await r.json();
+    if(!r.ok){ toast(d.erro||"Erro ao gerar notificações.","err"); }
+    else {
+      const links = d.notificacoes || d.links || [];
+      mostrarLinksWhats(links);
+    }
+  }catch(e){ toast("Erro de conexão.","err"); }
+  btn.disabled = false; btn.textContent = "📲 WhatsApp";
+}
+
+function mostrarLinksWhats(links){
+  document.getElementById("modalResp").style.display = "flex";
+  document.getElementById("respTitulo").textContent = "📲 Notificar por WhatsApp";
+  const corpo = document.getElementById("respCorpo");
+  if(!links.length){
+    corpo.innerHTML = '<p style="text-align:center;color:#94A3B8;padding:20px">Nenhum voluntário com telefone para notificar.</p>';
+    return;
+  }
+  corpo.innerHTML = `
+    <p style="font-size:12px;color:#64748B;margin-bottom:12px">Clique em cada voluntário para abrir o WhatsApp com a mensagem pronta:</p>
+    ${links.map(l=>`
+      <a href="${l.wa_link||'#'}" target="_blank" style="text-decoration:none;${!l.wa_link?'opacity:.5;pointer-events:none':''}">
+        <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:11px 13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <strong style="font-size:13px;color:#0F2747">${l.nome}</strong>
+            <div style="font-size:11px;color:#64748B">${l.telefone||'sem telefone'} · ${l.qtd_escalas||0} escala(s)</div>
+          </div>
+          <span style="background:#25D366;color:#fff;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700">📲 Enviar</span>
+        </div>
+      </a>`).join("")}`;
+}
+
+function exportarPDF(){
+  const mes = document.getElementById("mesSel").value;
+  const per = document.getElementById("perSel").value;
+  if(!mes){ toast("Selecione um mês primeiro.","err"); return; }
+  const p = new URLSearchParams(); p.append("mes",mes);
+  if(per) p.append("periodo",per);
+  window.open(`/api/escala/pdf?${p}`,"_blank");
+}
+
+async function verRespostas(){
+  const mes = document.getElementById("mesSel").value;
+  if(!mes){ toast("Selecione um mês primeiro.","err"); return; }
+  document.getElementById("modalResp").style.display = "flex";
+  document.getElementById("respTitulo").textContent = `Respostas — ${mes}`;
+  const corpo = document.getElementById("respCorpo");
+  corpo.innerHTML = '<p style="text-align:center;color:#94A3B8;padding:20px">Carregando...</p>';
+  try{
+    const r = await fetch(`/api/escala/confirmacoes_admin?mes=${mes}`);
+    if(!r.ok){ corpo.innerHTML='<p style="text-align:center;color:#DC2626;padding:20px">Erro ao carregar respostas.</p>'; return; }
+    const list = await r.json();
+    renderRespostas(list);
+  }catch(e){ corpo.innerHTML='<p style="text-align:center;color:#DC2626;padding:20px">Erro de conexão.</p>'; }
+}
+
+function renderRespostas(list){
+  const corpo = document.getElementById("respCorpo");
+  const conf = list.filter(c=>c.status==="confirmado");
+  const rec  = list.filter(c=>c.status==="recusado");
+  const pend = list.filter(c=>c.status==="pendente");
+  const card = (c)=>{
+    const cor = c.status==="confirmado"?"#059669":c.status==="recusado"?"#DC2626":"#D97706";
+    const bg  = c.status==="confirmado"?"#F0FDF4":c.status==="recusado"?"#FEF2F2":"#FFFBEB";
+    const ic  = c.status==="confirmado"?"✅":c.status==="recusado"?"🔄":"⏳";
+    const lbl = c.status==="confirmado"?"Confirmado":c.status==="recusado"?"Pediu troca":"Aguardando";
+    return `<div style="background:${bg};border-left:4px solid ${cor};border-radius:10px;padding:11px 13px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <strong style="font-size:14px;color:#0F2747">${ic} ${c.voluntario_nome}</strong>
+        <span style="font-size:10px;font-weight:700;color:${cor};background:${cor}1A;padding:3px 9px;border-radius:20px;white-space:nowrap">${lbl}</span>
+      </div>
+      <div style="font-size:12px;color:#64748B;margin-top:4px">📅 ${c.data_br||c.culto_data} · ${c.culto_periodo} · <strong>${c.departamento}</strong></div>
+      ${c.sugestao_troca?`<div style="font-size:12px;color:#B91C1C;margin-top:6px;background:#fff;border-radius:8px;padding:6px 9px">💬 <em>${c.sugestao_troca}</em></div>`:""}
+    </div>`;
+  };
+  corpo.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:80px;text-align:center;background:#F0FDF4;border-radius:10px;padding:8px"><div style="font-size:20px;font-weight:800;color:#059669">${conf.length}</div><div style="font-size:10px;color:#64748B">Confirmados</div></div>
+      <div style="flex:1;min-width:80px;text-align:center;background:#FEF2F2;border-radius:10px;padding:8px"><div style="font-size:20px;font-weight:800;color:#DC2626">${rec.length}</div><div style="font-size:10px;color:#64748B">Trocas</div></div>
+      <div style="flex:1;min-width:80px;text-align:center;background:#FFFBEB;border-radius:10px;padding:8px"><div style="font-size:20px;font-weight:800;color:#D97706">${pend.length}</div><div style="font-size:10px;color:#64748B">Pendentes</div></div>
+    </div>
+    <button onclick="verRespostas()" style="width:100%;margin-bottom:12px;padding:9px;background:#1B4FA8;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔄 Atualizar</button>
+    ${list.length? list.map(card).join("") : '<p style="text-align:center;color:#94A3B8;padding:20px">Nenhuma resposta ainda.</p>'}`;
 }
 
 function abrirCadastroVol(deptoId){

@@ -666,6 +666,13 @@ def br(s):
     try: return datetime.strptime(s,"%Y-%m-%d").strftime("%d/%m/%Y")
     except: return s or ""
 
+def _eh_domingo(data_str):
+    """Retorna True se a data (YYYY-MM-DD) cai em um domingo"""
+    try:
+        return datetime.strptime(str(data_str)[:10], "%Y-%m-%d").weekday() == 6
+    except Exception:
+        return False
+
 def get_base():
     b = os.environ.get("BASE_URL","").rstrip("/")
     if b: return b
@@ -2466,7 +2473,7 @@ def del_voluntario(vid):
 # ═══════════════════════════════════════════════════════════════
 
 @app.route("/api/escala/publicar", methods=["POST"])
-@role_required("admin","lider")
+@role_required("admin","lider","lider_depto")
 def publicar_escala():
     d = request.get_json(force=True) or {}
     mes = d.get("mes","").strip()
@@ -2507,7 +2514,7 @@ def status_escala(mes):
     return jsonify(dict(pub))
 
 @app.route("/api/escala/notificar", methods=["POST"])
-@role_required("admin","lider")
+@role_required("admin","lider","lider_depto")
 def notificar_voluntarios():
     """Gera links WhatsApp para notificar TODOS os voluntários de uma vez"""
     d = request.get_json(force=True) or {}
@@ -2650,7 +2657,7 @@ def responder_confirmacao(cid):
     return jsonify({"ok":True})
 
 @app.route("/api/escala/confirmacoes_admin", methods=["GET"])
-@role_required("admin","lider")
+@role_required("admin","lider","lider_depto")
 def ver_confirmacoes_admin():
     mes = request.args.get("mes","")
     with get_db() as conn:
@@ -2858,6 +2865,8 @@ def listar_escala():
     sql += " ORDER BY e.culto_data, d.ordem, d.nome"
     with get_db() as conn:
         rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+    # Mantém apenas domingos
+    rows = [r for r in rows if _eh_domingo(r.get("culto_data",""))]
     for r in rows:
         r["data_br"] = br(r["culto_data"]) if r.get("culto_data") else ""
     return jsonify(rows)
@@ -2883,6 +2892,7 @@ def escala_publica():
     with get_db() as conn:
         rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
         deptos = [dict(r) for r in conn.execute("SELECT * FROM departamentos WHERE ativo=1 ORDER BY ordem").fetchall()]
+    rows = [r for r in rows if _eh_domingo(r.get("culto_data",""))]
     for r in rows: r["data_br"] = br(r["culto_data"]) if r.get("culto_data") else ""
     return jsonify({"itens": rows, "departamentos": deptos})
 
@@ -2901,6 +2911,9 @@ def exportar_escala_pdf():
     sql += " ORDER BY d.ordem, d.nome, e.culto_data"
     with get_db() as conn:
         rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+
+    # Mantém apenas DOMINGOS (ignora quartas/outros dias órfãos do banco)
+    rows = [r for r in rows if _eh_domingo(r.get("culto_data",""))]
 
     # Agrupa por departamento
     por_depto = {}
@@ -3474,6 +3487,28 @@ def frequencia_gc_excel():
 # INIT
 # ═══════════════════════════════════════════════════════════════
 init_db()
+
+def limpar_escalas_nao_domingo():
+    """Remove itens de escala que não caem em domingo (limpeza de dados legados)"""
+    try:
+        with get_db() as conn:
+            rows = [dict(r) for r in conn.execute("SELECT id,culto_data FROM escala_itens").fetchall()]
+            ids_remover = []
+            for r in rows:
+                try:
+                    if datetime.strptime(str(r["culto_data"])[:10], "%Y-%m-%d").weekday() != 6:
+                        ids_remover.append(r["id"])
+                except Exception:
+                    pass
+            for rid in ids_remover:
+                conn.execute(qmark("DELETE FROM escala_itens WHERE id=?"), (rid,))
+            if ids_remover:
+                conn.commit()
+                logger.info(f"Limpeza: {len(ids_remover)} itens de escala não-domingo removidos")
+    except Exception as e:
+        logger.warning(f"Limpeza escalas falhou: {e}")
+
+limpar_escalas_nao_domingo()
 
 if __name__=="__main__":
     print(f"  IGREJA ABA v5 | DB: {DB_PATH}")
