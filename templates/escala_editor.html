@@ -191,18 +191,26 @@ function getDomingos(mes){
   const [ano,m] = mes.split("-").map(Number);
   const dias = new Date(ano,m,0).getDate();
   const result = [];
+  const diasNome = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
   for(let d=1;d<=dias;d++){
     const dt = new Date(ano,m-1,d);
-    // Apenas DOMINGOS — Manhã e Noite
-    if(dt.getDay()===0){
-      const iso = `${ano}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-      const br  = `${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}`;
-      const diasNome = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
-      // Cada domingo gera duas entradas: Manhã e Noite
+    const dow = dt.getDay(); // 0=Dom, 5=Sex, 6=Sáb
+    const iso = `${ano}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const br  = `${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}`;
+    if(dow===5){
+      // Sexta — só Noite
+      result.push({iso,br,dia:diasNome[5],periodo:"Noite",mesNum:m});
+    } else if(dow===6){
+      // Sábado — só Noite
+      result.push({iso,br,dia:diasNome[6],periodo:"Noite",mesNum:m});
+    } else if(dow===0){
+      // Domingo — Manhã e Noite
       result.push({iso,br,dia:diasNome[0],periodo:"Manhã",mesNum:m});
       result.push({iso,br,dia:diasNome[0],periodo:"Noite",mesNum:m});
     }
   }
+  // Ordena por data e período (Manhã antes de Noite)
+  result.sort((a,b)=> a.iso===b.iso ? (a.periodo==="Manhã"?-1:1) : (a.iso<b.iso?-1:1));
   return result;
 }
 

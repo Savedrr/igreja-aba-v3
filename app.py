@@ -667,11 +667,23 @@ def br(s):
     except: return s or ""
 
 def _eh_domingo(data_str):
-    """Retorna True se a data (YYYY-MM-DD) cai em um domingo"""
+    """Retorna True se a data cai em dia de culto: sexta(4), sábado(5) ou domingo(6)"""
     try:
-        return datetime.strptime(str(data_str)[:10], "%Y-%m-%d").weekday() == 6
+        return datetime.strptime(str(data_str)[:10], "%Y-%m-%d").weekday() in (4, 5, 6)
     except Exception:
         return False
+
+def _periodos_do_dia(data_str):
+    """Retorna os períodos válidos para o dia: Sex/Sáb=Noite, Dom=Manhã+Noite"""
+    try:
+        wd = datetime.strptime(str(data_str)[:10], "%Y-%m-%d").weekday()
+    except Exception:
+        return []
+    if wd == 6:        # domingo
+        return ["Manhã", "Noite"]
+    if wd in (4, 5):   # sexta, sábado
+        return ["Noite"]
+    return []
 
 def get_base():
     b = os.environ.get("BASE_URL","").rstrip("/")
@@ -2912,18 +2924,8 @@ def exportar_escala_pdf():
     with get_db() as conn:
         rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
 
-    # Mantém apenas DOMINGOS (ignora quartas/outros dias órfãos do banco)
+    # Mantém apenas dias de culto (sexta, sábado, domingo)
     rows = [r for r in rows if _eh_domingo(r.get("culto_data",""))]
-
-    # Agrupa por departamento
-    por_depto = {}
-    datas_set = set()
-    for r in rows:
-        dep = r["depto_nome"]
-        if dep not in por_depto:
-            por_depto[dep] = {"icone": r.get("depto_icone","👥"), "itens": []}
-        por_depto[dep]["itens"].append(r)
-        datas_set.add(r["culto_data"])
 
     # Monta cabeçalho do mês
     try:
@@ -2933,33 +2935,73 @@ def exportar_escala_pdf():
     except Exception:
         titulo_mes = mes or "Escala"
 
-    cards_html = ""
-    for dep, info in por_depto.items():
-        linhas = ""
-        for it in info["itens"]:
-            per_cor = {"Manhã":"#F59E0B","Tarde":"#3B82F6","Noite":"#6366F1"}.get(it.get("culto_periodo"),"#64748B")
-            resp = it.get("responsavel") or "<span style='color:#CBD5E1'>— vago —</span>"
-            linhas += f"""<tr>
-              <td style="padding:7px 10px;font-weight:700;color:#0A2463">{br(it['culto_data'])}</td>
-              <td style="padding:7px 10px"><span style="background:{per_cor}1A;color:{per_cor};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700">{it.get('culto_periodo','')}</span></td>
-              <td style="padding:7px 10px;font-weight:600">{resp}</td>
-            </tr>"""
-        cards_html += f"""<div class="depto-card">
-          <div class="depto-header">{info['icone']} {dep}</div>
-          <table style="width:100%;border-collapse:collapse">
-            <thead><tr style="background:#F1F5F9">
-              <th style="padding:6px 10px;text-align:left;font-size:11px;color:#4A6080">Data</th>
-              <th style="padding:6px 10px;text-align:left;font-size:11px;color:#4A6080">Período</th>
-              <th style="padding:6px 10px;text-align:left;font-size:11px;color:#4A6080">Responsável</th>
-            </tr></thead>
-            <tbody>{linhas}</tbody>
-          </table>
+    DIAS_ABREV = {4:"SEX", 5:"SÁB", 6:"DOM"}
+    def label_data(data_str):
+        try:
+            dd = datetime.strptime(str(data_str)[:10], "%Y-%m-%d")
+            return f"{dd.strftime('%d/%m')}", DIAS_ABREV.get(dd.weekday(),"")
+        except Exception:
+            return data_str, ""
+
+    # Conjunto de departamentos (ordenado) e estrutura de lookup
+    deptos_ordem = {}
+    for r in rows:
+        dep = r["depto_nome"]
+        if dep not in deptos_ordem:
+            deptos_ordem[dep] = {"icone": r.get("depto_icone","👥"), "ordem": r.get("depto_ordem",999)}
+    deptos_lista = sorted(deptos_ordem.keys(), key=lambda x: (deptos_ordem[x]["ordem"], x))
+
+    # lookup[(depto, data, periodo)] = responsavel
+    lookup = {}
+    for r in rows:
+        lookup[(r["depto_nome"], r["culto_data"], r["culto_periodo"])] = r.get("responsavel","")
+
+    # Monta uma tabela-grade por período (Manhã / Noite)
+    periodos_render = [per] if per else ["Manhã","Noite"]
+
+    def montar_grade(periodo_alvo):
+        # Datas únicas que têm esse período (ordenadas)
+        datas_periodo = sorted({r["culto_data"] for r in rows if r["culto_periodo"]==periodo_alvo})
+        if not datas_periodo:
+            return ""
+        # Cabeçalho de colunas: data + dia da semana
+        ths = '<th class="dep-col">DEPARTAMENTO</th>'
+        for dts in datas_periodo:
+            dnum, dsem = label_data(dts)
+            ths += f'<th><div class="dt">{dnum}</div><div class="ds">{dsem}</div></th>'
+        # Linhas: um departamento por linha
+        trs = ""
+        for i, dep in enumerate(deptos_lista):
+            cells = f'<td class="dep-col">{deptos_ordem[dep]["icone"]} {dep}</td>'
+            for dts in datas_periodo:
+                resp = lookup.get((dep, dts, periodo_alvo), "")
+                if resp:
+                    cells += f'<td class="resp">{resp}</td>'
+                else:
+                    cells += '<td class="vago">—</td>'
+            bg = "#F8FAFF" if i % 2 else "#FFFFFF"
+            trs += f'<tr style="background:{bg}">{cells}</tr>'
+        per_cor = {"Manhã":"#F59E0B","Noite":"#6366F1"}.get(periodo_alvo,"#1B4FA8")
+        return f"""<div class="grade-bloco">
+          <div class="grade-titulo" style="background:{per_cor}">
+            {"☀️" if periodo_alvo=="Manhã" else "🌙"} ESCALA — {titulo_mes.upper()} · {periodo_alvo.upper()}
+          </div>
+          <div class="grade-scroll">
+            <table class="grade">
+              <thead><tr>{ths}</tr></thead>
+              <tbody>{trs}</tbody>
+            </table>
+          </div>
         </div>"""
 
-    if not cards_html:
-        cards_html = '<p style="text-align:center;color:#94A3B8;padding:40px">Nenhuma escala cadastrada para este mês.</p>'
+    grade_html = ""
+    for pr in periodos_render:
+        grade_html += montar_grade(pr)
+    if not grade_html:
+        grade_html = '<p style="text-align:center;color:#94A3B8;padding:40px">Nenhuma escala cadastrada para este mês.</p>'
 
     html = f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Escala — {titulo_mes}</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -2969,19 +3011,28 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;b
 .header{{background:linear-gradient(135deg,#0A2463,#1B4FA8);color:#fff;padding:22px 16px;margin-bottom:16px}}
 .header h1{{font-size:21px;font-weight:900;letter-spacing:1px}}
 .header .meta{{font-size:12px;opacity:.7;margin-top:4px}}
-.depto-card{{background:#fff;border-radius:12px;margin:0 16px 14px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
-.depto-header{{font-size:15px;font-weight:800;color:#0A2463;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid #EEF2F9}}
-.depto-card tbody tr{{border-bottom:1px solid #F1F5F9}}
+.grade-bloco{{background:#fff;border-radius:12px;margin:0 16px 18px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
+.grade-titulo{{color:#fff;font-size:13px;font-weight:800;padding:10px 14px;letter-spacing:.5px}}
+.grade-scroll{{overflow-x:auto}}
+table.grade{{width:100%;border-collapse:collapse;font-size:11px;min-width:520px}}
+table.grade th{{background:#0F2747;color:#fff;padding:7px 9px;text-align:center;font-weight:700;border:1px solid #1B3357;white-space:nowrap}}
+table.grade th.dep-col{{text-align:left;background:#0A1F3D;min-width:130px;position:sticky;left:0;z-index:2}}
+table.grade th .dt{{font-size:12px}}
+table.grade th .ds{{font-size:9px;opacity:.7;font-weight:600}}
+table.grade td{{padding:6px 9px;text-align:center;border:1px solid #E2E8F0}}
+table.grade td.dep-col{{text-align:left;font-weight:700;color:#0A2463;background:#EEF2F9;position:sticky;left:0;z-index:1;white-space:nowrap}}
+table.grade td.resp{{font-weight:600;color:#0F2747}}
+table.grade td.vago{{color:#CBD5E1}}
 .footer{{text-align:center;font-size:10px;color:#94A3B8;padding:16px}}
-@media print{{.btn-print,.hint{{display:none}}body{{background:#fff}}}}
+@media print{{.btn-print,.hint{{display:none}}body{{background:#fff}}.grade-scroll{{overflow:visible}}table.grade{{min-width:0;font-size:9px}}}}
 </style></head><body>
 <button class="btn-print" onclick="window.print()">💾 Salvar como PDF</button>
 <p class="hint">Toque nos 3 pontos → Imprimir → Salvar como PDF</p>
 <div class="header">
   <h1>ESCALA — {titulo_mes.upper()}</h1>
-  <div class="meta">Igreja ABA · {len(por_depto)} departamentos · Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
+  <div class="meta">Igreja ABA · {len(deptos_lista)} departamentos · Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
 </div>
-{cards_html}
+{grade_html}
 <div class="footer">Igreja ABA — Um Lar Para Pertencer</div>
 </body></html>"""
     resp = make_response(html)
@@ -3063,7 +3114,6 @@ def salvar_escala_lote():
 def datas_culto_escala():
     """Retorna datas de cultos de um mês para montar a escala"""
     mes = request.args.get("mes", datetime.now().strftime("%Y-%m"))
-    # Gera todos os domingos e quartas do mês
     from calendar import monthrange
     from datetime import date as dt
     ano, m = int(mes.split("-")[0]), int(mes.split("-")[1])
@@ -3071,19 +3121,20 @@ def datas_culto_escala():
     datas = []
     for dia in range(1, dias+1):
         d = dt(ano, m, dia)
-        # Apenas DOMINGOS — Manhã e Noite
-        if d.weekday() == 6:  # 6 = domingo
+        wd = d.weekday()  # 4=sexta, 5=sábado, 6=domingo
+        # Sexta e Sábado: só Noite | Domingo: Manhã e Noite
+        if wd == 6:
+            periodos = ["Manhã", "Noite"]
+        elif wd in (4, 5):
+            periodos = ["Noite"]
+        else:
+            periodos = []
+        for per in periodos:
             datas.append({
                 "data": d.isoformat(),
                 "data_br": d.strftime("%d/%m"),
-                "dia_semana": DIAS[d.weekday()],
-                "periodo": "Manhã"
-            })
-            datas.append({
-                "data": d.isoformat(),
-                "data_br": d.strftime("%d/%m"),
-                "dia_semana": DIAS[d.weekday()],
-                "periodo": "Noite"
+                "dia_semana": DIAS[wd],
+                "periodo": per
             })
     return jsonify(datas)
 
@@ -3489,22 +3540,16 @@ def frequencia_gc_excel():
 init_db()
 
 def limpar_escalas_nao_domingo():
-    """Remove itens de escala que não caem em domingo (limpeza de dados legados)"""
+    """Remove itens de escala em dias que não são de culto (mantém sexta, sábado e domingo)"""
     try:
         with get_db() as conn:
             rows = [dict(r) for r in conn.execute("SELECT id,culto_data FROM escala_itens").fetchall()]
-            ids_remover = []
-            for r in rows:
-                try:
-                    if datetime.strptime(str(r["culto_data"])[:10], "%Y-%m-%d").weekday() != 6:
-                        ids_remover.append(r["id"])
-                except Exception:
-                    pass
+            ids_remover = [r["id"] for r in rows if not _eh_domingo(r.get("culto_data",""))]
             for rid in ids_remover:
                 conn.execute(qmark("DELETE FROM escala_itens WHERE id=?"), (rid,))
             if ids_remover:
                 conn.commit()
-                logger.info(f"Limpeza: {len(ids_remover)} itens de escala não-domingo removidos")
+                logger.info(f"Limpeza: {len(ids_remover)} itens de escala em dias inválidos removidos")
     except Exception as e:
         logger.warning(f"Limpeza escalas falhou: {e}")
 

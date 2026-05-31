@@ -17,7 +17,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/app.css?v=12">
 </head>
 <body>
 
@@ -786,10 +786,24 @@
   </div>
 </div>
 
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v=12"></script>
 <script>
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("/static/sw.js").catch(()=>{});
+  navigator.serviceWorker.register("/static/sw.js").then(reg=>{
+    // Força verificação de atualização do SW
+    reg.update();
+    reg.addEventListener("updatefound", ()=>{
+      const nw = reg.installing;
+      if(nw){
+        nw.addEventListener("statechange", ()=>{
+          // Quando o novo SW assume, recarrega para pegar assets atualizados
+          if(nw.state==="activated" && navigator.serviceWorker.controller){
+            window.location.reload();
+          }
+        });
+      }
+    });
+  }).catch(()=>{});
 }
 </script>
 </body>
