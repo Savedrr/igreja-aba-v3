@@ -443,6 +443,7 @@ def _pg_migrations(conn):
         "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS campos_livres TEXT DEFAULT ''",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS gc_pai_id INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS supervisor TEXT DEFAULT ''",
+        "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS metas TEXT DEFAULT ''",
         "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS valor_oferta REAL DEFAULT 0",
         "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS quilos_arrecadados REAL DEFAULT 0",
         """CREATE TABLE IF NOT EXISTS gc_integrantes (
@@ -593,6 +594,7 @@ def _init_sqlite():
         "ALTER TABLE relatorios_gc ADD COLUMN campos_livres TEXT DEFAULT ''",
         "ALTER TABLE grupos_crescimento ADD COLUMN gc_pai_id INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL",
         "ALTER TABLE grupos_crescimento ADD COLUMN supervisor TEXT DEFAULT ''",
+        "ALTER TABLE grupos_crescimento ADD COLUMN metas TEXT DEFAULT ''",
         "ALTER TABLE relatorios_gc ADD COLUMN valor_oferta REAL DEFAULT 0",
         "ALTER TABLE relatorios_gc ADD COLUMN quilos_arrecadados REAL DEFAULT 0",
         """CREATE TABLE IF NOT EXISTS gc_integrantes (
@@ -1353,6 +1355,59 @@ def listar_gcs_publica():
         ).fetchall()
     return jsonify([dict(r) for r in rows])
 
+@app.route("/api/gcs/publica/<int:gid>/detalhes", methods=["GET"])
+def gc_detalhes_publica(gid):
+    """Rota pública — retorna metas e integrantes já cadastrados de um GC (para o formulário)"""
+    with get_db() as conn:
+        gc = conn.execute(qmark("SELECT metas FROM grupos_crescimento WHERE id=?"), (gid,)).fetchone()
+        integrantes = [dict(r) for r in conn.execute(
+            qmark("SELECT id,nome FROM gc_integrantes WHERE gc_id=? AND ativo=1 ORDER BY nome"), (gid,)
+        ).fetchall()]
+    metas = ""
+    try:
+        metas = gc["metas"] if gc and gc["metas"] else ""
+    except Exception:
+        metas = ""
+    return jsonify({"metas": metas, "integrantes": integrantes})
+
+@app.route("/api/gcs/publica/<int:gid>/membros", methods=["POST"])
+def add_membro_publica(gid):
+    """Rota pública — adiciona membro pelo formulário do GC, com validação de nome completo"""
+    d = request.get_json(force=True) or {}
+    nome = d.get("nome","").strip()
+    if len(nome.split()) < 2:
+        return jsonify({"erro":"Informe o nome completo (nome e sobrenome)."}),400
+    nome = _capitalizar_nome(nome)
+    with get_db() as conn:
+        # Evita duplicado
+        existe = conn.execute(
+            qmark("SELECT id FROM gc_integrantes WHERE gc_id=? AND LOWER(nome)=? AND ativo=1"),
+            (gid, nome.lower())
+        ).fetchone()
+        if existe:
+            return jsonify({"erro":"Esse membro já está cadastrado."}),400
+        conn.execute(qmark("INSERT INTO gc_integrantes(gc_id,nome) VALUES(?,?)"), (gid, nome))
+        conn.commit()
+    return jsonify({"ok":True,"nome":nome})
+
+@app.route("/api/gcs/publica/membros/<int:iid>", methods=["DELETE"])
+def del_membro_publica(iid):
+    """Rota pública — remove membro pelo formulário do GC"""
+    with get_db() as conn:
+        conn.execute(qmark("UPDATE gc_integrantes SET ativo=0 WHERE id=?"), (iid,))
+        conn.commit()
+    return jsonify({"ok":True})
+
+@app.route("/api/gcs/publica/<int:gid>/metas", methods=["POST"])
+def salvar_metas_publica(gid):
+    """Rota pública — salva metas do GC (uma vez, persiste)"""
+    d = request.get_json(force=True) or {}
+    metas = d.get("metas","").strip()
+    with get_db() as conn:
+        conn.execute(qmark("UPDATE grupos_crescimento SET metas=? WHERE id=?"), (metas, gid))
+        conn.commit()
+    return jsonify({"ok":True})
+
 @app.route("/api/departamentos/publica", methods=["GET"])
 def listar_departamentos_publica():
     """Rota pública — usada no auto-cadastro de voluntário na tela de login"""
@@ -1452,31 +1507,34 @@ def criar_gc():
     return jsonify({"ok":True,"id":new_id})
 
 @app.route("/api/gcs/<int:gid>", methods=["PUT"])
-@role_required("admin")
+@role_required("admin","lider")
 def atualizar_gc(gid):
     d = request.get_json(force=True) or {}
     with get_db() as conn:
         gc = conn.execute(qmark("SELECT * FROM grupos_crescimento WHERE id=?"), (gid,)).fetchone()
         if not gc: return jsonify({"erro":"GC não encontrado"}),404
-        novo_end = d.get("endereco", gc["endereco"])
-        novo_bai = d.get("bairro",   gc["bairro"])
+        end_atual = gc["endereco"] if "endereco" in gc.keys() else ""
+        bai_atual = gc["bairro"] if "bairro" in gc.keys() else ""
+        novo_end = d.get("endereco", end_atual)
+        novo_bai = d.get("bairro",   bai_atual)
         nova_cid = d.get("cidade",   gc["cidade"])
         lat, lng = gc["lat"], gc["lng"]
-        if novo_end != gc.get("endereco","") or novo_bai != gc.get("bairro",""):
+        if novo_end != end_atual or novo_bai != bai_atual:
             new_lat, new_lng, _ = geocode_smart(f"{novo_end}, {novo_bai}, {nova_cid}")
             if new_lat:
                 lat, lng = new_lat, new_lng
         conn.execute(
             qmark("""UPDATE grupos_crescimento SET nome=?,lider=?,telefone_lider=?,endereco=?,bairro=?,cidade=?,
-               setor=?,cor_hex=?,lat=?,lng=?,gc_pai_id=?,supervisor=?,ativo=? WHERE id=?"""),
+               setor=?,cor_hex=?,lat=?,lng=?,gc_pai_id=?,supervisor=?,metas=?,ativo=? WHERE id=?"""),
             (d.get("nome",gc["nome"]),
-             d.get("lider",gc.get("lider","")),
-             d.get("telefone_lider",gc.get("telefone_lider","")),
+             d.get("lider", gc["lider"] if "lider" in gc.keys() else ""),
+             d.get("telefone_lider", gc["telefone_lider"] if "telefone_lider" in gc.keys() else ""),
              novo_end, novo_bai, nova_cid,
              d.get("setor",gc["setor"]), d.get("cor_hex",gc["cor_hex"]),
              lat, lng,
              d.get("gc_pai_id") if d.get("gc_pai_id") else None,
              d.get("supervisor", gc["supervisor"] if "supervisor" in gc.keys() else ""),
+             d.get("metas", gc["metas"] if "metas" in gc.keys() else ""),
              int(d.get("ativo",gc["ativo"])), gid)
         )
         conn.commit()
@@ -1925,14 +1983,15 @@ def direcionar():
         # Busca telefone do líder para gerar link WhatsApp
         if gc_id:
             gc_row = conn.execute(qmark("SELECT lider,telefone_lider FROM grupos_crescimento WHERE id=?"), (gc_id,)).fetchone()
-            if gc_row and gc_row.get("telefone_lider","").strip():
-                tel = re.sub(r"\D","",gc_row["telefone_lider"])
+            tel_lider = (gc_row["telefone_lider"] if gc_row and "telefone_lider" in gc_row.keys() else "") or ""
+            if gc_row and tel_lider.strip():
+                tel = re.sub(r"\D","",tel_lider)
                 if not tel.startswith("55"): tel = "55" + tel
                 vis_nome = d.get("visitante_nome","Visitante")
                 gc_nome  = d.get("gc_nome","")
                 dist     = d.get("distancia_km","")
                 rota     = d.get("rota_link","")
-                lider_nome = gc_row.get("lider","Lider") or "Lider"
+                lider_nome = (gc_row["lider"] if "lider" in gc_row.keys() else "") or "Lider"
                 msg = (
                     "Ola " + lider_nome + "!\n"
                     "Temos um visitante para o " + gc_nome + ".\n\n"
