@@ -150,6 +150,25 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       </div>
     </div>
 
+    <!-- MEMBROS DO GC (persistem no GC) -->
+    <div class="divider"></div>
+    <div class="section-label">👥 Membros do GC</div>
+    <p style="font-size:12px;color:#64748B;margin:0 0 10px">Cadastre os membros uma vez — eles ficam salvos no GC.</p>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <input type="text" id="novo_membro" placeholder="Nome completo (ex: Pedro Pedreira)" style="flex:1">
+      <button type="button" onclick="addMembro()" style="background:#0A2463;color:#fff;border:none;border-radius:10px;padding:0 16px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">+ Add</button>
+    </div>
+    <div id="membros_lista"></div>
+
+    <!-- METAS DO GC (preenche uma vez, persiste) -->
+    <div class="divider"></div>
+    <div class="section-label">🎯 Metas do GC</div>
+    <p style="font-size:12px;color:#64748B;margin:0 0 10px">As metas ficam salvas no GC. Você só precisa preencher uma vez.</p>
+    <div class="field">
+      <textarea id="metas_gc" placeholder="Ex: Multiplicar até dezembro, alcançar 20 membros, formar 2 novos líderes..." style="min-height:80px"></textarea>
+    </div>
+    <button type="button" onclick="salvarMetas()" style="background:#EBF5FF;color:#0A2463;border:1.5px solid #93C5FD;border-radius:10px;padding:9px 16px;width:100%;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px">💾 Salvar metas do GC</button>
+
     <div class="err" id="errMsg"></div>
     <button class="btn-submit" id="btnEnviar" onclick="enviarRelatorio()">Enviar Relatório</button>
   </div>
@@ -180,6 +199,7 @@ async function carregarGCs(){
       const o = document.createElement("option");
       o.value = gc.nome; o.textContent = gc.nome;
       o.dataset.lider = gc.lider||"";
+      o.dataset.id = gc.id;
       sel.appendChild(o);
     });
   }catch(e){ console.error("Erro ao carregar GCs",e); }
@@ -201,6 +221,63 @@ function aoSelecionarGC(){
   const oManual = document.createElement("option");
   oManual.value = "__manual__"; oManual.textContent = "Outro...";
   liderSel.appendChild(oManual);
+
+  // Carrega membros e metas já salvos do GC
+  _gcIdSel = opt ? parseInt(opt.dataset.id) : null;
+  if(_gcIdSel) carregarMembrosMetas(_gcIdSel);
+}
+
+let _gcIdSel = null;
+
+async function carregarMembrosMetas(gid){
+  try{
+    const r = await fetch(`/api/gcs/publica/${gid}/detalhes`);
+    if(!r.ok) return;
+    const d = await r.json();
+    document.getElementById("metas_gc").value = d.metas||"";
+    renderMembros(d.integrantes||[]);
+  }catch(e){ console.warn("Erro membros/metas",e); }
+}
+
+function renderMembros(list){
+  const el = document.getElementById("membros_lista");
+  if(!list.length){ el.innerHTML='<p style="font-size:12px;color:#8ca0c0;margin-bottom:8px">Nenhum membro cadastrado ainda.</p>'; return; }
+  el.innerHTML = list.map(m=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 11px;background:#F8FAFF;border-radius:8px;margin-bottom:5px">
+      <span style="font-size:13px;font-weight:600;color:#0F2747">${m.nome}</span>
+      <button type="button" onclick="delMembro(${m.id})" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:15px">✕</button>
+    </div>`).join("");
+}
+
+async function addMembro(){
+  if(!_gcIdSel){ mostrarErro("Selecione o GC primeiro."); return; }
+  const inp = document.getElementById("novo_membro");
+  const nome = inp.value.trim();
+  if(nome.split(/\s+/).length < 2){ mostrarErro("Informe o nome completo (nome e sobrenome)."); return; }
+  const r = await fetch(`/api/gcs/publica/${_gcIdSel}/membros`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({nome})});
+  const d = await r.json();
+  if(r.ok && d.ok){ inp.value=""; carregarMembrosMetas(_gcIdSel); }
+  else mostrarErro(d.erro||"Erro ao adicionar membro.");
+}
+
+async function delMembro(iid){
+  await fetch(`/api/gcs/publica/membros/${iid}`,{method:"DELETE"});
+  if(_gcIdSel) carregarMembrosMetas(_gcIdSel);
+}
+
+async function salvarMetas(){
+  if(!_gcIdSel){ mostrarErro("Selecione o GC primeiro."); return; }
+  const metas = document.getElementById("metas_gc").value.trim();
+  const r = await fetch(`/api/gcs/publica/${_gcIdSel}/metas`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({metas})});
+  const d = await r.json();
+  if(r.ok && d.ok){
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = "✅ Metas salvas!";
+    setTimeout(()=>{ btn.textContent = orig; }, 2000);
+  }else mostrarErro(d.erro||"Erro ao salvar metas.");
 }
 
 function toggleTrein(sim){

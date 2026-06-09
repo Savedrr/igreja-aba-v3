@@ -71,7 +71,7 @@ async function logout(){await fetch("/api/logout",{method:"POST"});window.locati
 // ── TABS ──────────────────────────────────────────────────────
 const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:"Visitantes",
   gc:"Conecta GC",estoque:"Estoque",escalas:"Escalas",dashboard:"Relatórios",usuarios:"Usuários",
-  dash_gc:"Dashboard GC",relatorios:"Relatórios",ia:"IA Contagem"};
+  dash_gc:"Gestão de GC",relatorios:"Relatórios",ia:"IA Contagem"};
 
 function ativarTab(tab){
   // Dashboard e resumo agora vivem dentro de Relatórios (unificado)
@@ -556,24 +556,13 @@ async function criarGC(){
 function abrirEdicaoGC(id){
   fetch("/api/gcs").then(r=>r.json()).then(list=>{
     const gc=list.find(g=>g.id===id); if(!gc)return;
-    // Opções de GC pai (exclui o próprio)
-    const opcoesPai = list.filter(g=>g.id!==id).map(g=>
-      `<option value="${g.id}"${gc.gc_pai_id===g.id?" selected":""}>${esc(g.nome)}</option>`).join("");
     abrirModal(`✏️ Editar GC — ${gc.nome}`,`
       <div style="display:grid;gap:10px">
         <div class="field-group"><label>Nome</label><input class="field-input" id="egc_nome" value="${esc(gc.nome)}"></div>
         <div class="field-group"><label>Líder</label><input class="field-input" id="egc_lider" value="${esc(gc.lider||"")}"></div>
         <div class="field-group"><label>WhatsApp do Líder</label><input type="tel" class="field-input" id="egc_tel" value="${esc(gc.telefone_lider||"")}" placeholder="(51) 99999-9999"></div>
-        <div class="field-group"><label>👁️ Supervisor</label><input class="field-input" id="egc_supervisor" value="${esc(gc.supervisor||"")}" placeholder="Nome do supervisor responsável"></div>
         <div class="field-group"><label>Endereço</label><input class="field-input" id="egc_end" value="${esc(gc.endereco)}"></div>
         <div class="field-group"><label>Bairro</label><input class="field-input" id="egc_bairro" value="${esc(gc.bairro||"")}"></div>
-        <div class="field-group"><label>🌱 GC de Origem (pai)</label>
-          <select class="field-input" id="egc_pai">
-            <option value="">— Nenhum (GC raiz) —</option>
-            ${opcoesPai}
-          </select>
-          <span style="font-size:11px;color:#64748B">Se este GC nasceu de outro, selecione o GC de origem.</span>
-        </div>
         <div class="field-group"><label>Rede / Setor</label>
           <select class="field-input" id="egc_setor">
             ${["Verde","Laranja","Amarelo","Vermelho","Azul","Roxo"].map(s=>`<option${gc.setor===s?" selected":""}>${s}</option>`).join("")}
@@ -584,54 +573,9 @@ function abrirEdicaoGC(id){
             <option value="0"${!gc.ativo?" selected":""}>Inativo</option>
           </select></div>
       </div>
-
-      <!-- INTEGRANTES -->
-      <div style="margin-top:16px;border-top:2px solid #EEF2F9;padding-top:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <strong style="font-size:13px;color:#0A2463">👥 Integrantes do GC</strong>
-        </div>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <input class="field-input" id="egc_int_nome" placeholder="Nome e sobrenome" style="flex:1">
-          <button class="btn-sm blue" onclick="addIntegrante(${id})" style="white-space:nowrap">+ Add</button>
-        </div>
-        <div id="egc_integrantes_lista"><div class="loading-msg">Carregando...</div></div>
-      </div>
-
+      <p style="font-size:11px;color:#94A3B8;margin-top:10px">💡 Supervisor, GC de origem, metas e membros são gerenciados na aba <strong>Gestão de GC</strong>.</p>
       <button class="btn-primary-lg" onclick="salvarEdicaoGC(${id})" style="margin-top:14px;padding:12px;font-size:13px">💾 Salvar GC</button>`);
-    carregarIntegrantes(id);
   });
-}
-
-async function carregarIntegrantes(gid){
-  const el = document.getElementById("egc_integrantes_lista");
-  if(!el) return;
-  try{
-    const r = await fetch(`/api/gcs/${gid}/integrantes`);
-    const list = await r.json();
-    if(!list.length){ el.innerHTML='<p style="font-size:12px;color:#8ca0c0">Nenhum integrante cadastrado ainda.</p>'; return; }
-    el.innerHTML = list.map(i=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#F8FAFF;border-radius:8px;margin-bottom:5px">
-        <span style="font-size:13px;font-weight:600;color:#0F2747">${esc(i.nome)}</span>
-        <button class="btn-sm red" onclick="delIntegrante(${i.id},${gid})" style="font-size:10px">✕</button>
-      </div>`).join("");
-  }catch(e){ el.innerHTML='<p style="font-size:12px;color:#DC2626">Erro ao carregar.</p>'; }
-}
-
-async function addIntegrante(gid){
-  const inp = document.getElementById("egc_int_nome");
-  const nome = inp.value.trim();
-  if(!nome){ toast("Digite o nome do integrante.","error"); return; }
-  if(nome.split(/\s+/).length < 2){ toast("Informe nome e sobrenome (ex: Pedro Pedreira).","error"); return; }
-  const r = await fetch(`/api/gcs/${gid}/integrantes`,{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({nome})});
-  const d = await r.json();
-  if(r.ok && d.ok){ inp.value=""; carregarIntegrantes(gid); }
-  else toast(d.erro||"Erro ao adicionar.","error");
-}
-
-async function delIntegrante(iid,gid){
-  await fetch(`/api/gcs/integrantes/${iid}`,{method:"DELETE"});
-  carregarIntegrantes(gid);
 }
 
 async function salvarEdicaoGC(id){
@@ -639,10 +583,8 @@ async function salvarEdicaoGC(id){
     body:JSON.stringify({nome:document.getElementById("egc_nome").value,
       lider:document.getElementById("egc_lider").value,
       telefone_lider:document.getElementById("egc_tel").value,
-      supervisor:document.getElementById("egc_supervisor").value,
       endereco:document.getElementById("egc_end").value,
       bairro:document.getElementById("egc_bairro").value,
-      gc_pai_id:document.getElementById("egc_pai").value||null,
       setor:document.getElementById("egc_setor").value,
       ativo:parseInt(document.getElementById("egc_ativo").value)})});
   const d=await r.json();
@@ -2042,9 +1984,181 @@ function copiarLinkRelatorio(){
   copiarLink(url);
 }
 
+// ── GENEALOGIA E MULTIPLICAÇÃO ──────────────────────────────
+async function carregarGenealogia(){
+  try{
+    const ini = document.getElementById("gc_freq_ini")?.value||"";
+    const fim = document.getElementById("gc_freq_fim")?.value||"";
+    const p = new URLSearchParams();
+    if(ini) p.append("data_ini",ini); if(fim) p.append("data_fim",fim);
+    const r = await fetch("/api/gcs/genealogia?"+p);
+    if(!r.ok) return;
+    const d = await r.json();
+    const c = d.cards||{};
+    const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+    set("gen_ativos", c.total_ativos||0);
+    set("gen_multiplicados", c.total_multiplicados||0);
+    set("gen_geracoes", c.geracoes||0);
+    set("gen_rede_maior", c.rede_maior||"—");
+    set("gen_maior_desc", c.maior_descendencia ? `${c.maior_descendencia.nome} (${c.maior_descendencia.qtd})` : "—");
+    set("gen_mult_periodo", c.multiplicacoes_periodo||0);
+
+    // Árvore
+    const arv = document.getElementById("gen_arvore");
+    if(arv){
+      if(d.arvore && d.arvore.length){
+        arv.innerHTML = d.arvore.map(n=>renderNoArvore(n,0)).join("");
+      }else{
+        arv.innerHTML = '<p style="color:#8ca0c0;font-size:13px;padding:14px">Nenhum GC cadastrado. Vincule GCs de origem na edição de cada GC (Conecta GC) para montar a árvore.</p>';
+      }
+    }
+
+    // Redes
+    const redes = document.getElementById("gen_redes");
+    if(redes){
+      if(d.redes && d.redes.length){
+        const maxG = Math.max(...d.redes.map(x=>x.total_gcs),1);
+        redes.innerHTML = d.redes.map(rd=>`
+          <div style="margin-bottom:11px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+              <span style="font-weight:700;color:#0A2463"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${rd.cor};margin-right:5px"></span>${rd.rede}</span>
+              <span style="color:#64748B">${rd.total_gcs} GCs · ${rd.multiplicacoes} mult.</span>
+            </div>
+            <div style="background:#EEF2F9;border-radius:6px;height:10px;overflow:hidden">
+              <div style="width:${Math.round(rd.total_gcs/maxG*100)}%;height:100%;background:${rd.cor};border-radius:6px"></div>
+            </div>
+          </div>`).join("");
+      }else{
+        redes.innerHTML = '<p style="color:#8ca0c0;font-size:13px">Sem dados de rede.</p>';
+      }
+    }
+
+    // Supervisores
+    carregarSupervisores();
+
+    // Linha do tempo das multiplicações
+    const tl = document.getElementById("gen_timeline");
+    if(tl){
+      const ev = d.timeline||[];
+      if(ev.length){
+        tl.innerHTML = ev.map((e,i)=>{
+          const ultimo = i === ev.length-1;
+          const linhaVert = ultimo ? "" : `<div style="position:absolute;left:7px;top:20px;bottom:-16px;width:2px;background:#E2E8F0"></div>`;
+          return `<div style="position:relative;padding-left:28px;padding-bottom:16px">
+            ${linhaVert}
+            <div style="position:absolute;left:0;top:3px;width:16px;height:16px;border-radius:50%;background:${e.cor};border:3px solid #fff;box-sizing:border-box"></div>
+            <div style="font-size:11px;color:#94A3B8;font-weight:600">${e.data_label||e.data}</div>
+            <div style="font-size:14px;font-weight:700;color:#0F2747;margin:1px 0 3px">${e.nome}
+              <span style="background:${e.cor};color:#fff;font-size:9px;padding:1px 7px;border-radius:20px;vertical-align:1px">${e.rede||""}</span>
+            </div>
+            <div style="font-size:11px;color:#64748B">nasceu de <strong style="color:#0A2463">${e.pai}</strong></div>
+          </div>`;
+        }).join("");
+      }else{
+        tl.innerHTML = '<p style="color:#8ca0c0;font-size:13px;padding:10px">Nenhuma multiplicação registrada ainda. Quando um GC for vinculado a um GC de origem, ele aparece aqui na data em que foi criado.</p>';
+      }
+    }
+  }catch(e){ console.warn("Erro genealogia:",e); }
+}
+
+function renderNoArvore(no, prof){
+  const desc = no.qtd_descendentes ? ` · ${no.qtd_descendentes} desc.` : "";
+  const filhosCount = no.qtd_filhos ? `<span style="background:#22C55E;color:#fff;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700;margin-left:5px">${no.qtd_filhos} filho(s)</span>` : "";
+  let html = `<div style="margin-left:${prof*20}px;margin-bottom:5px">
+    <div style="background:#F8FAFF;border-left:4px solid ${no.cor_hex};border-radius:8px;padding:7px 11px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:700;color:#0F2747">
+          ${prof>0?'↳ ':''}${no.nome}
+          <span style="background:${no.cor_hex};color:#fff;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700">${no.setor||""}</span>
+          ${filhosCount}
+        </div>
+        <div style="font-size:11px;color:#64748B;margin-top:2px">👤 ${no.lider||"—"} · Nível ${no.nivel}${desc}${no.supervisor?` · 👁️ ${no.supervisor}`:""}</div>
+      </div>
+      <button class="btn-sm blue" style="font-size:10px;flex-shrink:0" onclick="gerenciarGC(${no.id})">⚙️ Gerenciar</button>
+    </div>`;
+  if(no.filhos && no.filhos.length){
+    html += no.filhos.map(f=>renderNoArvore(f,prof+1)).join("");
+  }
+  html += `</div>`;
+  return html;
+}
+
+// ── GESTÃO ESTRATÉGICA DO GC (supervisor, pai, rede, metas, membros) ──
+async function gerenciarGC(id){
+  const list = await (await fetch("/api/gcs")).json();
+  const gc = list.find(g=>g.id===id); if(!gc) return;
+  const opcoesPai = list.filter(g=>g.id!==id).map(g=>
+    `<option value="${g.id}"${gc.gc_pai_id===g.id?" selected":""}>${esc(g.nome)}</option>`).join("");
+  abrirModal(`⚙️ Gestão — ${gc.nome}`,`
+    <div style="display:grid;gap:10px">
+      <div class="field-group"><label>Nome do GC</label><input class="field-input" id="ggc_nome" value="${esc(gc.nome)}"></div>
+      <div class="field-group"><label>Líder</label><input class="field-input" id="ggc_lider" value="${esc(gc.lider||"")}"></div>
+      <div class="field-group"><label>👁️ Supervisor</label><input class="field-input" id="ggc_supervisor" value="${esc(gc.supervisor||"")}" placeholder="Supervisor responsável"></div>
+      <div class="field-group"><label>🌱 GC de Origem (pai)</label>
+        <select class="field-input" id="ggc_pai">
+          <option value="">— Nenhum (GC raiz) —</option>
+          ${opcoesPai}
+        </select>
+        <span style="font-size:11px;color:#64748B">Define a multiplicação: de qual GC este nasceu.</span>
+      </div>
+      <div class="field-group"><label>🎨 Rede / Setor</label>
+        <select class="field-input" id="ggc_setor">
+          ${["Verde","Laranja","Amarelo","Vermelho","Azul","Roxo"].map(s=>`<option${gc.setor===s?" selected":""}>${s}</option>`).join("")}
+        </select></div>
+    </div>
+    <button class="btn-primary-lg" onclick="salvarGestaoGC(${id})" style="margin-top:14px;padding:12px;font-size:13px">💾 Salvar Gestão</button>`);
+}
+
+async function salvarGestaoGC(id){
+  const r=await fetch(`/api/gcs/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      nome:document.getElementById("ggc_nome").value,
+      lider:document.getElementById("ggc_lider").value,
+      supervisor:document.getElementById("ggc_supervisor").value,
+      gc_pai_id:document.getElementById("ggc_pai").value||null,
+      setor:document.getElementById("ggc_setor").value})});
+  const d=await r.json();
+  if(r.ok&&d.ok){toast("✅ Gestão do GC atualizada!","success");fecharModal();carregarGenealogia();}
+  else toast(d.erro||"Erro.","error");
+}
+
+async function carregarSupervisores(){
+  const el = document.getElementById("gen_supervisores");
+  if(!el) return;
+  try{
+    const r = await fetch("/api/gcs/por_supervisor");
+    const d = await r.json();
+    if(!d.supervisores || !d.supervisores.length){
+      el.innerHTML = '<p style="color:#8ca0c0;font-size:13px">Nenhum supervisor cadastrado. Defina supervisores na edição de cada GC (Conecta GC).</p>';
+      return;
+    }
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
+      ${d.supervisores.map(s=>`
+        <div style="border:1px solid #E2E8F0;border-radius:10px;padding:11px 13px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <strong style="font-size:13px;color:#0A2463">👁️ ${s.supervisor}</strong>
+            <span style="background:#EBF5FF;color:#0A2463;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700">${s.gcs.length} GC(s)</span>
+          </div>
+          ${s.gcs.map(g=>`<div style="font-size:11px;color:#64748B;padding:2px 0">• ${g.nome}${g.lider?` (${g.lider})`:''}</div>`).join("")}
+        </div>`).join("")}
+    </div>`;
+  }catch(e){ el.innerHTML='<p style="color:#8ca0c0;font-size:13px">Erro ao carregar supervisores.</p>'; }
+}
+
+function exportarGenealogiaExcel(){
+  window.open("/api/gcs/genealogia/excel","_blank");
+  toast("⬇️ Gerando Excel da genealogia...","info");
+}
+function exportarGenealogiaPDF(){
+  window.open("/api/gcs/genealogia/pdf","_blank");
+  toast("📄 PDF da genealogia aberto!","info");
+}
+
 async function carregarDashGC(){
   const linkEl = document.getElementById("linkRelatorioGC");
   if(linkEl) linkEl.textContent = window.location.origin + "/relatorio-gc";
+
+  carregarGenealogia();
 
   try{
     const r = await fetch("/api/relatorios_gc/dashboard");

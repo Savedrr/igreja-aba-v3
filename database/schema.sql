@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS grupos_crescimento (
     lng          REAL    DEFAULT NULL,
     gc_pai_id    INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL,
     supervisor   TEXT    DEFAULT '',
+    metas        TEXT    DEFAULT '',
     ativo        INTEGER DEFAULT 1,
     criado_em    TEXT    DEFAULT (datetime('now','localtime'))
 );

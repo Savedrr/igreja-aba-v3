@@ -443,6 +443,7 @@ def _pg_migrations(conn):
         "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS campos_livres TEXT DEFAULT ''",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS gc_pai_id INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS supervisor TEXT DEFAULT ''",
+        "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS metas TEXT DEFAULT ''",
         "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS valor_oferta REAL DEFAULT 0",
         "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS quilos_arrecadados REAL DEFAULT 0",
         """CREATE TABLE IF NOT EXISTS gc_integrantes (
@@ -593,6 +594,7 @@ def _init_sqlite():
         "ALTER TABLE relatorios_gc ADD COLUMN campos_livres TEXT DEFAULT ''",
         "ALTER TABLE grupos_crescimento ADD COLUMN gc_pai_id INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL",
         "ALTER TABLE grupos_crescimento ADD COLUMN supervisor TEXT DEFAULT ''",
+        "ALTER TABLE grupos_crescimento ADD COLUMN metas TEXT DEFAULT ''",
         "ALTER TABLE relatorios_gc ADD COLUMN valor_oferta REAL DEFAULT 0",
         "ALTER TABLE relatorios_gc ADD COLUMN quilos_arrecadados REAL DEFAULT 0",
         """CREATE TABLE IF NOT EXISTS gc_integrantes (
@@ -1353,6 +1355,59 @@ def listar_gcs_publica():
         ).fetchall()
     return jsonify([dict(r) for r in rows])
 
+@app.route("/api/gcs/publica/<int:gid>/detalhes", methods=["GET"])
+def gc_detalhes_publica(gid):
+    """Rota pública — retorna metas e integrantes já cadastrados de um GC (para o formulário)"""
+    with get_db() as conn:
+        gc = conn.execute(qmark("SELECT metas FROM grupos_crescimento WHERE id=?"), (gid,)).fetchone()
+        integrantes = [dict(r) for r in conn.execute(
+            qmark("SELECT id,nome FROM gc_integrantes WHERE gc_id=? AND ativo=1 ORDER BY nome"), (gid,)
+        ).fetchall()]
+    metas = ""
+    try:
+        metas = gc["metas"] if gc and gc["metas"] else ""
+    except Exception:
+        metas = ""
+    return jsonify({"metas": metas, "integrantes": integrantes})
+
+@app.route("/api/gcs/publica/<int:gid>/membros", methods=["POST"])
+def add_membro_publica(gid):
+    """Rota pública — adiciona membro pelo formulário do GC, com validação de nome completo"""
+    d = request.get_json(force=True) or {}
+    nome = d.get("nome","").strip()
+    if len(nome.split()) < 2:
+        return jsonify({"erro":"Informe o nome completo (nome e sobrenome)."}),400
+    nome = _capitalizar_nome(nome)
+    with get_db() as conn:
+        # Evita duplicado
+        existe = conn.execute(
+            qmark("SELECT id FROM gc_integrantes WHERE gc_id=? AND LOWER(nome)=? AND ativo=1"),
+            (gid, nome.lower())
+        ).fetchone()
+        if existe:
+            return jsonify({"erro":"Esse membro já está cadastrado."}),400
+        conn.execute(qmark("INSERT INTO gc_integrantes(gc_id,nome) VALUES(?,?)"), (gid, nome))
+        conn.commit()
+    return jsonify({"ok":True,"nome":nome})
+
+@app.route("/api/gcs/publica/membros/<int:iid>", methods=["DELETE"])
+def del_membro_publica(iid):
+    """Rota pública — remove membro pelo formulário do GC"""
+    with get_db() as conn:
+        conn.execute(qmark("UPDATE gc_integrantes SET ativo=0 WHERE id=?"), (iid,))
+        conn.commit()
+    return jsonify({"ok":True})
+
+@app.route("/api/gcs/publica/<int:gid>/metas", methods=["POST"])
+def salvar_metas_publica(gid):
+    """Rota pública — salva metas do GC (uma vez, persiste)"""
+    d = request.get_json(force=True) or {}
+    metas = d.get("metas","").strip()
+    with get_db() as conn:
+        conn.execute(qmark("UPDATE grupos_crescimento SET metas=? WHERE id=?"), (metas, gid))
+        conn.commit()
+    return jsonify({"ok":True})
+
 @app.route("/api/departamentos/publica", methods=["GET"])
 def listar_departamentos_publica():
     """Rota pública — usada no auto-cadastro de voluntário na tela de login"""
@@ -1452,31 +1507,34 @@ def criar_gc():
     return jsonify({"ok":True,"id":new_id})
 
 @app.route("/api/gcs/<int:gid>", methods=["PUT"])
-@role_required("admin")
+@role_required("admin","lider")
 def atualizar_gc(gid):
     d = request.get_json(force=True) or {}
     with get_db() as conn:
         gc = conn.execute(qmark("SELECT * FROM grupos_crescimento WHERE id=?"), (gid,)).fetchone()
         if not gc: return jsonify({"erro":"GC não encontrado"}),404
-        novo_end = d.get("endereco", gc["endereco"])
-        novo_bai = d.get("bairro",   gc["bairro"])
+        end_atual = gc["endereco"] if "endereco" in gc.keys() else ""
+        bai_atual = gc["bairro"] if "bairro" in gc.keys() else ""
+        novo_end = d.get("endereco", end_atual)
+        novo_bai = d.get("bairro",   bai_atual)
         nova_cid = d.get("cidade",   gc["cidade"])
         lat, lng = gc["lat"], gc["lng"]
-        if novo_end != gc.get("endereco","") or novo_bai != gc.get("bairro",""):
+        if novo_end != end_atual or novo_bai != bai_atual:
             new_lat, new_lng, _ = geocode_smart(f"{novo_end}, {novo_bai}, {nova_cid}")
             if new_lat:
                 lat, lng = new_lat, new_lng
         conn.execute(
             qmark("""UPDATE grupos_crescimento SET nome=?,lider=?,telefone_lider=?,endereco=?,bairro=?,cidade=?,
-               setor=?,cor_hex=?,lat=?,lng=?,gc_pai_id=?,supervisor=?,ativo=? WHERE id=?"""),
+               setor=?,cor_hex=?,lat=?,lng=?,gc_pai_id=?,supervisor=?,metas=?,ativo=? WHERE id=?"""),
             (d.get("nome",gc["nome"]),
-             d.get("lider",gc.get("lider","")),
-             d.get("telefone_lider",gc.get("telefone_lider","")),
+             d.get("lider", gc["lider"] if "lider" in gc.keys() else ""),
+             d.get("telefone_lider", gc["telefone_lider"] if "telefone_lider" in gc.keys() else ""),
              novo_end, novo_bai, nova_cid,
              d.get("setor",gc["setor"]), d.get("cor_hex",gc["cor_hex"]),
              lat, lng,
              d.get("gc_pai_id") if d.get("gc_pai_id") else None,
              d.get("supervisor", gc["supervisor"] if "supervisor" in gc.keys() else ""),
+             d.get("metas", gc["metas"] if "metas" in gc.keys() else ""),
              int(d.get("ativo",gc["ativo"])), gid)
         )
         conn.commit()
@@ -1553,6 +1611,223 @@ def gcs_por_supervisor():
         por_sup[sup]["gcs"].append({"id":g["id"],"nome":g["nome"],"lider":g.get("lider",""),"setor":g.get("setor","")})
     lista = sorted(por_sup.values(), key=lambda x: (-len(x["gcs"]), x["supervisor"]))
     return jsonify({"supervisores": lista, "total": len(gcs)})
+
+# ── GENEALOGIA COMPLETA DOS GCs ──
+def _calcular_genealogia():
+    """Carrega todos os GCs e calcula nível, filhos diretos e descendentes totais"""
+    with get_db() as conn:
+        gcs = [dict(r) for r in conn.execute(
+            "SELECT id,nome,lider,setor,cor_hex,gc_pai_id,supervisor,criado_em FROM grupos_crescimento WHERE ativo=1 ORDER BY nome"
+        ).fetchall()]
+    by_id = {g["id"]: g for g in gcs}
+    filhos_map = {}
+    for g in gcs:
+        pai = g.get("gc_pai_id")
+        if pai and pai in by_id:
+            filhos_map.setdefault(pai, []).append(g["id"])
+
+    def nivel(gid, visto=None):
+        visto = visto or set()
+        if gid in visto: return 1
+        visto.add(gid)
+        pai = by_id.get(gid, {}).get("gc_pai_id")
+        if pai and pai in by_id:
+            return 1 + nivel(pai, visto)
+        return 1
+
+    def contar_descendentes(gid, visto=None):
+        visto = visto or set()
+        total = 0
+        for fid in filhos_map.get(gid, []):
+            if fid in visto: continue
+            visto.add(fid)
+            total += 1 + contar_descendentes(fid, visto)
+        return total
+
+    for g in gcs:
+        g["nivel"] = nivel(g["id"])
+        g["qtd_filhos"] = len(filhos_map.get(g["id"], []))
+        g["qtd_descendentes"] = contar_descendentes(g["id"])
+        g["gc_pai_nome"] = by_id.get(g.get("gc_pai_id"), {}).get("nome", "") if g.get("gc_pai_id") else ""
+    return gcs, by_id, filhos_map
+
+@app.route("/api/gcs/genealogia", methods=["GET"])
+@role_required("admin","lider")
+def gcs_genealogia():
+    """Retorna árvore + cards estratégicos de multiplicação"""
+    ini = request.args.get("data_ini","")
+    fim = request.args.get("data_fim","")
+    gcs, by_id, filhos_map = _calcular_genealogia()
+
+    # Monta árvore aninhada
+    def montar_no(gid):
+        g = by_id[gid]
+        return {
+            "id": g["id"], "nome": g["nome"], "lider": g.get("lider",""),
+            "setor": g.get("setor",""), "cor_hex": g.get("cor_hex","#94A3B8"),
+            "supervisor": g.get("supervisor",""),
+            "qtd_filhos": g["qtd_filhos"], "qtd_descendentes": g["qtd_descendentes"],
+            "nivel": g["nivel"],
+            "filhos": [montar_no(fid) for fid in filhos_map.get(gid, [])]
+        }
+    raizes = [montar_no(g["id"]) for g in gcs if not (g.get("gc_pai_id") and g["gc_pai_id"] in by_id)]
+
+    # Cards estratégicos
+    multiplicados = [g for g in gcs if g["qtd_filhos"] > 0]
+    geracoes = max([g["nivel"] for g in gcs], default=0)
+    maior_desc = max(gcs, key=lambda x: x["qtd_descendentes"], default=None)
+
+    # Métricas por rede
+    redes = {}
+    for g in gcs:
+        rede = g.get("setor") or "Sem rede"
+        if rede not in redes:
+            redes[rede] = {"rede": rede, "cor": g.get("cor_hex","#94A3B8"), "total_gcs": 0, "multiplicacoes": 0}
+        redes[rede]["total_gcs"] += 1
+        if g.get("gc_pai_id"): redes[rede]["multiplicacoes"] += 1
+    redes_lista = sorted(redes.values(), key=lambda x: (-x["total_gcs"], x["rede"]))
+
+    # Multiplicações no período (por criado_em do GC filho)
+    mult_periodo = 0
+    for g in gcs:
+        if g.get("gc_pai_id"):
+            cdt = str(g.get("criado_em",""))[:10]
+            if (not ini or cdt >= ini) and (not fim or cdt <= fim):
+                mult_periodo += 1
+
+    cards = {
+        "total_ativos": len(gcs),
+        "total_multiplicados": len(multiplicados),
+        "geracoes": geracoes,
+        "maior_descendencia": {"nome": maior_desc["nome"], "qtd": maior_desc["qtd_descendentes"]} if maior_desc else {"nome":"—","qtd":0},
+        "rede_maior": redes_lista[0]["rede"] if redes_lista else "—",
+        "multiplicacoes_periodo": mult_periodo
+    }
+    # Linha do tempo das multiplicações (GCs com pai), ordenada por data de criação
+    MESES_ABR = ["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+    timeline = []
+    for g in gcs:
+        if g.get("gc_pai_id") and g["gc_pai_id"] in by_id:
+            cdt = str(g.get("criado_em",""))[:10]
+            # Rótulo amigável "Mês Ano"
+            label = cdt
+            try:
+                dd = datetime.strptime(cdt, "%Y-%m-%d")
+                label = f"{MESES_ABR[dd.month]} {dd.year}"
+            except Exception:
+                pass
+            timeline.append({
+                "data": cdt,
+                "data_label": label,
+                "nome": g["nome"],
+                "rede": g.get("setor",""),
+                "cor": g.get("cor_hex","#94A3B8"),
+                "pai": by_id[g["gc_pai_id"]]["nome"]
+            })
+    timeline.sort(key=lambda x: x["data"])
+
+    return jsonify({"arvore": raizes, "cards": cards, "redes": redes_lista, "timeline": timeline})
+
+@app.route("/api/gcs/genealogia/excel", methods=["GET"])
+@role_required("admin","lider")
+def gcs_genealogia_excel():
+    """Exporta genealogia dos GCs em Excel com colunas hierárquicas"""
+    gcs, by_id, filhos_map = _calcular_genealogia()
+    wb = openpyxl.Workbook()
+    ws = wb.active; ws.title = "Genealogia GCs"
+    azul = PatternFill("solid",fgColor="0A2463"); cinza = PatternFill("solid",fgColor="EBF5FF")
+    branco = PatternFill("solid",fgColor="FFFFFF")
+    tw = Font(color="FFFFFF",bold=True,size=11); tn = Font(size=10); tb = Font(size=10,bold=True)
+    centro = Alignment(horizontal="center",vertical="center"); esq = Alignment(horizontal="left",vertical="center")
+    borda = Border(*[Side(style="thin",color="D1D5DB")]*4)
+    cols = ["GC","Rede","Supervisor","GC Origem","Nível Hierárquico","Qtd. Filhos","Qtd. Descendentes"]
+    larg = [26,14,20,24,16,12,16]
+    for i,(c,l) in enumerate(zip(cols,larg),1):
+        ws.column_dimensions[get_column_letter(i)].width = l
+        cell = ws.cell(row=1,column=i,value=c); cell.fill=azul; cell.font=tw; cell.alignment=centro; cell.border=borda
+    ws.row_dimensions[1].height = 26
+    gcs_ord = sorted(gcs, key=lambda x: (x["nivel"], x["nome"]))
+    for i,g in enumerate(gcs_ord,2):
+        fill = cinza if i%2==0 else branco
+        vals = [g["nome"], g.get("setor",""), g.get("supervisor","") or "—",
+                g.get("gc_pai_nome","") or "— (raiz)", g["nivel"], g["qtd_filhos"], g["qtd_descendentes"]]
+        for j,v in enumerate(vals,1):
+            c = ws.cell(row=i,column=j,value=v)
+            c.fill=fill; c.font=tb if j==1 else tn
+            c.alignment=esq if j in (1,2,3,4) else centro; c.border=borda
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return send_file(buf, as_attachment=True,
+                     download_name=f"genealogia_gcs_{date.today().isoformat()}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+@app.route("/api/gcs/genealogia/pdf", methods=["GET"])
+@role_required("admin","lider")
+def gcs_genealogia_pdf():
+    """Exporta genealogia + árvore visual em PDF (HTML para impressão)"""
+    gcs, by_id, filhos_map = _calcular_genealogia()
+
+    # Árvore em HTML recursiva
+    def render_no(gid, prof=0):
+        g = by_id[gid]
+        cor = g.get("cor_hex","#94A3B8")
+        badge = f'<span style="background:{cor};color:#fff;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700">{g.get("setor","")}</span>'
+        desc = f' · {g["qtd_descendentes"]} descendente(s)' if g["qtd_descendentes"] else ""
+        filhos = filhos_map.get(gid, [])
+        html = f'''<div class="node" style="margin-left:{prof*22}px">
+          <div class="node-box" style="border-left:4px solid {cor}">
+            <strong>{g["nome"]}</strong> {badge}
+            <div class="node-meta">👤 {g.get("lider","—")} · Nível {g["nivel"]}{desc}{(" · 👁️ "+g.get("supervisor","")) if g.get("supervisor") else ""}</div>
+          </div>'''
+        for fid in filhos:
+            html += render_no(fid, prof+1)
+        html += '</div>'
+        return html
+
+    raizes = [g["id"] for g in gcs if not (g.get("gc_pai_id") and g["gc_pai_id"] in by_id)]
+    arvore_html = "".join(render_no(r) for r in raizes) or '<p style="text-align:center;color:#94A3B8;padding:30px">Nenhum GC cadastrado.</p>'
+
+    multiplicados = len([g for g in gcs if g["qtd_filhos"]>0])
+    geracoes = max([g["nivel"] for g in gcs], default=0)
+
+    html = f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Genealogia dos GCs</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#F1F5F9;color:#1E293B}}
+.btn-print{{display:block;width:calc(100% - 32px);margin:16px auto 0;padding:14px;background:#0A2463;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer}}
+.hint{{text-align:center;font-size:11px;color:#94A3B8;margin:6px 16px 14px}}
+.header{{background:linear-gradient(135deg,#0A2463,#1B4FA8);color:#fff;padding:22px 16px;margin-bottom:16px}}
+.header h1{{font-size:20px;font-weight:900;letter-spacing:1px}}
+.header .meta{{font-size:12px;opacity:.7;margin-top:4px}}
+.stats{{display:flex;gap:10px;padding:0 16px 16px;flex-wrap:wrap}}
+.stat{{flex:1;min-width:110px;background:#fff;border-radius:12px;padding:12px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
+.stat .v{{font-size:24px;font-weight:800;color:#0A2463}} .stat .l{{font-size:10px;color:#64748B;text-transform:uppercase;margin-top:3px}}
+.arvore{{background:#fff;border-radius:12px;margin:0 16px 16px;padding:16px}}
+.arvore-titulo{{font-size:14px;font-weight:800;color:#0A2463;margin-bottom:14px}}
+.node-box{{background:#F8FAFF;border-radius:8px;padding:8px 12px;margin-bottom:6px}}
+.node-box strong{{font-size:13px;color:#0F2747}}
+.node-meta{{font-size:11px;color:#64748B;margin-top:2px}}
+.footer{{text-align:center;font-size:10px;color:#94A3B8;padding:16px}}
+@media print{{.btn-print,.hint{{display:none}}body{{background:#fff}}}}
+</style></head><body>
+<button class="btn-print" onclick="window.print()">💾 Salvar como PDF</button>
+<p class="hint">Toque nos 3 pontos → Imprimir → Salvar como PDF</p>
+<div class="header"><h1>GENEALOGIA DOS GCs</h1>
+  <div class="meta">Igreja ABA · Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}</div></div>
+<div class="stats">
+  <div class="stat"><div class="v">{len(gcs)}</div><div class="l">GCs Ativos</div></div>
+  <div class="stat"><div class="v">{multiplicados}</div><div class="l">Multiplicados</div></div>
+  <div class="stat"><div class="v">{geracoes}</div><div class="l">Gerações</div></div>
+</div>
+<div class="arvore">
+  <div class="arvore-titulo">🌳 Árvore de Multiplicação</div>
+  {arvore_html}
+</div>
+<div class="footer">Igreja ABA — Um Lar Para Pertencer</div>
+</body></html>"""
+    resp = make_response(html); resp.headers["Content-Type"]="text/html; charset=utf-8"
+    return resp
 
 # ── INTEGRANTES DO GC ──
 def _capitalizar_nome(nome):
@@ -1708,14 +1983,15 @@ def direcionar():
         # Busca telefone do líder para gerar link WhatsApp
         if gc_id:
             gc_row = conn.execute(qmark("SELECT lider,telefone_lider FROM grupos_crescimento WHERE id=?"), (gc_id,)).fetchone()
-            if gc_row and gc_row.get("telefone_lider","").strip():
-                tel = re.sub(r"\D","",gc_row["telefone_lider"])
+            tel_lider = (gc_row["telefone_lider"] if gc_row and "telefone_lider" in gc_row.keys() else "") or ""
+            if gc_row and tel_lider.strip():
+                tel = re.sub(r"\D","",tel_lider)
                 if not tel.startswith("55"): tel = "55" + tel
                 vis_nome = d.get("visitante_nome","Visitante")
                 gc_nome  = d.get("gc_nome","")
                 dist     = d.get("distancia_km","")
                 rota     = d.get("rota_link","")
-                lider_nome = gc_row.get("lider","Lider") or "Lider"
+                lider_nome = (gc_row["lider"] if "lider" in gc_row.keys() else "") or "Lider"
                 msg = (
                     "Ola " + lider_nome + "!\n"
                     "Temos um visitante para o " + gc_nome + ".\n\n"

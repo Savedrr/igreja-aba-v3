@@ -67,7 +67,7 @@
       Escalas</a></li>
     <li><a class="nav-item" data-tab="dash_gc">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-      Dashboard GC</a></li>
+      Gestão de GC</a></li>
     <li style="display:none" id="navUsuarios"><a class="nav-item" data-tab="usuarios">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
       Usuários</a></li>
@@ -585,7 +585,7 @@
   <!-- ═══ DASHBOARD GC ════════════════════════════════════════ -->
   <div class="tab-content" id="tab-dash_gc">
     <div class="page-header">
-      <div><h1 class="page-title">Dashboard GC</h1><p class="page-sub">Relatórios semanais, frequência e evolução dos Grupos de Crescimento</p></div>
+      <div><h1 class="page-title">Gestão de GC</h1><p class="page-sub">Relatórios, frequência, multiplicação e genealogia dos Grupos de Crescimento</p></div>
       <div class="page-header-right">
         <a href="/relatorio-gc" target="_blank"><button class="btn-secondary">📋 Abrir Formulário</button></a>
         <button class="btn-excel" onclick="exportarFrequenciaExcel()">📥 Excel GC</button>
@@ -597,6 +597,53 @@
       <span style="font-size:13px">🔗 Link para líderes:</span>
       <strong id="linkRelatorioGC" style="color:#0A2463;font-size:13px;word-break:break-all"></strong>
       <button class="btn-sm blue" onclick="copiarLinkRelatorio()">📋 Copiar</button>
+    </div>
+
+    <!-- ═══ MULTIPLICAÇÃO E GENEALOGIA ═══ -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <h2 style="font-size:16px;font-weight:800;color:#0A2463;margin:0">🌳 Multiplicação e Genealogia</h2>
+      <div style="display:flex;gap:6px">
+        <button class="btn-excel" onclick="exportarGenealogiaExcel()" style="font-size:12px;padding:7px 12px">📥 Excel Genealogia</button>
+        <button class="btn-pdf" onclick="exportarGenealogiaPDF()" style="font-size:12px;padding:7px 12px">📄 PDF Genealogia</button>
+      </div>
+    </div>
+
+    <!-- CARDS ESTRATÉGICOS -->
+    <div class="stats-grid" style="margin-bottom:16px">
+      <div class="stat-card blue"><div class="stat-icon">🏠</div><div class="stat-value" id="gen_ativos">—</div><div class="stat-label">GCs Ativos</div></div>
+      <div class="stat-card green"><div class="stat-icon">🌱</div><div class="stat-value" id="gen_multiplicados">—</div><div class="stat-label">Multiplicados</div></div>
+      <div class="stat-card purple"><div class="stat-icon">📊</div><div class="stat-value" id="gen_geracoes">—</div><div class="stat-label">Gerações</div></div>
+      <div class="stat-card accent"><div class="stat-icon">🏆</div><div class="stat-value" id="gen_rede_maior" style="font-size:16px">—</div><div class="stat-label">Rede que + Cresce</div></div>
+      <div class="stat-card"><div class="stat-icon">👑</div><div class="stat-value" id="gen_maior_desc" style="font-size:14px">—</div><div class="stat-label">Maior Descendência</div></div>
+      <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-value" id="gen_mult_periodo">—</div><div class="stat-label">Mult. no Período</div></div>
+    </div>
+
+    <!-- ÁRVORE + REDES -->
+    <div class="dash-row wide-left">
+      <div class="dash-card">
+        <div class="dash-card-title">🌳 Árvore de Multiplicação</div>
+        <div id="gen_arvore" style="max-height:420px;overflow:auto"><div class="loading-msg">Carregando...</div></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">🎨 Crescimento por Rede</div>
+        <div id="gen_redes"><div class="loading-msg">Carregando...</div></div>
+      </div>
+    </div>
+
+    <!-- SUPERVISÃO -->
+    <div class="form-card" style="margin-bottom:16px">
+      <div class="form-section">
+        <div class="section-title">📅 Linha do Tempo das Multiplicações</div>
+        <div id="gen_timeline"><div class="loading-msg">Carregando...</div></div>
+      </div>
+    </div>
+
+    <!-- SUPERVISÃO -->
+    <div class="form-card" style="margin-bottom:16px">
+      <div class="form-section">
+        <div class="section-title">👁️ GCs por Supervisor</div>
+        <div id="gen_supervisores"><div class="loading-msg">Carregando...</div></div>
+      </div>
     </div>
 
     <!-- FILTROS DE FREQUÊNCIA -->
