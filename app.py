@@ -441,6 +441,16 @@ def _pg_migrations(conn):
         "ALTER TABLE voluntarios ADD COLUMN IF NOT EXISTS departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL",
         "ALTER TABLE voluntarios ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL",
         "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS campos_livres TEXT DEFAULT ''",
+        "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS gc_pai_id INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL",
+        "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS supervisor TEXT DEFAULT ''",
+        "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS valor_oferta REAL DEFAULT 0",
+        "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS quilos_arrecadados REAL DEFAULT 0",
+        """CREATE TABLE IF NOT EXISTS gc_integrantes (
+            id SERIAL PRIMARY KEY,
+            gc_id INTEGER REFERENCES grupos_crescimento(id) ON DELETE CASCADE,
+            nome TEXT NOT NULL, telefone TEXT DEFAULT '',
+            ativo INTEGER DEFAULT 1,
+            criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
     ]
     cur = conn.cursor()
     for sql in migrations:
@@ -581,6 +591,16 @@ def _init_sqlite():
         "ALTER TABLE voluntarios ADD COLUMN departamento_id INTEGER REFERENCES departamentos(id) ON DELETE SET NULL",
         "ALTER TABLE voluntarios ADD COLUMN usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL",
         "ALTER TABLE relatorios_gc ADD COLUMN campos_livres TEXT DEFAULT ''",
+        "ALTER TABLE grupos_crescimento ADD COLUMN gc_pai_id INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL",
+        "ALTER TABLE grupos_crescimento ADD COLUMN supervisor TEXT DEFAULT ''",
+        "ALTER TABLE relatorios_gc ADD COLUMN valor_oferta REAL DEFAULT 0",
+        "ALTER TABLE relatorios_gc ADD COLUMN quilos_arrecadados REAL DEFAULT 0",
+        """CREATE TABLE IF NOT EXISTS gc_integrantes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            gc_id INTEGER REFERENCES grupos_crescimento(id) ON DELETE CASCADE,
+            nome TEXT NOT NULL, telefone TEXT DEFAULT '',
+            ativo INTEGER DEFAULT 1,
+            criado_em TEXT DEFAULT (datetime('now','localtime')))""",
     ]
     for sql in _migrations_sqlite:
         try:
@@ -1416,14 +1436,20 @@ def criar_gc():
     cor_map = {"Verde":"#22C55E","Laranja":"#F97316","Amarelo":"#EAB308",
                "Vermelho":"#EF4444","Azul":"#3B82F6","Roxo":"#A855F7"}
     setor = d.get("setor","Verde")
+    gc_pai = d.get("gc_pai_id") or None
+    supervisor = d.get("supervisor","").strip()
     with get_db() as conn:
         cur = conn.execute(
-            qmark("INSERT INTO grupos_crescimento(nome,lider,telefone_lider,endereco,bairro,cidade,setor,cor_hex,lat,lng) VALUES(?,?,?,?,?,?,?,?,?,?)"),
+            qmark("INSERT INTO grupos_crescimento(nome,lider,telefone_lider,endereco,bairro,cidade,setor,cor_hex,lat,lng,gc_pai_id,supervisor) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"),
             (nome, d.get("lider",""), d.get("telefone_lider",""), end, bairro, cidade, setor,
-             d.get("cor_hex", cor_map.get(setor,"#22C55E")), lat, lng)
+             d.get("cor_hex", cor_map.get(setor,"#22C55E")), lat, lng, gc_pai, supervisor)
         )
         conn.commit()
-    return jsonify({"ok":True,"id":cur.lastrowid})
+        new_id = cur.lastrowid
+        if USE_PG:
+            row = conn.execute(qmark("SELECT id FROM grupos_crescimento WHERE nome=? ORDER BY id DESC"),(nome,)).fetchone()
+            new_id = row["id"] if row else new_id
+    return jsonify({"ok":True,"id":new_id})
 
 @app.route("/api/gcs/<int:gid>", methods=["PUT"])
 @role_required("admin")
@@ -1442,13 +1468,16 @@ def atualizar_gc(gid):
                 lat, lng = new_lat, new_lng
         conn.execute(
             qmark("""UPDATE grupos_crescimento SET nome=?,lider=?,telefone_lider=?,endereco=?,bairro=?,cidade=?,
-               setor=?,cor_hex=?,lat=?,lng=?,ativo=? WHERE id=?"""),
+               setor=?,cor_hex=?,lat=?,lng=?,gc_pai_id=?,supervisor=?,ativo=? WHERE id=?"""),
             (d.get("nome",gc["nome"]),
              d.get("lider",gc.get("lider","")),
              d.get("telefone_lider",gc.get("telefone_lider","")),
              novo_end, novo_bai, nova_cid,
              d.get("setor",gc["setor"]), d.get("cor_hex",gc["cor_hex"]),
-             lat, lng, int(d.get("ativo",gc["ativo"])), gid)
+             lat, lng,
+             d.get("gc_pai_id") if d.get("gc_pai_id") else None,
+             d.get("supervisor", gc["supervisor"] if "supervisor" in gc.keys() else ""),
+             int(d.get("ativo",gc["ativo"])), gid)
         )
         conn.commit()
     return jsonify({"ok":True})
@@ -1458,6 +1487,120 @@ def atualizar_gc(gid):
 def del_gc(gid):
     with get_db() as conn:
         conn.execute(qmark("UPDATE grupos_crescimento SET ativo=0 WHERE id=?"), (gid,)); conn.commit()
+    return jsonify({"ok":True})
+
+# ═══════════════════════════════════════════════════════════════
+# GESTÃO DE GC: Multiplicação, Redes, Supervisão, Integrantes
+# ═══════════════════════════════════════════════════════════════
+@app.route("/api/gcs/arvore", methods=["GET"])
+@role_required("admin","lider")
+def gcs_arvore():
+    """Retorna a árvore de multiplicação dos GCs (pai → filhos)"""
+    with get_db() as conn:
+        gcs = [dict(r) for r in conn.execute(
+            "SELECT id,nome,lider,setor,cor_hex,gc_pai_id,supervisor FROM grupos_crescimento WHERE ativo=1 ORDER BY nome"
+        ).fetchall()]
+    # Monta estrutura de árvore
+    by_id = {g["id"]: {**g, "filhos": []} for g in gcs}
+    raizes = []
+    for g in gcs:
+        pai = g.get("gc_pai_id")
+        if pai and pai in by_id:
+            by_id[pai]["filhos"].append(by_id[g["id"]])
+        else:
+            raizes.append(by_id[g["id"]])
+    return jsonify({"arvore": raizes, "total": len(gcs)})
+
+@app.route("/api/gcs/metricas_redes", methods=["GET"])
+@role_required("admin","lider")
+def gcs_metricas_redes():
+    """Métricas por rede (setor/cor): quantidade, multiplicações, crescimento"""
+    with get_db() as conn:
+        gcs = [dict(r) for r in conn.execute(
+            "SELECT id,nome,setor,cor_hex,gc_pai_id,criado_em FROM grupos_crescimento WHERE ativo=1"
+        ).fetchall()]
+    redes = {}
+    for g in gcs:
+        rede = g.get("setor") or "Sem rede"
+        if rede not in redes:
+            redes[rede] = {"rede": rede, "cor": g.get("cor_hex","#94A3B8"),
+                           "total_gcs": 0, "multiplicacoes": 0}
+        redes[rede]["total_gcs"] += 1
+        if g.get("gc_pai_id"):
+            redes[rede]["multiplicacoes"] += 1
+    lista = sorted(redes.values(), key=lambda x: x["total_gcs"], reverse=True)
+    maior = lista[0]["rede"] if lista else "—"
+    return jsonify({
+        "redes": lista,
+        "total_gcs": len(gcs),
+        "total_multiplicacoes": sum(r["multiplicacoes"] for r in lista),
+        "rede_maior": maior
+    })
+
+@app.route("/api/gcs/por_supervisor", methods=["GET"])
+@role_required("admin","lider")
+def gcs_por_supervisor():
+    """Agrupa GCs por supervisor para relatório"""
+    with get_db() as conn:
+        gcs = [dict(r) for r in conn.execute(
+            "SELECT id,nome,lider,setor,supervisor FROM grupos_crescimento WHERE ativo=1 ORDER BY supervisor,nome"
+        ).fetchall()]
+    por_sup = {}
+    for g in gcs:
+        sup = (g.get("supervisor") or "").strip() or "Sem supervisor"
+        if sup not in por_sup:
+            por_sup[sup] = {"supervisor": sup, "gcs": []}
+        por_sup[sup]["gcs"].append({"id":g["id"],"nome":g["nome"],"lider":g.get("lider",""),"setor":g.get("setor","")})
+    lista = sorted(por_sup.values(), key=lambda x: (-len(x["gcs"]), x["supervisor"]))
+    return jsonify({"supervisores": lista, "total": len(gcs)})
+
+# ── INTEGRANTES DO GC ──
+def _capitalizar_nome(nome):
+    """Padroniza nome: primeira letra de cada palavra em maiúsculo"""
+    palavras = nome.strip().split()
+    minusculas = {"de","da","do","das","dos","e"}
+    out = []
+    for i, p in enumerate(palavras):
+        pl = p.lower()
+        if i > 0 and pl in minusculas:
+            out.append(pl)
+        else:
+            out.append(pl.capitalize())
+    return " ".join(out)
+
+@app.route("/api/gcs/<int:gid>/integrantes", methods=["GET"])
+@role_required("admin","lider")
+def listar_integrantes(gid):
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(
+            qmark("SELECT id,nome,telefone FROM gc_integrantes WHERE gc_id=? AND ativo=1 ORDER BY nome"),
+            (gid,)
+        ).fetchall()]
+    return jsonify(rows)
+
+@app.route("/api/gcs/<int:gid>/integrantes", methods=["POST"])
+@role_required("admin","lider")
+def add_integrante(gid):
+    d = request.get_json(force=True) or {}
+    nome = d.get("nome","").strip()
+    # Validação: exige nome + sobrenome
+    if len(nome.split()) < 2:
+        return jsonify({"erro":"Informe nome e sobrenome completos (ex: Pedro Pedreira)."}),400
+    nome = _capitalizar_nome(nome)
+    with get_db() as conn:
+        conn.execute(
+            qmark("INSERT INTO gc_integrantes(gc_id,nome,telefone) VALUES(?,?,?)"),
+            (gid, nome, d.get("telefone","").strip())
+        )
+        conn.commit()
+    return jsonify({"ok":True,"nome":nome})
+
+@app.route("/api/gcs/integrantes/<int:iid>", methods=["DELETE"])
+@role_required("admin","lider")
+def del_integrante(iid):
+    with get_db() as conn:
+        conn.execute(qmark("UPDATE gc_integrantes SET ativo=0 WHERE id=?"), (iid,))
+        conn.commit()
     return jsonify({"ok":True})
 
 
@@ -3157,10 +3300,15 @@ def criar_relatorio_gc():
     if not gc_nome or not lider_nome or not dia:
         return jsonify({"erro":"GC, líder e dia são obrigatórios"}),400
 
-    # Campos livres: lista de {titulo, valor}
-    campos_livres = d.get("campos_livres","")
-    if isinstance(campos_livres, (list, dict)):
-        campos_livres = json.dumps(campos_livres, ensure_ascii=False)
+    # Validação numérica de oferta e quilos (sem texto livre)
+    def num(v):
+        try:
+            x = float(str(v).replace(",", ".").replace("R$","").strip() or 0)
+            return max(0, x)
+        except Exception:
+            return 0
+    valor_oferta = num(d.get("valor_oferta", 0))
+    quilos       = num(d.get("quilos_arrecadados", 0))
 
     # Busca gc_id pelo nome
     with get_db() as conn:
@@ -3170,8 +3318,9 @@ def criar_relatorio_gc():
         conn.execute(
             qmark("""INSERT INTO relatorios_gc
                 (gc_id,gc_nome,lider_nome,anfitriao,dia,membros_presentes,
-                 visitantes,lider_treinamento,nome_lider_trein,observacoes,campos_livres)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?)"""),
+                 visitantes,lider_treinamento,nome_lider_trein,observacoes,
+                 valor_oferta,quilos_arrecadados)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"""),
             (gc_id, gc_nome, lider_nome,
              d.get("anfitriao",""),
              dia,
@@ -3180,7 +3329,7 @@ def criar_relatorio_gc():
              1 if d.get("lider_treinamento") else 0,
              d.get("nome_lider_trein",""),
              d.get("observacoes",""),
-             campos_livres)
+             valor_oferta, quilos)
         )
         conn.commit()
     return jsonify({"ok":True, "msg":"Relatório enviado com sucesso!"})

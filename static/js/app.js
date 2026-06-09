@@ -556,14 +556,25 @@ async function criarGC(){
 function abrirEdicaoGC(id){
   fetch("/api/gcs").then(r=>r.json()).then(list=>{
     const gc=list.find(g=>g.id===id); if(!gc)return;
+    // Opções de GC pai (exclui o próprio)
+    const opcoesPai = list.filter(g=>g.id!==id).map(g=>
+      `<option value="${g.id}"${gc.gc_pai_id===g.id?" selected":""}>${esc(g.nome)}</option>`).join("");
     abrirModal(`✏️ Editar GC — ${gc.nome}`,`
       <div style="display:grid;gap:10px">
         <div class="field-group"><label>Nome</label><input class="field-input" id="egc_nome" value="${esc(gc.nome)}"></div>
         <div class="field-group"><label>Líder</label><input class="field-input" id="egc_lider" value="${esc(gc.lider||"")}"></div>
         <div class="field-group"><label>WhatsApp do Líder</label><input type="tel" class="field-input" id="egc_tel" value="${esc(gc.telefone_lider||"")}" placeholder="(51) 99999-9999"></div>
+        <div class="field-group"><label>👁️ Supervisor</label><input class="field-input" id="egc_supervisor" value="${esc(gc.supervisor||"")}" placeholder="Nome do supervisor responsável"></div>
         <div class="field-group"><label>Endereço</label><input class="field-input" id="egc_end" value="${esc(gc.endereco)}"></div>
         <div class="field-group"><label>Bairro</label><input class="field-input" id="egc_bairro" value="${esc(gc.bairro||"")}"></div>
-        <div class="field-group"><label>Setor</label>
+        <div class="field-group"><label>🌱 GC de Origem (pai)</label>
+          <select class="field-input" id="egc_pai">
+            <option value="">— Nenhum (GC raiz) —</option>
+            ${opcoesPai}
+          </select>
+          <span style="font-size:11px;color:#64748B">Se este GC nasceu de outro, selecione o GC de origem.</span>
+        </div>
+        <div class="field-group"><label>Rede / Setor</label>
           <select class="field-input" id="egc_setor">
             ${["Verde","Laranja","Amarelo","Vermelho","Azul","Roxo"].map(s=>`<option${gc.setor===s?" selected":""}>${s}</option>`).join("")}
           </select></div>
@@ -573,16 +584,65 @@ function abrirEdicaoGC(id){
             <option value="0"${!gc.ativo?" selected":""}>Inativo</option>
           </select></div>
       </div>
-      <button class="btn-primary-lg" onclick="salvarEdicaoGC(${id})" style="margin-top:14px;padding:12px;font-size:13px">💾 Salvar</button>`);
+
+      <!-- INTEGRANTES -->
+      <div style="margin-top:16px;border-top:2px solid #EEF2F9;padding-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong style="font-size:13px;color:#0A2463">👥 Integrantes do GC</strong>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <input class="field-input" id="egc_int_nome" placeholder="Nome e sobrenome" style="flex:1">
+          <button class="btn-sm blue" onclick="addIntegrante(${id})" style="white-space:nowrap">+ Add</button>
+        </div>
+        <div id="egc_integrantes_lista"><div class="loading-msg">Carregando...</div></div>
+      </div>
+
+      <button class="btn-primary-lg" onclick="salvarEdicaoGC(${id})" style="margin-top:14px;padding:12px;font-size:13px">💾 Salvar GC</button>`);
+    carregarIntegrantes(id);
   });
 }
+
+async function carregarIntegrantes(gid){
+  const el = document.getElementById("egc_integrantes_lista");
+  if(!el) return;
+  try{
+    const r = await fetch(`/api/gcs/${gid}/integrantes`);
+    const list = await r.json();
+    if(!list.length){ el.innerHTML='<p style="font-size:12px;color:#8ca0c0">Nenhum integrante cadastrado ainda.</p>'; return; }
+    el.innerHTML = list.map(i=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#F8FAFF;border-radius:8px;margin-bottom:5px">
+        <span style="font-size:13px;font-weight:600;color:#0F2747">${esc(i.nome)}</span>
+        <button class="btn-sm red" onclick="delIntegrante(${i.id},${gid})" style="font-size:10px">✕</button>
+      </div>`).join("");
+  }catch(e){ el.innerHTML='<p style="font-size:12px;color:#DC2626">Erro ao carregar.</p>'; }
+}
+
+async function addIntegrante(gid){
+  const inp = document.getElementById("egc_int_nome");
+  const nome = inp.value.trim();
+  if(!nome){ toast("Digite o nome do integrante.","error"); return; }
+  if(nome.split(/\s+/).length < 2){ toast("Informe nome e sobrenome (ex: Pedro Pedreira).","error"); return; }
+  const r = await fetch(`/api/gcs/${gid}/integrantes`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({nome})});
+  const d = await r.json();
+  if(r.ok && d.ok){ inp.value=""; carregarIntegrantes(gid); }
+  else toast(d.erro||"Erro ao adicionar.","error");
+}
+
+async function delIntegrante(iid,gid){
+  await fetch(`/api/gcs/integrantes/${iid}`,{method:"DELETE"});
+  carregarIntegrantes(gid);
+}
+
 async function salvarEdicaoGC(id){
   const r=await fetch(`/api/gcs/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({nome:document.getElementById("egc_nome").value,
       lider:document.getElementById("egc_lider").value,
-telefone_lider:document.getElementById("egc_tel").value,
+      telefone_lider:document.getElementById("egc_tel").value,
+      supervisor:document.getElementById("egc_supervisor").value,
       endereco:document.getElementById("egc_end").value,
       bairro:document.getElementById("egc_bairro").value,
+      gc_pai_id:document.getElementById("egc_pai").value||null,
       setor:document.getElementById("egc_setor").value,
       ativo:parseInt(document.getElementById("egc_ativo").value)})});
   const d=await r.json();

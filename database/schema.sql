@@ -107,8 +107,19 @@ CREATE TABLE IF NOT EXISTS grupos_crescimento (
     cor_hex      TEXT    DEFAULT '#22C55E',
     lat          REAL    DEFAULT NULL,
     lng          REAL    DEFAULT NULL,
+    gc_pai_id    INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL,
+    supervisor   TEXT    DEFAULT '',
     ativo        INTEGER DEFAULT 1,
     criado_em    TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS gc_integrantes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    gc_id       INTEGER REFERENCES grupos_crescimento(id) ON DELETE CASCADE,
+    nome        TEXT    NOT NULL,
+    telefone    TEXT    DEFAULT '',
+    ativo       INTEGER DEFAULT 1,
+    criado_em   TEXT    DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS gc_direcionamentos (
@@ -167,6 +178,8 @@ CREATE TABLE IF NOT EXISTS relatorios_gc (
     nome_lider_trein    TEXT    DEFAULT '',
     observacoes         TEXT    DEFAULT '',
     campos_livres       TEXT    DEFAULT '',
+    valor_oferta        REAL    DEFAULT 0,
+    quilos_arrecadados  REAL    DEFAULT 0,
     criado_em           TEXT    DEFAULT (datetime('now','localtime'))
 );
 

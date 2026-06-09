@@ -134,14 +134,21 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <textarea id="proximos_passos" placeholder="Planejamento para o próximo encontro, metas, eventos..." style="min-height:70px"></textarea>
     </div>
 
-    <!-- CAMPOS LIVRES -->
+    <!-- OFERTA E ARRECADAÇÃO (campos padronizados, somente números) -->
     <div class="divider"></div>
-    <div class="section-label">📝 Campos Adicionais Livres</div>
-    <p style="font-size:12px;color:#64748B;margin:0 0 10px">Adicione campos personalizados para registrar informações extras do GC.</p>
-    <div id="campos_livres_container"></div>
-    <button type="button" onclick="adicionarCampoLivre()" style="background:#EBF5FF;color:#0A2463;border:2px dashed #93C5FD;border-radius:10px;padding:10px 16px;width:100%;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px">
-      + Adicionar Campo Livre
-    </button>
+    <div class="section-label">💰 Oferta e Arrecadação</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field" style="margin:0">
+        <label>Valor da Oferta (R$)</label>
+        <input type="number" id="valor_oferta" inputmode="decimal" step="0.01" min="0"
+          placeholder="0,00" style="font-size:15px">
+      </div>
+      <div class="field" style="margin:0">
+        <label>Quilos Arrecadados (kg)</label>
+        <input type="number" id="quilos_arrecadados" inputmode="decimal" step="0.1" min="0"
+          placeholder="0" style="font-size:15px">
+      </div>
+    </div>
 
     <div class="err" id="errMsg"></div>
     <button class="btn-submit" id="btnEnviar" onclick="enviarRelatorio()">Enviar Relatório</button>
@@ -213,15 +220,9 @@ async function enviarRelatorio(){
   const trein       = document.querySelector('input[name="lider_trein"]:checked')?.value === "sim";
   const nome_trein  = document.getElementById("nome_lider_trein").value.trim();
   const obs         = document.getElementById("observacoes").value.trim();
+  const valorOferta = parseFloat(document.getElementById("valor_oferta")?.value)||0;
+  const quilos      = parseFloat(document.getElementById("quilos_arrecadados")?.value)||0;
   const err         = document.getElementById("errMsg");
-
-  // Coleta campos livres
-  const campos_livres = [];
-  document.querySelectorAll(".campo-livre-item").forEach(item=>{
-    const titulo = item.querySelector(".cl-titulo")?.value?.trim();
-    const valor  = item.querySelector(".cl-valor")?.value?.trim();
-    if(titulo && valor) campos_livres.push({titulo,valor});
-  });
 
   err.style.display = "none";
   if(!gc_nome)         return mostrarErro("Selecione o GC.");
@@ -229,6 +230,8 @@ async function enviarRelatorio(){
   if(!anfitriao)       return mostrarErro("Informe o anfitrião.");
   if(!dia)             return mostrarErro("Informe o dia da reunião.");
   if(trein && !nome_trein) return mostrarErro("Informe o nome do líder em treinamento.");
+  if(valorOferta < 0)  return mostrarErro("Valor da oferta inválido.");
+  if(quilos < 0)       return mostrarErro("Quilos arrecadados inválido.");
 
   const btn = document.getElementById("btnEnviar");
   btn.innerHTML = '<span class="sp"></span>Enviando...'; btn.disabled = true;
@@ -245,7 +248,8 @@ async function enviarRelatorio(){
         anfitriao, dia, membros_presentes:membros, visitantes,
         lider_treinamento:trein, nome_lider_trein:nome_trein,
         observacoes: obs_completo,
-        campos_livres: campos_livres})
+        valor_oferta: valorOferta,
+        quilos_arrecadados: quilos})
     });
     const d = await r.json();
     if(r.ok && d.ok){
@@ -258,27 +262,6 @@ async function enviarRelatorio(){
     }
   }catch(e){ mostrarErro("Erro de conexão."); }
   btn.innerHTML = "Enviar Relatório"; btn.disabled = false;
-}
-
-let _clCount = 0;
-function adicionarCampoLivre(){
-  _clCount++;
-  const cont = document.getElementById("campos_livres_container");
-  const div = document.createElement("div");
-  div.className = "campo-livre-item field";
-  div.style.cssText = "background:#F8FAFF;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:grid;gap:6px";
-  div.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <label style="font-size:11px;font-weight:600;color:#4A6080;text-transform:uppercase">Campo ${_clCount}</label>
-      <button type="button" onclick="this.closest('.campo-livre-item').remove()" style="background:none;border:none;color:#94A3B8;cursor:pointer;font-size:16px">✕</button>
-    </div>
-    <input type="text" class="cl-titulo" placeholder="Nome do campo (ex: Tema da Reunião, Participante Especial...)"
-      style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;width:100%">
-    <textarea class="cl-valor" placeholder="Valor / descrição..."
-      style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;width:100%;min-height:60px;resize:vertical"></textarea>
-  `;
-  cont.appendChild(div);
-  div.querySelector(".cl-titulo").focus();
 }
 
 function mostrarErro(m){
