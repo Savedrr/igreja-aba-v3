@@ -2062,22 +2062,57 @@ async function carregarGenealogia(){
 }
 
 function renderNoArvore(no, prof){
+  // Raiz (nível 0): cartão destacado com a cor da rede
+  // Filhos (nível > 0): conectados por linhas tipo organograma
   const desc = no.qtd_descendentes ? ` · ${no.qtd_descendentes} desc.` : "";
-  const filhosCount = no.qtd_filhos ? `<span style="background:#22C55E;color:#fff;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700;margin-left:5px">${no.qtd_filhos} filho(s)</span>` : "";
-  let html = `<div style="margin-left:${prof*20}px;margin-bottom:5px">
-    <div style="background:#F8FAFF;border-left:4px solid ${no.cor_hex};border-radius:8px;padding:7px 11px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+  const filhosCount = no.qtd_filhos
+    ? `<span style="background:${no.cor_hex};color:#fff;padding:1px 8px;border-radius:20px;font-size:9px;font-weight:700;margin-left:6px;white-space:nowrap">${no.qtd_filhos} filho(s)</span>`
+    : "";
+  const meta = `👤 ${no.lider||"—"} · Nível ${no.nivel}${desc}${no.supervisor?` · 👁️ ${no.supervisor}`:""}`;
+
+  let cartao;
+  if(prof === 0){
+    // GC raiz — cartão com destaque na cor da rede
+    cartao = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;
+        padding:9px 12px;background:${no.cor_hex}14;border-left:4px solid ${no.cor_hex};border-radius:8px">
       <div style="min-width:0">
-        <div style="font-size:13px;font-weight:700;color:#0F2747">
-          ${prof>0?'↳ ':''}${no.nome}
-          <span style="background:${no.cor_hex};color:#fff;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700">${no.setor||""}</span>
+        <div style="font-size:14px;font-weight:700;color:#0F2747">${no.nome}
+          <span style="background:${no.cor_hex};color:#fff;padding:1px 8px;border-radius:20px;font-size:9px;font-weight:700">${no.setor||""}</span>
           ${filhosCount}
         </div>
-        <div style="font-size:11px;color:#64748B;margin-top:2px">👤 ${no.lider||"—"} · Nível ${no.nivel}${desc}${no.supervisor?` · 👁️ ${no.supervisor}`:""}</div>
+        <div style="font-size:11px;color:#64748B;margin-top:2px">${meta}</div>
       </div>
-      <button class="btn-sm blue" style="font-size:10px;flex-shrink:0" onclick="gerenciarGC(${no.id})">⚙️ Gerenciar</button>
+      <button class="btn-sm blue" style="font-size:10px;flex-shrink:0" onclick="gerenciarGC(${no.id})">⚙️</button>
     </div>`;
+  } else {
+    // GC filho — conectado por linha horizontal + ponto na cor da rede
+    cartao = `<div style="display:flex;align-items:center;gap:0">
+      <div style="width:18px;height:2px;background:#CBD5E1;flex-shrink:0"></div>
+      <div style="flex:1;min-width:0;display:flex;justify-content:space-between;align-items:center;gap:8px;
+          padding:8px 11px;background:#F8FAFF;border-radius:8px;border:0.5px solid #E2E8F0">
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#0F2747">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${no.cor_hex};margin-right:6px;vertical-align:1px"></span>${no.nome}
+            <span style="background:${no.cor_hex};color:#fff;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700">${no.setor||""}</span>
+            ${filhosCount}
+          </div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px;padding-left:14px">${meta}</div>
+        </div>
+        <button class="btn-sm blue" style="font-size:10px;flex-shrink:0" onclick="gerenciarGC(${no.id})">⚙️</button>
+      </div>
+    </div>`;
+  }
+
+  let html;
+  if(prof === 0){
+    html = `<div style="margin-bottom:10px">${cartao}`;
+  } else {
+    // Indenta e desenha a linha vertical de conexão à esquerda
+    html = `<div style="margin-left:${(prof-1)*22 + 8}px;border-left:2px solid #CBD5E1;padding-left:0;margin-top:6px">${cartao}`;
+  }
+
   if(no.filhos && no.filhos.length){
-    html += no.filhos.map(f=>renderNoArvore(f,prof+1)).join("");
+    html += no.filhos.map(f=>renderNoArvore(f, prof+1)).join("");
   }
   html += `</div>`;
   return html;
