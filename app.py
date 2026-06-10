@@ -3857,7 +3857,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;b
 @app.route("/api/relatorios_gc/frequencia/excel", methods=["GET"])
 @role_required("admin","lider")
 def frequencia_gc_excel():
-    """Excel completo de frequência dos GCs"""
+    """Excel dos relatórios de GC — uma aba por GC, agrupado por mês (formato modelo)"""
     gc_filtro = request.args.get("gc_nome","")
     ini       = request.args.get("data_ini","")
     fim       = request.args.get("data_fim","")
@@ -3868,95 +3868,154 @@ def frequencia_gc_excel():
     sql+=" ORDER BY gc_nome,dia"
     with get_db() as conn:
         rows = [dict(r) for r in conn.execute(qmark(sql),p).fetchall()]
+        # Mapa de cor/setor de cada GC
+        gcs_info = {dict(g)["nome"]: dict(g) for g in conn.execute(
+            "SELECT nome,setor,cor_hex,lider FROM grupos_crescimento"
+        ).fetchall()}
+
+    # Cores das redes (nome do setor → hex sem #)
+    CORES_REDE = {
+        "Verde":"C6EFCE","Laranja":"F8CB9C","Amarelo":"FFEB9C","Vermelho":"FFC7CE",
+        "Azul":"BDD7EE","Roxo":"E0C6F5"
+    }
+    def cor_da_rede(setor, cor_hex):
+        if setor in CORES_REDE: return CORES_REDE[setor]
+        if cor_hex and cor_hex.startswith("#"): return cor_hex[1:]
+        return "F8CB9C"
+
+    MESES_PT = ["","JANEIRO","FEVEREIRO","MARÇO","ABRIL","MAIO","JUNHO",
+                "JULHO","AGOSTO","SETEMBRO","OUTUBRO","NOVEMBRO","DEZEMBRO"]
 
     wb = openpyxl.Workbook()
-    azul   = PatternFill("solid",fgColor="0A2463")
-    azul2  = PatternFill("solid",fgColor="1B4FA8")
-    cinza  = PatternFill("solid",fgColor="EBF5FF")
-    verde  = PatternFill("solid",fgColor="D1FAE5")
-    amarelo= PatternFill("solid",fgColor="FEF3C7")
-    branco = PatternFill("solid",fgColor="FFFFFF")
-    tw = Font(color="FFFFFF",bold=True,name="Calibri",size=11)
+    # Estilos base
     tn = Font(name="Calibri",size=10)
     tb = Font(name="Calibri",size=10,bold=True)
-    centro=Alignment(horizontal="center",vertical="center")
-    esq=Alignment(horizontal="left",vertical="center",wrap_text=True)
-    borda=Border(left=Side(style="thin",color="D1D5DB"),right=Side(style="thin",color="D1D5DB"),
-                 top=Side(style="thin",color="D1D5DB"),bottom=Side(style="thin",color="D1D5DB"))
+    titulo_font = Font(name="Calibri",size=16,bold=True,color="000000")
+    cab_font = Font(name="Calibri",size=10,bold=True,color="000000")
+    centro = Alignment(horizontal="center",vertical="center",wrap_text=True)
+    centro_v = Alignment(horizontal="center",vertical="center")
+    fina = Side(style="thin",color="000000")
+    borda = Border(left=fina,right=fina,top=fina,bottom=fina)
+    borda_grossa = Border(*[Side(style="medium",color="000000")]*4)
 
-    def cab(ws,row,cols,fill=None):
-        fill=fill or azul
-        for i,t in enumerate(cols,1):
-            c=ws.cell(row=row,column=i,value=t)
-            c.fill=fill;c.font=tw;c.alignment=centro;c.border=borda
-    def cel(ws,row,col,val,bold=False,fill=None,align=None):
-        c=ws.cell(row=row,column=col,value=val)
-        c.fill=fill or branco;c.font=tb if bold else tn
-        c.alignment=align or centro;c.border=borda;return c
-
-    # Aba Resumo por GC
-    ws1=wb.active; ws1.title="Resumo por GC"
-    ws1.merge_cells("A1:F1")
-    c=ws1["A1"];c.value="FREQUÊNCIA DOS GCS — IGREJA ABA";c.fill=azul
-    c.font=Font(color="FFFFFF",bold=True,name="Calibri",size=14);c.alignment=centro
-    cab(ws1,2,["GC","Reuniões","Total Membros","Total Visitantes","Média Membros","Média Visitantes"],azul)
-    larguras={"A":28,"B":12,"C":16,"D":16,"E":16,"F":16}
-    for col,w in larguras.items(): ws1.column_dimensions[col].width=w
-
-    por_gc={}
+    # Agrupa relatórios por GC
+    por_gc = {}
     for r in rows:
-        n=r["gc_nome"]
-        if n not in por_gc: por_gc[n]={"reunioes":0,"membros":0,"vis":0}
-        por_gc[n]["reunioes"]+=1
-        por_gc[n]["membros"]+=r.get("membros_presentes",0)
-        por_gc[n]["vis"]+=r.get("visitantes",0)
+        por_gc.setdefault(r["gc_nome"], []).append(r)
 
-    for i,(nome,g) in enumerate(sorted(por_gc.items(),key=lambda x:x[1]["membros"],reverse=True),3):
-        n=max(g["reunioes"],1)
-        fill=cinza if i%2==0 else branco
-        cel(ws1,i,1,nome,bold=True,fill=fill,align=esq)
-        cel(ws1,i,2,g["reunioes"],fill=fill)
-        cel(ws1,i,3,g["membros"],fill=fill)
-        cel(ws1,i,4,g["vis"],fill=fill)
-        cel(ws1,i,5,round(g["membros"]/n,1),fill=fill)
-        cel(ws1,i,6,round(g["vis"]/n,1),fill=fill)
+    if not por_gc:
+        # Planilha vazia com aviso
+        ws = wb.active; ws.title = "Sem dados"
+        ws["A1"] = "Nenhum relatório de GC encontrado para o filtro selecionado."
+        ws["A1"].font = tb
+        ws.column_dimensions["A"].width = 60
+    else:
+        primeira = True
+        # Coluna A = MÊS; demais = dados
+        COLS = ["Mês","Data","Líder do GC","Anfitrião","Nome do GC","Cor",
+                "Membros\npresentes","Visitantes","Oferta (R$)","Quilos (kg)",
+                "Líder em\nTreinamento","Nome do Líder em\nTreinamento","Observações"]
+        LARG = [13,13,20,16,16,11,11,11,12,11,13,20,32]
 
-    # Linha totais
-    tot=len(por_gc)+3
-    cel(ws1,tot,1,"MÉDIA GERAL",bold=True,fill=amarelo,align=esq)
-    cel(ws1,tot,5,round(sum(g["membros"] for g in por_gc.values())/max(len(rows),1),1),bold=True,fill=amarelo)
-    cel(ws1,tot,6,round(sum(g["vis"] for g in por_gc.values())/max(len(rows),1),1),bold=True,fill=amarelo)
+        for gc_nome, lista in sorted(por_gc.items()):
+            # Cria aba (nome limitado a 31 chars, sem caracteres inválidos)
+            aba_nome = re.sub(r'[\[\]\:\*\?\/\\]', '', gc_nome)[:31]
+            if primeira:
+                ws = wb.active; ws.title = aba_nome; primeira = False
+            else:
+                ws = wb.create_sheet(aba_nome)
 
-    # Aba detalhe
-    ws2=wb.create_sheet("Todos Relatórios")
-    cols2=["Data","GC","Líder","Anfitrião","Membros","Visitantes","Líder Trein.","Nome Líder Trein.","Observações"]
-    larg2=[12,24,20,20,10,10,12,22,35]
-    for i,(c,l) in enumerate(zip(cols2,larg2),1): ws2.column_dimensions[get_column_letter(i)].width=l
-    ws2.row_dimensions[1].height=28
-    cab(ws2,1,cols2)
-    for i,r in enumerate(rows,2):
-        fill=cinza if i%2==0 else branco
-        vals=[br(r.get("dia","")),r.get("gc_nome",""),r.get("lider_nome",""),
-              r.get("anfitriao",""),r.get("membros_presentes",0),r.get("visitantes",0),
-              "Sim" if r.get("lider_treinamento") else "Não",r.get("nome_lider_trein",""),r.get("observacoes","")]
-        for j,v in enumerate(vals,1):
-            cel(ws2,i,j,v,fill=fill,align=esq if j in (2,3,4,8,9) else centro)
+            info = gcs_info.get(gc_nome, {})
+            cor_hex = cor_da_rede(info.get("setor",""), info.get("cor_hex",""))
+            fill_cor = PatternFill("solid", fgColor=cor_hex)
+            fill_titulo = PatternFill("solid", fgColor=cor_hex)
+            fill_cab = PatternFill("solid", fgColor="FFFFFF")
 
-    tot2=len(rows)+2
-    cel(ws2,tot2,1,"TOTAIS",bold=True,fill=amarelo)
-    ws2.merge_cells(f"A{tot2}:D{tot2}")
-    cel(ws2,tot2,5,sum(r.get("membros_presentes",0) for r in rows),bold=True,fill=amarelo)
-    cel(ws2,tot2,6,sum(r.get("visitantes",0) for r in rows),bold=True,fill=amarelo)
-    media2=tot2+1
-    cel(ws2,media2,1,"MÉDIAS",bold=True,fill=verde)
-    ws2.merge_cells(f"A{media2}:D{media2}")
-    n2=max(len(rows),1)
-    cel(ws2,media2,5,round(sum(r.get("membros_presentes",0) for r in rows)/n2,1),bold=True,fill=verde)
-    cel(ws2,media2,6,round(sum(r.get("visitantes",0) for r in rows)/n2,1),bold=True,fill=verde)
+            # Larguras
+            for i,l in enumerate(LARG,1):
+                ws.column_dimensions[get_column_letter(i)].width = l
+
+            ncols = len(COLS)
+            ultima_col = get_column_letter(ncols)
+
+            # Linha 1: TÍTULO "RELATÓRIO [NOME]" (evita duplicar "GC")
+            ws.merge_cells(f"A1:{ultima_col}1")
+            tcell = ws["A1"]
+            nome_titulo = gc_nome.upper()
+            if not nome_titulo.startswith("GC"):
+                nome_titulo = "GC " + nome_titulo
+            tcell.value = f"RELATÓRIO {nome_titulo}"
+            tcell.fill = fill_titulo; tcell.font = titulo_font
+            tcell.alignment = centro_v
+            ws.row_dimensions[1].height = 34
+            for col in range(1, ncols+1):
+                ws.cell(row=1, column=col).border = borda_grossa
+
+            # Linha 2: cabeçalho das colunas
+            ws.row_dimensions[2].height = 32
+            for i,c in enumerate(COLS,1):
+                cell = ws.cell(row=2, column=i, value=c)
+                cell.fill = fill_cab; cell.font = cab_font
+                cell.alignment = centro; cell.border = borda
+
+            # Agrupa por mês
+            por_mes = {}
+            for r in lista:
+                try:
+                    mnum = int(str(r.get("dia",""))[5:7])
+                except Exception:
+                    mnum = 0
+                por_mes.setdefault(mnum, []).append(r)
+
+            linha = 3
+            for mnum in sorted(por_mes.keys()):
+                relatorios_mes = por_mes[mnum]
+                inicio_mes = linha
+                for r in relatorios_mes:
+                    vals = [
+                        "",  # coluna A do mês — preenchida via merge depois
+                        br(r.get("dia","")),
+                        r.get("lider_nome","") or info.get("lider",""),
+                        r.get("anfitriao",""),
+                        gc_nome,
+                        info.get("setor","") or "—",
+                        r.get("membros_presentes",0),
+                        r.get("visitantes",0),
+                        round(float(r.get("valor_oferta",0) or 0),2),
+                        round(float(r.get("quilos_arrecadados",0) or 0),1),
+                        "SIM" if r.get("lider_treinamento") else "NÃO",
+                        r.get("nome_lider_trein",""),
+                        r.get("observacoes",""),
+                    ]
+                    for j,v in enumerate(vals,1):
+                        cell = ws.cell(row=linha, column=j, value=v)
+                        cell.font = tn; cell.border = borda
+                        # Colunas Líder do GC(3), Nome do GC(5) e Cor(6) recebem a cor da rede
+                        if j in (3,5,6):
+                            cell.fill = fill_cor
+                        if j in (3,4,5,12,13):
+                            cell.alignment = Alignment(horizontal="left",vertical="center",wrap_text=True)
+                        else:
+                            cell.alignment = centro
+                    linha += 1
+                fim_mes = linha - 1
+                # Mescla a coluna A (Mês) nas linhas desse mês e escreve o nome do mês
+                if fim_mes >= inicio_mes:
+                    if fim_mes > inicio_mes:
+                        ws.merge_cells(f"A{inicio_mes}:A{fim_mes}")
+                    mcell = ws.cell(row=inicio_mes, column=1,
+                                    value=MESES_PT[mnum] if 0 < mnum <= 12 else "—")
+                    mcell.font = tb
+                    mcell.alignment = Alignment(horizontal="center",vertical="center",text_rotation=0)
+                    mcell.fill = PatternFill("solid", fgColor="F2F2F2")
+                    for rr in range(inicio_mes, fim_mes+1):
+                        ws.cell(row=rr, column=1).border = borda
+
+            ws.freeze_panes = "B3"
 
     buf=io.BytesIO(); wb.save(buf); buf.seek(0)
     return send_file(buf,as_attachment=True,
-                     download_name=f"frequencia_gc_{date.today().isoformat()}.xlsx",
+                     download_name=f"relatorios_gc_{date.today().isoformat()}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ═══════════════════════════════════════════════════════════════
