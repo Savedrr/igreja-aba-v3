@@ -87,6 +87,11 @@ const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:
   gc:"Conecta GC",estoque:"Estoque",escalas:"Escalas",dashboard:"Relatórios",usuarios:"Usuários",
   dash_gc:"Gestão de GC",relatorios:"Relatórios",ia:"IA Contagem"};
 
+// Categoria de cada aba (para a trilha de navegação / breadcrumb)
+const TAB_CATEGORIA={registro:"Operação",checklist:"Operação",gc:"Operação",visitantes:"Operação",
+  estoque:"Operação",dash_gc:"Gestão de GC",relatorios:"Relatórios",escalas:"Relatórios",
+  usuarios:"Administração",ia:"Operação"};
+
 let _navHist = [];
 let _navVoltando = false;
 function ativarTab(tab){
@@ -102,6 +107,13 @@ function ativarTab(tab){
   if(tabEl) tabEl.classList.add("active");
   document.querySelector(`[data-tab="${tab}"]`)?.classList.add("active");
   document.getElementById("topbarTitle").textContent=TAB_TITLES[tab]||tab;
+  // Atualiza a trilha de navegação (breadcrumb)
+  const bc = document.getElementById("breadcrumb");
+  if(bc){
+    const cat = TAB_CATEGORIA[tab];
+    const titulo = TAB_TITLES[tab]||tab;
+    bc.innerHTML = cat ? `<span style="color:#94A3B8">${cat}</span><span style="color:#CBD5E1;margin:0 6px">›</span><span style="color:#0A2463;font-weight:600">${titulo}</span>` : "";
+  }
   // Mostra/esconde botão voltar
   const btnVoltar = document.getElementById("btnVoltar");
   if(btnVoltar) btnVoltar.style.display = _navHist.length ? "flex" : "none";
