@@ -144,7 +144,7 @@ function ativarTab(tab){
   if(bc){
     const cat = TAB_CATEGORIA[tab];
     const titulo = TAB_TITLES[tab]||tab;
-    bc.innerHTML = cat ? `<span style="color:#94A3B8">${cat}</span><span style="color:#CBD5E1;margin:0 6px">›</span><span style="color:#0A2463;font-weight:600">${titulo}</span>` : "";
+    bc.innerHTML = cat ? `<span style="color:var(--txt-3,#94A3B8)">${cat}</span><span style="color:var(--border-2,#CBD5E1);margin:0 6px">›</span><span style="color:var(--ouro-escuro,#A37D24);font-weight:600">${titulo}</span>` : "";
   }
   // Mostra/esconde botão voltar
   const btnVoltar = document.getElementById("btnVoltar");
@@ -2502,33 +2502,42 @@ async function carregarFrequenciaGC(){
             ${_isAdmin?`<button onclick="excluirRelatorioGC(${dt.id})" title="Excluir" style="background:none;border:none;cursor:pointer;font-size:13px">🗑️</button>`:""}
           </td>
         </tr>`).join("");
-      html+=`<div style="border:1px solid var(--c-border,#E2E8F0);border-radius:12px;margin-bottom:12px;overflow:hidden">
-        <div onclick="toggleCard(this)" style="background:linear-gradient(135deg,#0A2463,#1B4FA8);padding:11px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none">
-          <span style="font-weight:700;color:#fff;font-size:13px">${idx+1}. ${g.gc_nome}</span>
+      html+=`<div style="border:1px solid var(--c-border,#E2E8F0);border-radius:12px;margin-bottom:10px;overflow:hidden;background:var(--surface,#fff)">
+        <div onclick="toggleCard(this)" style="background:var(--card-head,linear-gradient(135deg,#0A2463,#1B4FA8));padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none">
+          <span style="font-weight:600;color:#fff;font-size:13px">${idx+1}. ${g.gc_nome}</span>
           <div style="display:flex;gap:8px;align-items:center">
-            <span style="background:rgba(255,255,255,.2);color:#fff;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">${g.reunioes} reuniões</span>
-            <span style="background:#22C55E;color:#fff;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">Méd: ${g.media_membros}</span>
-            <span class="card-chevron" style="color:#fff;font-size:14px;transition:transform .2s">▼</span>
+            <span style="background:rgba(255,255,255,.12);color:#CBD5E1;padding:2px 9px;border-radius:6px;font-size:10px;font-weight:600">${g.reunioes} reuniões</span>
+            <span style="background:var(--card-badge-bg,#56B4D3);color:var(--card-badge-tx,#06234A);padding:2px 9px;border-radius:6px;font-size:10px;font-weight:700">${g.media_membros} méd</span>
+            <span class="card-chevron" style="color:#94A3B8;font-size:13px;transition:transform .2s;transform:rotate(-90deg)">▼</span>
           </div>
         </div>
-        <div class="card-body" style="padding:12px 14px">
-          <div style="display:flex;gap:16px;margin-bottom:10px;font-size:12px;flex-wrap:wrap">
-            <span>👥 Membros: <strong>${g.total_membros}</strong></span>
-            <span>🙋 Visitantes: <strong style="color:#059669">${g.total_visitantes}</strong></span>
-            <span>📊 Média vis.: <strong>${g.media_visitantes}</strong></span>
+        <div class="card-body" style="display:none">
+          <div style="display:flex;border-bottom:1px solid var(--c-border,#E2E8F0)">
+            <div style="flex:1;padding:12px;text-align:center;border-right:1px solid var(--c-border,#E2E8F0)">
+              <div style="font-size:19px;font-weight:700;color:var(--txt,#0F172A)">${g.total_membros}</div>
+              <div style="font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.3px">Membros</div>
+            </div>
+            <div style="flex:1;padding:12px;text-align:center;border-right:1px solid var(--c-border,#E2E8F0)">
+              <div style="font-size:19px;font-weight:700;color:var(--accent-num,#1B4FA8)">${g.total_visitantes}</div>
+              <div style="font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.3px">Visitantes</div>
+            </div>
+            <div style="flex:1;padding:12px;text-align:center">
+              <div style="font-size:19px;font-weight:700;color:var(--txt,#0F172A)">${g.media_visitantes}</div>
+              <div style="font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.3px">Méd. Vis.</div>
+            </div>
           </div>
-          ${g.datas.length?`<table style="width:100%;border-collapse:collapse">
-            <thead><tr style="background:var(--c-bg-soft,#F8FAFF)">
-              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#4A6080">Data</th>
-              <th style="padding:6px 8px;text-align:center;font-size:10px;color:#4A6080">Membros</th>
-              <th style="padding:6px 8px;text-align:center;font-size:10px;color:#4A6080">Visitantes</th>
-              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#4A6080">Anfitrião</th>
-              <th style="padding:6px 8px;text-align:right;font-size:10px;color:#4A6080">Ações</th>
+          ${g.datas.length?`<div style="padding:10px 14px"><table style="width:100%;border-collapse:collapse">
+            <thead><tr style="background:var(--c-bg-soft,#F8FAFC)">
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.3px">Data</th>
+              <th style="padding:6px 8px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.3px">Memb.</th>
+              <th style="padding:6px 8px;text-align:center;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.3px">Vis.</th>
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.3px">Anfitrião</th>
+              <th style="padding:6px 8px;text-align:right;font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.3px">Ações</th>
             </tr></thead>
             <tbody>${datas_html}</tbody>
           </table>
-          ${g.datas.length>5?`<p style="font-size:10px;color:#94A3B8;text-align:center;margin-top:6px">Mostrando últimas 5 de ${g.datas.length} reuniões</p>`:""}
-          `:""}
+          ${g.datas.length>5?`<p style="font-size:10px;color:#94A3B8;text-align:center;margin-top:6px">Últimas 5 de ${g.datas.length} reuniões</p>`:""}
+          </div>`:""}
         </div>
       </div>`;
     });
