@@ -101,6 +101,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       </div>
     </div>
 
+    <div class="field">
+      <label>Nomes dos Visitantes</label>
+      <textarea id="visitante_nomes" placeholder="Liste os visitantes (um por linha ou separados por vírgula)" style="min-height:60px"></textarea>
+      <span style="font-size:11px;color:#64748B">Ajuda a acompanhar quem visitou e fazer o follow-up.</span>
+    </div>
+
     <div class="divider"></div>
     <div class="section-label">Líder em Treinamento</div>
     <div class="field">
@@ -299,6 +305,7 @@ async function enviarRelatorio(){
   const obs         = document.getElementById("observacoes").value.trim();
   const valorOferta = parseFloat(document.getElementById("valor_oferta")?.value)||0;
   const quilos      = parseFloat(document.getElementById("quilos_arrecadados")?.value)||0;
+  const visitanteNomes = document.getElementById("visitante_nomes")?.value.trim()||"";
   const err         = document.getElementById("errMsg");
 
   err.style.display = "none";
@@ -323,6 +330,7 @@ async function enviarRelatorio(){
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({gc_nome, lider_nome: lider_nome||anfitriao,
         anfitriao, dia, membros_presentes:membros, visitantes,
+        visitante_nomes: visitanteNomes,
         lider_treinamento:trein, nome_lider_trein:nome_trein,
         observacoes: obs_completo,
         valor_oferta: valorOferta,
@@ -334,6 +342,8 @@ async function enviarRelatorio(){
       document.getElementById("sucessoBody").style.display = "block";
       document.getElementById("sucessoMsg").textContent =
         `Relatório do ${gc_nome} referente a ${dia.split("-").reverse().join("/")} registrado!`;
+    }else if(r.status === 409){
+      mostrarErro(d.erro||"Já existe relatório para esta data.");
     }else{
       mostrarErro(d.erro||"Erro ao enviar.");
     }

@@ -1,11 +1,23 @@
 /* IGREJA ABA — app.js v5 */
 "use strict";
-const S={presentes:0,visitantes:0,criancas:0,periodo:"Noite",tipoCulto:"Culto Regular",cultoAtual:null};
+const S={presentes:0,visitantes:0,criancas:0,periodo:"Noite",tipoCulto:"Culto de Celebração",cultoAtual:null};
 const DIAS=["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"];
-const TIPOS=["Culto Regular","NAREAL","Evento","Reunião de Líderes","Culto de GC","Outro"];
-const COR_TIPO={"Culto Regular":"badge-noite","NAREAL":"badge-nareal","Evento":"badge-evento","Reunião de Líderes":"badge-tarde","Culto de GC":"badge-manha","Outro":""};
+const TIPOS=["Culto de Celebração","Culto da Família","Culto de Jovens","Culto de Mulheres","Culto de Homens","Conferência","Evento Especial","NAREAL","Reunião de Líderes","Culto de GC","Outro"];
+const COR_TIPO={"Culto de Celebração":"badge-noite","Culto da Família":"badge-manha","Culto de Jovens":"badge-nareal","Culto de Mulheres":"badge-evento","Culto de Homens":"badge-tarde","Conferência":"badge-nareal","Evento Especial":"badge-evento","NAREAL":"badge-nareal","Reunião de Líderes":"badge-tarde","Culto de GC":"badge-manha","Outro":""};
 function tipoBadgeClass(t){if(!t)return "";if(t.startsWith("Outro:"))return "";return COR_TIPO[t]||"";}
 let _cargo="voluntario",_isAdmin=false,_isLider=false,_iaSessaoId=null,_iaTimer=null;
+
+// ── DOWNLOAD sem abrir nova aba (navegação interna) ───────────
+function baixarArquivo(url, nomeArquivo){
+  const a = document.createElement("a");
+  a.href = url;
+  if(nomeArquivo) a.download = nomeArquivo;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>document.body.removeChild(a), 100);
+}
+
 
 // ── INIT ──────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded",async()=>{
@@ -40,6 +52,8 @@ async function verificarAuth(){
   if(badgeEl){badgeEl.textContent=roleLabel[d.cargo];badgeEl.className=`badge-role ${roleClass[d.cargo]}`;}
   // Controla itens de menu restritos
   document.getElementById("navUsuarios").style.display=_isAdmin?"":"none";
+  const navLabelAdmin=document.getElementById("navLabelAdmin");
+  if(navLabelAdmin) navLabelAdmin.style.display=_isAdmin?"":"none";
   const _nl=document.getElementById("navLogs"); if(_nl)_nl.style.display="none";
   // Voluntário não vê botão de criar usuário
   // Não preenche responsável automaticamente — usuário digita
@@ -73,15 +87,24 @@ const TAB_TITLES={registro:"Registro de Culto",checklist:"Checklist",visitantes:
   gc:"Conecta GC",estoque:"Estoque",escalas:"Escalas",dashboard:"Relatórios",usuarios:"Usuários",
   dash_gc:"Gestão de GC",relatorios:"Relatórios",ia:"IA Contagem"};
 
+let _navHist = [];
+let _navVoltando = false;
 function ativarTab(tab){
   // Dashboard e resumo agora vivem dentro de Relatórios (unificado)
   if(tab==="resumo"||tab==="dashboard") tab="relatorios";
+  // Registra histórico de navegação (para o botão voltar)
+  const tabAtual = document.querySelector(".tab-content.active")?.id?.replace("tab-","");
+  if(!_navVoltando && tabAtual && tabAtual!==tab){ _navHist.push(tabAtual); if(_navHist.length>20)_navHist.shift(); }
+  _navVoltando = false;
   document.querySelectorAll(".tab-content").forEach(t=>t.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
   const tabEl = document.getElementById("tab-"+tab);
   if(tabEl) tabEl.classList.add("active");
   document.querySelector(`[data-tab="${tab}"]`)?.classList.add("active");
   document.getElementById("topbarTitle").textContent=TAB_TITLES[tab]||tab;
+  // Mostra/esconde botão voltar
+  const btnVoltar = document.getElementById("btnVoltar");
+  if(btnVoltar) btnVoltar.style.display = _navHist.length ? "flex" : "none";
   if(tab==="relatorios"){carregarDashboard();atualizarSelectCultos();buscarRelatorio();}
   if(tab==="dash_gc"){carregarDashGC();}
   if(tab==="escalas"){const hoje=new Date();document.getElementById("escala_mes").value=hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");carregarVisualizacaoEscala();carregarVoluntarios();}
@@ -89,6 +112,16 @@ function ativarTab(tab){
   if(tab==="usuarios"&&_isAdmin){carregarUsuarios();carregarDeptosSelect();}
   if(tab==="gc"){carregarGCs();carregarDirecionamentos();popularSelectVisitantes();}
   if(tab==="estoque")carregarEstoque();
+  // Rola para o topo ao trocar de tela
+  const main = document.querySelector(".main-content")||document.querySelector(".content");
+  if(main) main.scrollTop = 0;
+}
+
+function voltarTab(){
+  if(!_navHist.length) return;
+  const anterior = _navHist.pop();
+  _navVoltando = true;
+  ativarTab(anterior);
 }
 
 // ── DATA / HORA ───────────────────────────────────────────────
@@ -180,7 +213,7 @@ async function abrirEdicaoCulto(id){
         </select></div>
       <div class="field-group" style="grid-column:1/-1"><label>Tipo de Culto</label>
         <select class="field-input" id="ed_tipo">
-          ${["Culto Regular","NAREAL","Evento","Reunião de Líderes","Culto de GC","Outro"].map(t=>`<option${c.tipo_culto===t?" selected":""}>${t}</option>`).join("")}
+          ${["Culto de Celebração","Culto da Família","Culto de Jovens","Culto de Mulheres","Culto de Homens","Conferência","Evento Especial","NAREAL","Reunião de Líderes","Culto de GC","Outro"].map(t=>`<option${c.tipo_culto===t?" selected":""}>${t}</option>`).join("")}
         </select></div>
       <div class="field-group" style="grid-column:1/-1"><label>Observações</label>
         <textarea class="field-input" id="ed_obs" rows="2" style="resize:vertical">${c.observacoes||""}</textarea></div>
@@ -766,7 +799,7 @@ function renderGraficoPorTipo(porTipo){
   const wrap=document.getElementById("grafico_tipo"); if(!wrap)return;
   if(!porTipo.length){wrap.innerHTML="<p style='color:#8ca0c0;font-size:13px'>Sem dados.</p>";return;}
   const maxVal=Math.max(...porTipo.map(t=>t.total_presentes),1);
-  const cores={"Culto Regular":"#1B4FA8","NAREAL":"#7C3AED","Evento":"#C2185B","Reunião de Líderes":"#D69E2E","Culto de GC":"#38A169","Outro":"#8CA0C0"};
+  const cores={"Culto de Celebração":"#1B4FA8","Culto da Família":"#38A169","Culto de Jovens":"#7C3AED","Culto de Mulheres":"#C2185B","Culto de Homens":"#D69E2E","Conferência":"#7C3AED","Evento Especial":"#C2185B","NAREAL":"#7C3AED","Reunião de Líderes":"#D69E2E","Culto de GC":"#38A169","Outro":"#8CA0C0"};
   wrap.innerHTML=`<div class="tipo-list">
     ${porTipo.map(t=>{
       const pct=Math.round(t.total_presentes/maxVal*100);
@@ -993,7 +1026,7 @@ async function carregarDashboard(){
       uc.innerHTML = d.ultimos.length ? d.ultimos.map(c=>`
         <div style="padding:9px 0;border-bottom:1px solid #EEF2F9;display:flex;align-items:center;gap:12px">
           <div style="min-width:130px;font-weight:700;font-size:12px;color:#0A2463">${c.data_br||c.data||""} — ${c.periodo||""}</div>
-          <div style="flex:1;font-size:12px;color:#64748B">${c.tipo_culto||"Culto Regular"} · ${c.responsavel||"—"}</div>
+          <div style="flex:1;font-size:12px;color:#64748B">${c.tipo_culto||"Culto de Celebração"} · ${c.responsavel||"—"}</div>
           <div style="font-size:13px;font-weight:700;color:#1B4FA8">${c.presentes||0} pres.</div>
         </div>`).join("")
         : '<p style="color:#8ca0c0;font-size:13px">Sem registros.</p>';
@@ -1984,6 +2017,75 @@ function copiarLinkRelatorio(){
   copiarLink(url);
 }
 
+// ── PESQUISA GLOBAL ──────────────────────────────────────────
+let _buscaTimer = null;
+function buscarGlobal(){
+  clearTimeout(_buscaTimer);
+  const termo = document.getElementById("buscaGlobal").value.trim();
+  const box = document.getElementById("buscaGlobalResultados");
+  if(termo.length < 2){ box.style.display="none"; return; }
+  _buscaTimer = setTimeout(async ()=>{
+    try{
+      const r = await fetch("/api/busca_global?q="+encodeURIComponent(termo));
+      const d = await r.json();
+      const res = d.resultados||[];
+      if(!res.length){
+        box.innerHTML = '<div style="padding:14px;color:#8ca0c0;font-size:13px;text-align:center">Nenhum resultado para "'+esc(termo)+'"</div>';
+      }else{
+        const cores = {GC:"#0A2463",Supervisor:"#9333EA",Membro:"#059669",Visitante:"#EA580C",Voluntário:"#2563EB"};
+        box.innerHTML = res.map(x=>`
+          <div style="padding:10px 14px;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;gap:10px">
+            <span style="background:${cores[x.tipo]||"#64748B"};color:#fff;font-size:9px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap">${x.tipo}</span>
+            <div style="min-width:0;flex:1">
+              <div style="font-size:13px;font-weight:600;color:#0F2747">${esc(x.titulo)}</div>
+              <div style="font-size:11px;color:#64748B">${esc(x.subtitulo||"")}</div>
+            </div>
+            ${x.tipo==="GC"&&x.id?`<button class="btn-sm blue" style="font-size:10px" onclick="gerenciarGC(${x.id});document.getElementById('buscaGlobalResultados').style.display='none'">⚙️</button>`:""}
+          </div>`).join("");
+      }
+      box.style.display="block";
+    }catch(e){ box.style.display="none"; }
+  }, 250);
+}
+document.addEventListener("click",(e)=>{
+  const box = document.getElementById("buscaGlobalResultados");
+  const inp = document.getElementById("buscaGlobal");
+  if(box && inp && !box.contains(e.target) && e.target!==inp){ box.style.display="none"; }
+});
+
+// ── INDICADORES DE VISITANTES (RETENÇÃO) ─────────────────────
+async function carregarIndicadoresVisitantes(){
+  try{
+    const r = await fetch("/api/visitantes/indicadores");
+    if(!r.ok) return;
+    const d = await r.json();
+    const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+    set("vis_semana", d.novos_semana||0);
+    set("vis_mes", d.novos_mes||0);
+    set("vis_retornaram", d.retornaram||0);
+    set("vis_taxa", (d.taxa_retencao||0)+"%");
+    const pend = document.getElementById("vis_pendentes");
+    if(pend){
+      const lista = d.acompanhamento_pendente||[];
+      if(!lista.length){
+        pend.innerHTML = '<p style="color:#8ca0c0;font-size:13px">Nenhum acompanhamento pendente no momento. 🎉</p>';
+      }else{
+        pend.innerHTML = lista.map(v=>{
+          const tel = (v.telefone||"").replace(/\D/g,"");
+          const wa = tel ? `https://wa.me/${tel.startsWith("55")?tel:"55"+tel}` : null;
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:#FFF7ED;border-radius:10px;margin-bottom:6px;border-left:3px solid #EA580C">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:#0F2747">${esc(v.nome)}</div>
+              <div style="font-size:11px;color:#94A3B8">Última visita: ${v.ultima_visita} · ${v.dias_sem} dias sem retornar</div>
+            </div>
+            ${wa?`<a href="${wa}" target="_blank" style="background:#25D366;color:#fff;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap">📲 Chamar</a>`:""}
+          </div>`;
+        }).join("");
+      }
+    }
+  }catch(e){ console.warn("Erro indicadores visitantes",e); }
+}
+
 // ── GENEALOGIA E MULTIPLICAÇÃO ──────────────────────────────
 async function carregarGenealogia(){
   try{
@@ -2140,6 +2242,20 @@ async function gerenciarGC(id){
         <select class="field-input" id="ggc_setor">
           ${["Verde","Laranja","Amarelo","Vermelho","Azul","Roxo"].map(s=>`<option${gc.setor===s?" selected":""}>${s}</option>`).join("")}
         </select></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field-group"><label>📅 Dia da semana</label>
+          <select class="field-input" id="ggc_dia">
+            <option value="">—</option>
+            ${["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"].map(s=>`<option${gc.dia_semana===s?" selected":""}>${s}</option>`).join("")}
+          </select></div>
+        <div class="field-group"><label>🕐 Horário</label><input type="time" class="field-input" id="ggc_horario" value="${esc(gc.horario||"")}"></div>
+      </div>
+      <div class="field-group"><label>Endereço</label><input class="field-input" id="ggc_endereco" value="${esc(gc.endereco||"")}"></div>
+      <div class="field-group"><label>Status</label>
+        <select class="field-input" id="ggc_ativo">
+          <option value="1"${gc.ativo?" selected":""}>Ativo</option>
+          <option value="0"${!gc.ativo?" selected":""}>Inativo</option>
+        </select></div>
     </div>
     <button class="btn-primary-lg" onclick="salvarGestaoGC(${id})" style="margin-top:14px;padding:12px;font-size:13px">💾 Salvar Gestão</button>`);
 }
@@ -2151,7 +2267,11 @@ async function salvarGestaoGC(id){
       lider:document.getElementById("ggc_lider").value,
       supervisor:document.getElementById("ggc_supervisor").value,
       gc_pai_id:document.getElementById("ggc_pai").value||null,
-      setor:document.getElementById("ggc_setor").value})});
+      setor:document.getElementById("ggc_setor").value,
+      dia_semana:document.getElementById("ggc_dia").value,
+      horario:document.getElementById("ggc_horario").value,
+      endereco:document.getElementById("ggc_endereco").value,
+      ativo:parseInt(document.getElementById("ggc_ativo").value)})});
   const d=await r.json();
   if(r.ok&&d.ok){toast("✅ Gestão do GC atualizada!","success");fecharModal();carregarGenealogia();}
   else toast(d.erro||"Erro.","error");
@@ -2181,7 +2301,7 @@ async function carregarSupervisores(){
 }
 
 function exportarGenealogiaExcel(){
-  window.open("/api/gcs/genealogia/excel","_blank");
+  baixarArquivo("/api/gcs/genealogia/excel","genealogia_gcs.xlsx");
   toast("⬇️ Gerando Excel da genealogia...","info");
 }
 function exportarGenealogiaPDF(){
@@ -2194,6 +2314,7 @@ async function carregarDashGC(){
   if(linkEl) linkEl.textContent = window.location.origin + "/relatorio-gc";
 
   carregarGenealogia();
+  carregarIndicadoresVisitantes();
 
   try{
     const r = await fetch("/api/relatorios_gc/dashboard");
@@ -2324,11 +2445,17 @@ async function carregarFrequenciaGC(){
     // Tabela por GC com frequência detalhada
     d.por_gc.forEach((g,idx)=>{
       const datas_html = g.datas.slice(-5).map(dt=>`
-        <tr style="font-size:11px">
+        <tr style="font-size:11px;cursor:pointer" onclick="verRelatorioGC(${dt.id})">
           <td style="padding:5px 8px;color:#4A6080">${dt.dia_br||dt.dia}</td>
           <td style="padding:5px 8px;text-align:center;font-weight:700;color:#0A2463">${dt.membros||0}</td>
           <td style="padding:5px 8px;text-align:center;color:#059669">${dt.visitantes||0}</td>
           <td style="padding:5px 8px;font-size:10px;color:#64748B">${dt.anfitriao||"—"}</td>
+          <td style="padding:5px 8px;text-align:right;white-space:nowrap" onclick="event.stopPropagation()">
+            <button onclick="verRelatorioGC(${dt.id})" title="Ver detalhes" style="background:none;border:none;cursor:pointer;font-size:13px">👁️</button>
+            <button onclick="editarRelatorioGC(${dt.id})" title="Editar" style="background:none;border:none;cursor:pointer;font-size:13px">✏️</button>
+            <button onclick="historicoRelatorioGC(${dt.id})" title="Histórico" style="background:none;border:none;cursor:pointer;font-size:13px">📋</button>
+            ${_isAdmin?`<button onclick="excluirRelatorioGC(${dt.id})" title="Excluir" style="background:none;border:none;cursor:pointer;font-size:13px">🗑️</button>`:""}
+          </td>
         </tr>`).join("");
       html+=`<div style="border:1px solid #E2E8F0;border-radius:12px;margin-bottom:12px;overflow:hidden">
         <div style="background:linear-gradient(135deg,#0A2463,#1B4FA8);padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
@@ -2350,6 +2477,7 @@ async function carregarFrequenciaGC(){
               <th style="padding:5px 8px;text-align:center;font-size:10px;color:#4A6080">Membros</th>
               <th style="padding:5px 8px;text-align:center;font-size:10px;color:#4A6080">Visitantes</th>
               <th style="padding:5px 8px;text-align:left;font-size:10px;color:#4A6080">Anfitrião</th>
+              <th style="padding:5px 8px;text-align:right;font-size:10px;color:#4A6080">Ações</th>
             </tr></thead>
             <tbody>${datas_html}</tbody>
           </table>
@@ -2362,6 +2490,116 @@ async function carregarFrequenciaGC(){
   }catch(e){ el.innerHTML=`<div class="permission-alert">❌ Erro: ${e.message}</div>`; }
 }
 
+// ── RELATÓRIOS GC: VER / EDITAR / HISTÓRICO / EXCLUIR ──────────
+async function verRelatorioGC(rid){
+  if(!rid){ toast("Relatório sem identificador.","error"); return; }
+  try{
+    const r = await fetch(`/api/relatorios_gc/${rid}`);
+    if(!r.ok){ toast("Erro ao carregar relatório.","error"); return; }
+    const d = await r.json();
+    const rel = d.relatorio;
+    abrirModal(`👁️ Reunião de ${rel.data_br||rel.dia}`,`
+      <div style="display:grid;gap:8px;font-size:13px">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #EEF2F9"><span style="color:#64748B">GC</span><strong>${esc(rel.gc_nome||"")}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #EEF2F9"><span style="color:#64748B">Líder</span><strong>${esc(rel.lider_nome||"—")}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #EEF2F9"><span style="color:#64748B">Anfitrião</span><strong>${esc(rel.anfitriao||"—")}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #EEF2F9"><span style="color:#64748B">Membros presentes</span><strong>${rel.membros_presentes||0}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #EEF2F9"><span style="color:#64748B">Visitantes</span><strong style="color:#059669">${rel.visitantes||0}</strong></div>
+        ${rel.visitante_nomes?`<div style="padding:7px 0;border-bottom:1px solid #EEF2F9"><span style="color:#64748B">Nomes dos visitantes:</span><div style="margin-top:4px">${esc(rel.visitante_nomes)}</div></div>`:""}
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #EEF2F9"><span style="color:#64748B">Oferta</span><strong>R$ ${(rel.valor_oferta||0).toFixed(2).replace(".",",")}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #EEF2F9"><span style="color:#64748B">Quilos</span><strong>${rel.quilos_arrecadados||0} kg</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #EEF2F9"><span style="color:#64748B">Líder em treinamento</span><strong>${rel.lider_treinamento?("Sim — "+esc(rel.nome_lider_trein||"")):"Não"}</strong></div>
+        ${rel.observacoes?`<div style="padding:7px 0"><span style="color:#64748B">Observações:</span><div style="margin-top:4px">${esc(rel.observacoes)}</div></div>`:""}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn-primary-lg" onclick="editarRelatorioGC(${rid})" style="flex:1;padding:11px;font-size:13px">✏️ Editar</button>
+        ${d.auditoria&&d.auditoria.length?`<button class="btn-sm" onclick="historicoRelatorioGC(${rid})" style="padding:11px 14px;background:#EEF2F9;color:#0A2463;border:none;border-radius:10px;font-weight:700">📋 Histórico (${d.auditoria.length})</button>`:""}
+      </div>`);
+  }catch(e){ toast("Erro de conexão.","error"); }
+}
+
+async function editarRelatorioGC(rid){
+  if(!rid){ toast("Relatório sem identificador.","error"); return; }
+  try{
+    const r = await fetch(`/api/relatorios_gc/${rid}`);
+    if(!r.ok){ toast("Erro ao carregar relatório.","error"); return; }
+    const rel = (await r.json()).relatorio;
+    abrirModal(`✏️ Editar reunião — ${rel.data_br||rel.dia}`,`
+      <div style="display:grid;gap:10px">
+        <div class="field-group"><label>Líder</label><input class="field-input" id="er_lider" value="${esc(rel.lider_nome||"")}"></div>
+        <div class="field-group"><label>Anfitrião</label><input class="field-input" id="er_anfitriao" value="${esc(rel.anfitriao||"")}"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field-group"><label>Membros presentes</label><input type="number" min="0" class="field-input" id="er_membros" value="${rel.membros_presentes||0}"></div>
+          <div class="field-group"><label>Visitantes</label><input type="number" min="0" class="field-input" id="er_visitantes" value="${rel.visitantes||0}"></div>
+        </div>
+        <div class="field-group"><label>Nomes dos visitantes</label><textarea class="field-input" id="er_vis_nomes" style="min-height:55px">${esc(rel.visitante_nomes||"")}</textarea></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field-group"><label>Oferta (R$)</label><input type="number" step="0.01" min="0" class="field-input" id="er_oferta" value="${rel.valor_oferta||0}"></div>
+          <div class="field-group"><label>Quilos (kg)</label><input type="number" step="0.1" min="0" class="field-input" id="er_quilos" value="${rel.quilos_arrecadados||0}"></div>
+        </div>
+        <div class="field-group"><label>Líder em treinamento</label>
+          <select class="field-input" id="er_trein">
+            <option value="0"${!rel.lider_treinamento?" selected":""}>Não</option>
+            <option value="1"${rel.lider_treinamento?" selected":""}>Sim</option>
+          </select></div>
+        <div class="field-group"><label>Nome do líder em treinamento</label><input class="field-input" id="er_nome_trein" value="${esc(rel.nome_lider_trein||"")}"></div>
+        <div class="field-group"><label>Observações</label><textarea class="field-input" id="er_obs" style="min-height:60px">${esc(rel.observacoes||"")}</textarea></div>
+      </div>
+      <button class="btn-primary-lg" onclick="salvarEdicaoRelatorioGC(${rid})" style="margin-top:14px;padding:12px;font-size:13px">💾 Salvar alterações</button>`);
+  }catch(e){ toast("Erro de conexão.","error"); }
+}
+
+async function salvarEdicaoRelatorioGC(rid){
+  const body = {
+    lider_nome: document.getElementById("er_lider").value,
+    anfitriao: document.getElementById("er_anfitriao").value,
+    membros_presentes: parseInt(document.getElementById("er_membros").value)||0,
+    visitantes: parseInt(document.getElementById("er_visitantes").value)||0,
+    visitante_nomes: document.getElementById("er_vis_nomes").value,
+    valor_oferta: parseFloat(document.getElementById("er_oferta").value)||0,
+    quilos_arrecadados: parseFloat(document.getElementById("er_quilos").value)||0,
+    lider_treinamento: document.getElementById("er_trein").value==="1",
+    nome_lider_trein: document.getElementById("er_nome_trein").value,
+    observacoes: document.getElementById("er_obs").value
+  };
+  const r = await fetch(`/api/relatorios_gc/${rid}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const d = await r.json();
+  if(r.ok && d.ok){ toast("✅ Relatório atualizado!","success"); fecharModal(); carregarFrequenciaGC(); }
+  else toast(d.erro||"Erro ao salvar.","error");
+}
+
+async function historicoRelatorioGC(rid){
+  if(!rid){ toast("Relatório sem identificador.","error"); return; }
+  try{
+    const r = await fetch(`/api/relatorios_gc/${rid}`);
+    if(!r.ok){ toast("Erro ao carregar histórico.","error"); return; }
+    const aud = (await r.json()).auditoria||[];
+    const campos = {anfitriao:"Anfitrião",membros_presentes:"Membros",visitantes:"Visitantes",
+      visitante_nomes:"Nomes visitantes",lider_nome:"Líder",nome_lider_trein:"Líder em treino",
+      lider_treinamento:"Tem líder em treino",observacoes:"Observações",valor_oferta:"Oferta",quilos_arrecadados:"Quilos"};
+    abrirModal("📋 Histórico de alterações",
+      aud.length? `<div style="display:grid;gap:8px">${aud.map(a=>`
+        <div style="background:#F8FAFF;border-radius:10px;padding:10px 12px;font-size:12px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <strong style="color:#0A2463">${campos[a.campo]||a.campo}</strong>
+            <span style="color:#94A3B8;font-size:11px">${a.criado_em||""}</span>
+          </div>
+          <div style="color:#64748B">De: <span style="color:#DC2626">${esc(String(a.valor_anterior||"—"))}</span> → Para: <span style="color:#059669">${esc(String(a.valor_novo||"—"))}</span></div>
+          <div style="color:#94A3B8;font-size:11px;margin-top:3px">por ${esc(a.usuario||"—")}</div>
+        </div>`).join("")}</div>`
+      : '<p style="color:#8ca0c0;font-size:13px;padding:10px">Nenhuma alteração registrada. Este relatório está como foi enviado originalmente.</p>');
+  }catch(e){ toast("Erro de conexão.","error"); }
+}
+
+async function excluirRelatorioGC(rid){
+  if(!rid) return;
+  if(!confirm("Tem certeza que deseja EXCLUIR este relatório? Esta ação não pode ser desfeita.")) return;
+  const r = await fetch(`/api/relatorios_gc/${rid}`,{method:"DELETE"});
+  const d = await r.json();
+  if(r.ok && d.ok){ toast("Relatório excluído.","success"); carregarFrequenciaGC(); }
+  else toast(d.erro||"Erro ao excluir.","error");
+}
+
 function exportarFrequenciaExcel(){
   const gcFiltro = document.getElementById("gc_freq_filtro")?.value||"";
   const ini      = document.getElementById("gc_freq_ini")?.value||"";
@@ -2370,7 +2608,7 @@ function exportarFrequenciaExcel(){
   if(gcFiltro) p.append("gc_nome",gcFiltro);
   if(ini) p.append("data_ini",ini);
   if(fim) p.append("data_fim",fim);
-  window.open("/api/relatorios_gc/frequencia/excel?"+p,"_blank");
+  baixarArquivo("/api/relatorios_gc/frequencia/excel?"+p,"relatorios_gc.xlsx");
 }
 
 function exportarFrequenciaPDF(){

@@ -1,0 +1,35 @@
+═══════════════════════════════════════════════════════════
+  REESTRUTURAÇÃO UX (v22) — Igreja ABA
+═══════════════════════════════════════════════════════════
+Substitua estes 3 arquivos:
+  1. app.py                     → raiz
+  2. static/js/app.js           → static/js/
+  3. templates/dashboard.html   → templates/
+
+Depois:
+  git add -A
+  git commit -m "v22: reestruturacao UX - menu por categorias, culto de celebracao, navegacao"
+  git push
+
+═══════════════════════════════════════════════════════════
+  O QUE MUDOU
+═══════════════════════════════════════════════════════════
+OPÇÃO A (cores ABA mantidas):
+- Menu reorganizado por categorias: OPERAÇÃO, GESTÃO DE GC,
+  RELATÓRIOS, ADMINISTRAÇÃO
+- "Culto Regular" renomeado para "Culto de Celebração" em
+  todo o sistema (inclui migração dos dados antigos)
+- Novos modelos de culto: Família, Jovens, Mulheres, Homens,
+  Conferência, Evento Especial + nome personalizado (Outro)
+- Corrigido "Concecta GC" -> "Conecta GC"
+
+OPÇÃO B:
+- Excel agora BAIXA sem abrir nova aba (navegação interna)
+- Botão VOLTAR (‹) no topo, com histórico de navegação
+- Rola para o topo ao trocar de tela
+- Cards de GC removidos da aba Relatórios (centralizados na
+  Gestão de GC, evitando duplicidade)
+- Descrições das telas mais claras
+
+OBS: O tema continua azul (Opção A). Os PDFs ainda abrem
+para visualização/impressão (necessário para salvar em PDF).

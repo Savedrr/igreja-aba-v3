@@ -43,7 +43,7 @@ DB_DIR       = _db_dir
 DB_PATH      = os.path.join(DB_DIR,"igreja_aba.db")
 SQL_PATH     = os.path.join(BASE_DIR,"database","schema.sql")
 
-TIPOS_CULTO = ["Culto Regular","NAREAL","Evento","Reunião de Líderes","Culto de GC","Outro"]
+TIPOS_CULTO = ["Culto de Celebração","Culto da Família","Culto de Jovens","Culto de Mulheres","Culto de Homens","Conferência","Evento Especial","NAREAL","Reunião de Líderes","Culto de GC","Outro"]
 
 # ── DB ────────────────────────────────────────────────────────
 
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS cultos (
     hora        TEXT NOT NULL,
     dia_semana  TEXT NOT NULL,
     periodo     TEXT NOT NULL,
-    tipo_culto  TEXT DEFAULT 'Culto Regular',
+    tipo_culto  TEXT DEFAULT 'Culto de Celebração',
     responsavel TEXT NOT NULL,
     presentes   INTEGER DEFAULT 0,
     visitantes  INTEGER DEFAULT 0,
@@ -393,7 +393,7 @@ def _pg_migrations(conn):
             criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
             atualizado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
         "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS telefone_lider TEXT DEFAULT ''",
-        "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto Regular'",
+        "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto de Celebração'",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_em TEXT DEFAULT NULL",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_por TEXT DEFAULT NULL",
         "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS endereco_padronizado TEXT DEFAULT ''",
@@ -401,7 +401,7 @@ def _pg_migrations(conn):
         "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS lng REAL DEFAULT NULL",
         "ALTER TABLE estoque ADD COLUMN IF NOT EXISTS atualizado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')",
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS criado_em TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')",
-        "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto Regular'",
+        "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS tipo_culto TEXT DEFAULT 'Culto de Celebração'",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_em TEXT DEFAULT NULL",
         "ALTER TABLE cultos ADD COLUMN IF NOT EXISTS editado_por TEXT DEFAULT NULL",
         "ALTER TABLE visitantes ADD COLUMN IF NOT EXISTS endereco_padronizado TEXT DEFAULT ''",
@@ -452,6 +452,19 @@ def _pg_migrations(conn):
             nome TEXT NOT NULL, telefone TEXT DEFAULT '',
             ativo INTEGER DEFAULT 1,
             criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
+        "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS dia_semana TEXT DEFAULT ''",
+        "ALTER TABLE grupos_crescimento ADD COLUMN IF NOT EXISTS horario TEXT DEFAULT ''",
+        "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS visitante_nomes TEXT DEFAULT ''",
+        "ALTER TABLE relatorios_gc ADD COLUMN IF NOT EXISTS atualizado_em TEXT DEFAULT ''",
+        """CREATE TABLE IF NOT EXISTS relatorios_gc_auditoria (
+            id SERIAL PRIMARY KEY,
+            relatorio_id INTEGER,
+            usuario TEXT DEFAULT '',
+            campo TEXT DEFAULT '',
+            valor_anterior TEXT DEFAULT '',
+            valor_novo TEXT DEFAULT '',
+            criado_em TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'))""",
+        "UPDATE cultos SET tipo_culto='Culto de Celebração' WHERE tipo_culto='Culto Regular'",
     ]
     cur = conn.cursor()
     for sql in migrations:
@@ -603,6 +616,19 @@ def _init_sqlite():
             nome TEXT NOT NULL, telefone TEXT DEFAULT '',
             ativo INTEGER DEFAULT 1,
             criado_em TEXT DEFAULT (datetime('now','localtime')))""",
+        "ALTER TABLE grupos_crescimento ADD COLUMN dia_semana TEXT DEFAULT ''",
+        "ALTER TABLE grupos_crescimento ADD COLUMN horario TEXT DEFAULT ''",
+        "ALTER TABLE relatorios_gc ADD COLUMN visitante_nomes TEXT DEFAULT ''",
+        "ALTER TABLE relatorios_gc ADD COLUMN atualizado_em TEXT DEFAULT ''",
+        """CREATE TABLE IF NOT EXISTS relatorios_gc_auditoria (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            relatorio_id INTEGER,
+            usuario TEXT DEFAULT '',
+            campo TEXT DEFAULT '',
+            valor_anterior TEXT DEFAULT '',
+            valor_novo TEXT DEFAULT '',
+            criado_em TEXT DEFAULT (datetime('now','localtime')))""",
+        "UPDATE cultos SET tipo_culto='Culto de Celebração' WHERE tipo_culto='Culto Regular'",
     ]
     for sql in _migrations_sqlite:
         try:
@@ -1040,7 +1066,7 @@ def listar_cultos():
     fim = request.args.get("data_fim","")
     per = request.args.get("periodo","")
     tpc = request.args.get("tipo_culto","")
-    sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos WHERE 1=1"
+    sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto de Celebração') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos WHERE 1=1"
     p   = []
     if ini: sql+=" AND data>=?"; p.append(ini)
     if fim: sql+=" AND data<=?"; p.append(fim)
@@ -1059,10 +1085,10 @@ def criar_culto():
     dc  = d.get("data", date.today().isoformat())
     hc  = d.get("hora", datetime.now().strftime("%H:%M"))
     resp= d.get("responsavel","").strip()
-    tc  = d.get("tipo_culto","Culto Regular")
+    tc  = d.get("tipo_culto","Culto de Celebração")
     tc_outro = d.get("tipo_outro","").strip()  # descrição quando tipo="Outro"
     if not resp: return jsonify({"erro":"Responsável obrigatório"}),400
-    if tc not in TIPOS_CULTO: tc = "Culto Regular"
+    if tc not in TIPOS_CULTO: tc = "Culto de Celebração"
     # Se "Outro" com descrição, salva como "Outro: descrição"
     if tc == "Outro" and tc_outro:
         tc = f"Outro: {tc_outro}"
@@ -1090,7 +1116,7 @@ def criar_culto():
 @login_required
 def obter_culto(cid):
     with get_db() as conn:
-        c = conn.execute(qmark("SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos WHERE id=?"), (cid,)).fetchone()
+        c = conn.execute(qmark("SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto de Celebração') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos WHERE id=?"), (cid,)).fetchone()
         if not c: return jsonify({"erro":"Culto não encontrado"}),404
         chks= conn.execute(qmark("SELECT * FROM checklists WHERE culto_id=? ORDER BY categoria,id"), (cid,)).fetchall()
         vis = conn.execute(qmark("SELECT * FROM visitantes WHERE culto_id=? ORDER BY id"), (cid,)).fetchall()
@@ -1260,6 +1286,100 @@ def link_visitante(vid):
     msg = f"Olá {v['nome']}, tudo bem? Somos da Igreja ABA e ficamos muito felizes com sua visita! 😊"
     wa  = f"https://wa.me/{tel}?text={urllib.parse.quote(msg)}"
     return jsonify({"nome":v["nome"],"telefone":v["telefone"],"maps_link":maps,"whatsapp_link":wa})
+
+@app.route("/api/visitantes/indicadores", methods=["GET"])
+@role_required("admin","lider")
+def visitantes_indicadores():
+    """Indicadores de acompanhamento e retenção de visitantes"""
+    from datetime import timedelta
+    hoje = datetime.now()
+    sem_ini = (hoje - timedelta(days=7)).strftime("%Y-%m-%d")
+    mes_ini = (hoje - timedelta(days=30)).strftime("%Y-%m-%d")
+    with get_db() as conn:
+        vis = [dict(r) for r in conn.execute("SELECT * FROM visitantes ORDER BY criado_em").fetchall()]
+
+    # Agrupa por nome+telefone para detectar retorno
+    pessoas = {}
+    for v in vis:
+        chave = (v.get("nome","").strip().lower(), re.sub(r'\D','',v.get("telefone","")))
+        pessoas.setdefault(chave, []).append(v)
+
+    novos_semana = novos_mes = retornaram = nao_retornaram = 0
+    pendentes = []
+    for chave, visitas in pessoas.items():
+        visitas.sort(key=lambda x: str(x.get("criado_em","")))
+        primeira = str(visitas[0].get("criado_em",""))[:10]
+        ultima = str(visitas[-1].get("criado_em",""))[:10]
+        if primeira >= sem_ini: novos_semana += 1
+        if primeira >= mes_ini: novos_mes += 1
+        if len(visitas) > 1:
+            retornaram += 1
+        else:
+            nao_retornaram += 1
+            # Dias sem participar
+            try:
+                dias = (hoje - datetime.strptime(ultima,"%Y-%m-%d")).days
+            except Exception:
+                dias = 0
+            if dias >= 7:
+                pendentes.append({"nome":visitas[0].get("nome",""),
+                                  "telefone":visitas[0].get("telefone",""),
+                                  "ultima_visita":br(ultima),"dias_sem":dias})
+    total_pessoas = max(len(pessoas),1)
+    taxa_retencao = round(retornaram/total_pessoas*100,1)
+    pendentes.sort(key=lambda x:-x["dias_sem"])
+    return jsonify({
+        "novos_semana": novos_semana,
+        "novos_mes": novos_mes,
+        "retornaram": retornaram,
+        "nao_retornaram": nao_retornaram,
+        "taxa_retencao": taxa_retencao,
+        "total_visitantes": len(pessoas),
+        "acompanhamento_pendente": pendentes[:50]
+    })
+
+@app.route("/api/busca_global", methods=["GET"])
+@role_required("admin","lider")
+def busca_global():
+    """Pesquisa rápida em GCs, líderes, supervisores, visitantes, membros, voluntários"""
+    termo = request.args.get("q","").strip().lower()
+    if len(termo) < 2:
+        return jsonify({"resultados": []})
+    like = f"%{termo}%"
+    resultados = []
+    with get_db() as conn:
+        # GCs (nome, líder, supervisor)
+        for g in conn.execute(qmark(
+            "SELECT id,nome,lider,supervisor,setor FROM grupos_crescimento WHERE ativo=1 AND (LOWER(nome) LIKE ? OR LOWER(lider) LIKE ? OR LOWER(supervisor) LIKE ?)"),
+            (like,like,like)).fetchall():
+            g = dict(g)
+            resultados.append({"tipo":"GC","titulo":g["nome"],
+                "subtitulo":f"Líder: {g.get('lider') or '—'} · Rede: {g.get('setor','')}","id":g["id"]})
+            if g.get("supervisor") and termo in g["supervisor"].lower():
+                resultados.append({"tipo":"Supervisor","titulo":g["supervisor"],
+                    "subtitulo":f"Supervisiona: {g['nome']}","id":g["id"]})
+        # Membros / integrantes
+        for m in conn.execute(qmark(
+            "SELECT i.nome,g.nome as gc FROM gc_integrantes i LEFT JOIN grupos_crescimento g ON g.id=i.gc_id WHERE i.ativo=1 AND LOWER(i.nome) LIKE ?"),
+            (like,)).fetchall():
+            m = dict(m)
+            resultados.append({"tipo":"Membro","titulo":m["nome"],
+                "subtitulo":f"GC: {m.get('gc') or '—'}","id":None})
+        # Visitantes
+        for v in conn.execute(qmark(
+            "SELECT id,nome,telefone FROM visitantes WHERE LOWER(nome) LIKE ? ORDER BY criado_em DESC LIMIT 20"),
+            (like,)).fetchall():
+            v = dict(v)
+            resultados.append({"tipo":"Visitante","titulo":v["nome"],
+                "subtitulo":f"Tel: {v.get('telefone') or '—'}","id":v["id"]})
+        # Voluntários (líderes em treinamento aparecem nos relatórios)
+        for vol in conn.execute(qmark(
+            "SELECT id,nome,departamentos FROM voluntarios WHERE LOWER(nome) LIKE ? LIMIT 20"),
+            (like,)).fetchall():
+            vol = dict(vol)
+            resultados.append({"tipo":"Voluntário","titulo":vol["nome"],
+                "subtitulo":vol.get("departamentos") or "—","id":vol["id"]})
+    return jsonify({"resultados": resultados[:60]})
 
 # ═══════════════════════════════════════════════════════════════
 # GEOCODIFICAÇÃO
@@ -1493,11 +1613,13 @@ def criar_gc():
     setor = d.get("setor","Verde")
     gc_pai = d.get("gc_pai_id") or None
     supervisor = d.get("supervisor","").strip()
+    dia_semana = d.get("dia_semana","").strip()
+    horario = d.get("horario","").strip()
     with get_db() as conn:
         cur = conn.execute(
-            qmark("INSERT INTO grupos_crescimento(nome,lider,telefone_lider,endereco,bairro,cidade,setor,cor_hex,lat,lng,gc_pai_id,supervisor) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"),
+            qmark("INSERT INTO grupos_crescimento(nome,lider,telefone_lider,endereco,bairro,cidade,setor,cor_hex,lat,lng,gc_pai_id,supervisor,dia_semana,horario) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"),
             (nome, d.get("lider",""), d.get("telefone_lider",""), end, bairro, cidade, setor,
-             d.get("cor_hex", cor_map.get(setor,"#22C55E")), lat, lng, gc_pai, supervisor)
+             d.get("cor_hex", cor_map.get(setor,"#22C55E")), lat, lng, gc_pai, supervisor, dia_semana, horario)
         )
         conn.commit()
         new_id = cur.lastrowid
@@ -1525,7 +1647,7 @@ def atualizar_gc(gid):
                 lat, lng = new_lat, new_lng
         conn.execute(
             qmark("""UPDATE grupos_crescimento SET nome=?,lider=?,telefone_lider=?,endereco=?,bairro=?,cidade=?,
-               setor=?,cor_hex=?,lat=?,lng=?,gc_pai_id=?,supervisor=?,metas=?,ativo=? WHERE id=?"""),
+               setor=?,cor_hex=?,lat=?,lng=?,gc_pai_id=?,supervisor=?,metas=?,dia_semana=?,horario=?,ativo=? WHERE id=?"""),
             (d.get("nome",gc["nome"]),
              d.get("lider", gc["lider"] if "lider" in gc.keys() else ""),
              d.get("telefone_lider", gc["telefone_lider"] if "telefone_lider" in gc.keys() else ""),
@@ -1535,6 +1657,8 @@ def atualizar_gc(gid):
              d.get("gc_pai_id") if d.get("gc_pai_id") else None,
              d.get("supervisor", gc["supervisor"] if "supervisor" in gc.keys() else ""),
              d.get("metas", gc["metas"] if "metas" in gc.keys() else ""),
+             d.get("dia_semana", gc["dia_semana"] if "dia_semana" in gc.keys() else ""),
+             d.get("horario", gc["horario"] if "horario" in gc.keys() else ""),
              int(d.get("ativo",gc["ativo"])), gid)
         )
         conn.commit()
@@ -2075,7 +2199,7 @@ def dashboard():
         # Por tipo de culto (com filtros)
         try:
             por_tipo = [dict(r) for r in conn.execute(qmark(
-                f"""SELECT COALESCE(tipo_culto,'Culto Regular') as tipo_culto,
+                f"""SELECT COALESCE(tipo_culto,'Culto de Celebração') as tipo_culto,
                    COUNT(*) as qtd,
                    COALESCE(SUM(presentes),0) as total_presentes,
                    COALESCE(SUM(visitantes),0) as total_visitantes
@@ -2101,7 +2225,7 @@ def dashboard():
         # Últimos 5 cultos
         try:
             ultimos = [dict(r) for r in conn.execute(
-                qmark("SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em FROM cultos ORDER BY data DESC,hora DESC LIMIT 5")
+                qmark("SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto de Celebração') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em FROM cultos ORDER BY data DESC,hora DESC LIMIT 5")
             ).fetchall()]
         except Exception as e:
             logger.warning(f"Dashboard ultimos erro: {e}")
@@ -2203,7 +2327,7 @@ def resumo():
                FROM cultos""").fetchone()
         else:
             r = conn.execute("SELECT * FROM v_resumo_geral").fetchone()
-        ult = conn.execute("SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos ORDER BY data DESC,hora DESC LIMIT 5").fetchall()
+        ult = conn.execute("SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto de Celebração') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes,criado_em,editado_em,editado_por FROM cultos ORDER BY data DESC,hora DESC LIMIT 5").fetchall()
         pp  = conn.execute("""SELECT periodo,COUNT(*) as qtd,
                             COALESCE(ROUND(CAST(AVG(presentes) AS NUMERIC),1),0) as mp,
                             COALESCE(SUM(presentes),0) as tp FROM cultos GROUP BY periodo""").fetchall()
@@ -2234,7 +2358,7 @@ def exportar_pdf():
     tpc = request.args.get("tipo_culto","")
     culto_id = request.args.get("culto_id","")
 
-    sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto Regular') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes FROM cultos WHERE 1=1"; p=[]
+    sql = "SELECT id,data,hora,dia_semana,periodo,COALESCE(tipo_culto,'Culto de Celebração') as tipo_culto,responsavel,presentes,visitantes,criancas,observacoes FROM cultos WHERE 1=1"; p=[]
     if culto_id: sql+=" AND id=?"; p.append(culto_id)
     if ini: sql+=" AND data>=?"; p.append(ini)
     if fim: sql+=" AND data<=?"; p.append(fim)
@@ -2265,7 +2389,7 @@ def exportar_pdf():
             </div>
             <div class="culto-info">
               <div class="culto-semana">{c["dia_semana"]}</div>
-              <div class="culto-tipo">{c["tipo_culto"] or "Culto Regular"}</div>
+              <div class="culto-tipo">{c["tipo_culto"] or "Culto de Celebração"}</div>
               <div class="culto-resp">{c["responsavel"]}</div>
             </div>
             <span class="periodo-badge" style="background:{periodo_cor}">{c["periodo"]}</span>
@@ -2506,7 +2630,7 @@ def exportar_excel():
         fill = cinza if i%2==0 else branco
         ws2.row_dimensions[i].height = 20
         vals = [br(c["data"]),c.get("dia_semana",""),c.get("periodo",""),
-                c.get("tipo_culto","Culto Regular"),c.get("responsavel",""),
+                c.get("tipo_culto","Culto de Celebração"),c.get("responsavel",""),
                 c["presentes"],c["visitantes"],c["criancas"],c.get("observacoes","")]
         for j,v in enumerate(vals,1):
             al = esq if j in (5,9) else centro
@@ -2619,7 +2743,7 @@ def exportar_excel():
 
     por_tipo = {}
     for c in cultos:
-        t = c.get("tipo_culto","Culto Regular") or "Culto Regular"
+        t = c.get("tipo_culto","Culto de Celebração") or "Culto de Celebração"
         if t not in por_tipo: por_tipo[t] = {"qtd":0,"presentes":0,"visitantes":0}
         por_tipo[t]["qtd"] += 1
         por_tipo[t]["presentes"] += c["presentes"]
@@ -3585,18 +3709,27 @@ def criar_relatorio_gc():
             return 0
     valor_oferta = num(d.get("valor_oferta", 0))
     quilos       = num(d.get("quilos_arrecadados", 0))
+    visitante_nomes = d.get("visitante_nomes","").strip()
 
     # Busca gc_id pelo nome
     with get_db() as conn:
         gc = conn.execute(qmark("SELECT id FROM grupos_crescimento WHERE nome=?"), (gc_nome,)).fetchone()
         gc_id = gc["id"] if gc else None
 
+        # BLOQUEIO DE DUPLICADO: mesmo GC + mesma data
+        dup = conn.execute(
+            qmark("SELECT id FROM relatorios_gc WHERE gc_nome=? AND dia=?"),
+            (gc_nome, dia)
+        ).fetchone()
+        if dup:
+            return jsonify({"erro":"Já existe um relatório registrado para este GC nesta data. Caso precise corrigir, edite o relatório existente na área de Gestão de GC."}),409
+
         conn.execute(
             qmark("""INSERT INTO relatorios_gc
                 (gc_id,gc_nome,lider_nome,anfitriao,dia,membros_presentes,
                  visitantes,lider_treinamento,nome_lider_trein,observacoes,
-                 valor_oferta,quilos_arrecadados)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"""),
+                 valor_oferta,quilos_arrecadados,visitante_nomes)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"""),
             (gc_id, gc_nome, lider_nome,
              d.get("anfitriao",""),
              dia,
@@ -3605,10 +3738,94 @@ def criar_relatorio_gc():
              1 if d.get("lider_treinamento") else 0,
              d.get("nome_lider_trein",""),
              d.get("observacoes",""),
-             valor_oferta, quilos)
+             valor_oferta, quilos, visitante_nomes)
         )
         conn.commit()
     return jsonify({"ok":True, "msg":"Relatório enviado com sucesso!"})
+
+@app.route("/api/relatorios_gc/<int:rid>", methods=["GET"])
+@role_required("admin","lider")
+def ver_relatorio_gc(rid):
+    """Retorna todos os dados de um relatório específico (para visualizar/editar)"""
+    with get_db() as conn:
+        r = conn.execute(qmark("SELECT * FROM relatorios_gc WHERE id=?"), (rid,)).fetchone()
+        if not r:
+            return jsonify({"erro":"Relatório não encontrado"}),404
+        rel = dict(r)
+        rel["data_br"] = br(rel.get("dia",""))
+        # Auditoria
+        aud = [dict(a) for a in conn.execute(
+            qmark("SELECT usuario,campo,valor_anterior,valor_novo,criado_em FROM relatorios_gc_auditoria WHERE relatorio_id=? ORDER BY id DESC"),
+            (rid,)
+        ).fetchall()]
+    return jsonify({"relatorio": rel, "auditoria": aud})
+
+@app.route("/api/relatorios_gc/<int:rid>", methods=["PUT"])
+@role_required("admin","lider")
+def editar_relatorio_gc(rid):
+    """Edita um relatório existente e registra auditoria das mudanças"""
+    d = request.get_json(force=True) or {}
+    def num(v):
+        try: return max(0, float(str(v).replace(",", ".").replace("R$","").strip() or 0))
+        except Exception: return 0
+    usuario = session.get("usuario_nome") or session.get("usuario_email") or "—"
+
+    # Campos editáveis
+    campos = {
+        "anfitriao": d.get("anfitriao",""),
+        "membros_presentes": int(d.get("membros_presentes",0)),
+        "visitantes": int(d.get("visitantes",0)),
+        "visitante_nomes": d.get("visitante_nomes",""),
+        "lider_nome": d.get("lider_nome",""),
+        "nome_lider_trein": d.get("nome_lider_trein",""),
+        "lider_treinamento": 1 if d.get("lider_treinamento") else 0,
+        "observacoes": d.get("observacoes",""),
+        "valor_oferta": num(d.get("valor_oferta",0)),
+        "quilos_arrecadados": num(d.get("quilos_arrecadados",0)),
+    }
+    with get_db() as conn:
+        atual = conn.execute(qmark("SELECT * FROM relatorios_gc WHERE id=?"), (rid,)).fetchone()
+        if not atual:
+            return jsonify({"erro":"Relatório não encontrado"}),404
+        atual = dict(atual)
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Registra auditoria de cada campo alterado
+        def _igual(a, b):
+            # Compara tratando números equivalentes (0 == 0.0) e strings
+            try:
+                return abs(float(a) - float(b)) < 0.001
+            except (ValueError, TypeError):
+                return str(a).strip() == str(b).strip()
+        for campo, novo in campos.items():
+            antigo = atual.get(campo, "")
+            if not _igual(antigo, novo):
+                conn.execute(
+                    qmark("""INSERT INTO relatorios_gc_auditoria
+                        (relatorio_id,usuario,campo,valor_anterior,valor_novo,criado_em)
+                        VALUES(?,?,?,?,?,?)"""),
+                    (rid, usuario, campo, str(antigo), str(novo), agora)
+                )
+        conn.execute(
+            qmark("""UPDATE relatorios_gc SET anfitriao=?,membros_presentes=?,visitantes=?,
+                visitante_nomes=?,lider_nome=?,nome_lider_trein=?,lider_treinamento=?,
+                observacoes=?,valor_oferta=?,quilos_arrecadados=?,atualizado_em=? WHERE id=?"""),
+            (campos["anfitriao"],campos["membros_presentes"],campos["visitantes"],
+             campos["visitante_nomes"],campos["lider_nome"],campos["nome_lider_trein"],
+             campos["lider_treinamento"],campos["observacoes"],campos["valor_oferta"],
+             campos["quilos_arrecadados"],agora,rid)
+        )
+        conn.commit()
+    return jsonify({"ok":True,"msg":"Relatório atualizado com sucesso!"})
+
+@app.route("/api/relatorios_gc/<int:rid>", methods=["DELETE"])
+@role_required("admin")
+def excluir_relatorio_gc(rid):
+    """Exclui um relatório — somente administradores"""
+    with get_db() as conn:
+        conn.execute(qmark("DELETE FROM relatorios_gc WHERE id=?"), (rid,))
+        conn.execute(qmark("DELETE FROM relatorios_gc_auditoria WHERE relatorio_id=?"), (rid,))
+        conn.commit()
+    return jsonify({"ok":True,"msg":"Relatório excluído."})
 
 @app.route("/api/relatorios_gc", methods=["GET"])
 @role_required("admin","lider")
@@ -3724,10 +3941,12 @@ def frequencia_gc():
         por_gc[nome]["total_membros"] += r.get("membros_presentes",0)
         por_gc[nome]["total_visitantes"] += r.get("visitantes",0)
         por_gc[nome]["datas"].append({
+            "id": r.get("id"),
             "dia": r["dia"],
             "dia_br": br(r["dia"]),
             "membros": r.get("membros_presentes",0),
             "visitantes": r.get("visitantes",0),
+            "visitante_nomes": r.get("visitante_nomes",""),
             "lider": r.get("lider_nome",""),
             "anfitriao": r.get("anfitriao",""),
             "observacoes": r.get("observacoes","")
@@ -3875,13 +4094,20 @@ def frequencia_gc_excel():
 
     # Cores das redes (nome do setor → hex sem #)
     CORES_REDE = {
-        "Verde":"C6EFCE","Laranja":"F8CB9C","Amarelo":"FFEB9C","Vermelho":"FFC7CE",
-        "Azul":"BDD7EE","Roxo":"E0C6F5"
+        "Verde":"16A34A","Laranja":"EA580C","Amarelo":"EAB308","Vermelho":"DC2626",
+        "Azul":"2563EB","Roxo":"9333EA"
     }
     def cor_da_rede(setor, cor_hex):
         if setor in CORES_REDE: return CORES_REDE[setor]
         if cor_hex and cor_hex.startswith("#"): return cor_hex[1:]
-        return "F8CB9C"
+        return "EA580C"
+    def texto_contraste(hexcor):
+        # Decide se o texto sobre a cor deve ser branco ou escuro
+        try:
+            r,g,b = int(hexcor[0:2],16),int(hexcor[2:4],16),int(hexcor[4:6],16)
+            return "FFFFFF" if (r*299+g*587+b*114)/1000 < 140 else "1F2937"
+        except Exception:
+            return "FFFFFF"
 
     MESES_PT = ["","JANEIRO","FEVEREIRO","MARÇO","ABRIL","MAIO","JUNHO",
                 "JULHO","AGOSTO","SETEMBRO","OUTUBRO","NOVEMBRO","DEZEMBRO"]
@@ -3945,7 +4171,8 @@ def frequencia_gc_excel():
             if not nome_titulo.startswith("GC"):
                 nome_titulo = "GC " + nome_titulo
             tcell.value = f"RELATÓRIO {nome_titulo}"
-            tcell.fill = fill_titulo; tcell.font = titulo_font
+            tcell.fill = fill_titulo
+            tcell.font = Font(name="Calibri",size=16,bold=True,color=texto_contraste(cor_hex))
             tcell.alignment = centro_v
             ws.row_dimensions[1].height = 34
             for col in range(1, ncols+1):
@@ -3993,6 +4220,7 @@ def frequencia_gc_excel():
                         # Colunas Líder do GC(3), Nome do GC(5) e Cor(6) recebem a cor da rede
                         if j in (3,5,6):
                             cell.fill = fill_cor
+                            cell.font = Font(name="Calibri",size=10,bold=True,color=texto_contraste(cor_hex))
                         if j in (3,4,5,12,13):
                             cell.alignment = Alignment(horizontal="left",vertical="center",wrap_text=True)
                         else:

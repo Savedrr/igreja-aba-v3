@@ -110,8 +110,20 @@ CREATE TABLE IF NOT EXISTS grupos_crescimento (
     gc_pai_id    INTEGER REFERENCES grupos_crescimento(id) ON DELETE SET NULL,
     supervisor   TEXT    DEFAULT '',
     metas        TEXT    DEFAULT '',
+    dia_semana   TEXT    DEFAULT '',
+    horario      TEXT    DEFAULT '',
     ativo        INTEGER DEFAULT 1,
     criado_em    TEXT    DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS relatorios_gc_auditoria (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    relatorio_id    INTEGER,
+    usuario         TEXT    DEFAULT '',
+    campo           TEXT    DEFAULT '',
+    valor_anterior  TEXT    DEFAULT '',
+    valor_novo      TEXT    DEFAULT '',
+    criado_em       TEXT    DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS gc_integrantes (
@@ -181,6 +193,8 @@ CREATE TABLE IF NOT EXISTS relatorios_gc (
     campos_livres       TEXT    DEFAULT '',
     valor_oferta        REAL    DEFAULT 0,
     quilos_arrecadados  REAL    DEFAULT 0,
+    visitante_nomes     TEXT    DEFAULT '',
+    atualizado_em       TEXT    DEFAULT '',
     criado_em           TEXT    DEFAULT (datetime('now','localtime'))
 );
 

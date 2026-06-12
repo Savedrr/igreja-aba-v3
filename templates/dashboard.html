@@ -42,7 +42,7 @@
       <div class="brand-sub">Um Lar Para Pertencer</div>
     </div>
   </div>
-  <div class="nav-label">MENU</div>
+  <div class="nav-label">OPERAÇÃO</div>
   <ul class="nav-list">
     <li><a class="nav-item active" data-tab="registro">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -50,28 +50,39 @@
     <li><a class="nav-item" data-tab="checklist">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
       Checklist</a></li>
+    <li><a class="nav-item" data-tab="gc">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+      Conecta GC</a></li>
     <li><a class="nav-item" data-tab="visitantes">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
       Visitantes</a></li>
-    <li><a class="nav-item" data-tab="gc">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-      Concecta GC</a></li>
     <li><a class="nav-item" data-tab="estoque">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
       Estoque</a></li>
+  </ul>
+
+  <div class="nav-label">GESTÃO DE GC</div>
+  <ul class="nav-list">
+    <li><a class="nav-item" data-tab="dash_gc">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Gestão de GC</a></li>
+  </ul>
+
+  <div class="nav-label">RELATÓRIOS</div>
+  <ul class="nav-list">
     <li><a class="nav-item" data-tab="relatorios">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       Relatórios</a></li>
     <li><a class="nav-item" data-tab="escalas">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="14"/><line x1="12" y1="14" x2="12" y2="14"/><line x1="16" y1="14" x2="16" y2="14"/></svg>
       Escalas</a></li>
-    <li><a class="nav-item" data-tab="dash_gc">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-      Gestão de GC</a></li>
+  </ul>
+
+  <div class="nav-label" style="display:none" id="navLabelAdmin">ADMINISTRAÇÃO</div>
+  <ul class="nav-list">
     <li style="display:none" id="navUsuarios"><a class="nav-item" data-tab="usuarios">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
       Usuários</a></li>
-
   </ul>
   <div class="sidebar-footer">
     <div class="user-av" id="userAvatar">A</div>
@@ -90,6 +101,9 @@
   <header class="topbar">
     <button class="menu-toggle" onclick="toggleSidebar()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <button class="menu-toggle" id="btnVoltar" onclick="voltarTab()" style="display:none" title="Voltar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
     </button>
     <div class="topbar-title" id="topbarTitle">Registro de Culto</div>
     <div class="topbar-date" id="topbarDate"></div>
@@ -282,7 +296,7 @@
 
   <!-- ═══ Concecta GC ══════════════════════════════════════════ -->
   <div class="tab-content" id="tab-gc">
-    <div class="page-header"><h1 class="page-title">Conecta GC</h1><p class="page-sub">Encontre o Grupo de Crescimento mais próximo do visitante</p></div>
+    <div class="page-header"><h1 class="page-title">Conecta GC</h1><p class="page-sub">Direcione visitantes ao GC mais próximo. Para gerenciar supervisor, rede e multiplicação, use Gestão de GC.</p></div>
     <div class="form-card" style="margin-bottom:18px">
       <div class="form-section">
         <div class="section-title">🔍 Encontrar GC mais próximo</div>
@@ -401,9 +415,11 @@
           <div class="field-group"><label>Tipo de Culto</label>
             <select class="field-input" id="f_tipo_culto" onchange="aplicarFiltrosRelatorio()">
               <option value="">Todos</option>
-              <option>Culto Regular</option><option>NAREAL</option>
-              <option>Evento</option><option>Reunião de Líderes</option>
-              <option>Culto de GC</option><option>Outro</option>
+              <option>Culto de Celebração</option><option>Culto da Família</option>
+              <option>Culto de Jovens</option><option>Culto de Mulheres</option>
+              <option>Culto de Homens</option><option>Conferência</option>
+              <option>Evento Especial</option><option>NAREAL</option>
+              <option>Reunião de Líderes</option><option>Culto de GC</option><option>Outro</option>
             </select></div>
           <div class="field-group"><label>Período do Dia</label>
             <select class="field-input" id="f_periodo" onchange="aplicarFiltrosRelatorio()">
@@ -448,19 +464,9 @@
 
     <div class="dash-row wide-left">
       <div class="dash-card">
-        <div class="dash-card-title" style="display:flex;justify-content:space-between;align-items:center">
-          <span>📊 Evolução dos GCs — Comparativo</span>
-          <button class="btn-sm blue" onclick="carregarGraficoGC()">🔄</button>
-        </div>
-        <div id="grafico_gc_comp"><div class="loading-msg">Carregando...</div></div>
-      </div>
-      <div class="dash-card">
         <div class="dash-card-title">💡 Insights Automáticos</div>
         <div class="insights-list" id="dash_insights"><div class="loading-msg">Carregando...</div></div>
       </div>
-    </div>
-
-    <div class="dash-row">
       <div class="dash-card">
         <div class="dash-card-title">🕐 Por Período do Dia</div>
         <div class="table-wrap">
@@ -469,10 +475,6 @@
             <tbody id="bodyPeriodo"><tr><td colspan="4" style="text-align:center;padding:18px;color:#8ca0c0">Carregando...</td></tr></tbody>
           </table>
         </div>
-      </div>
-      <div class="dash-card">
-        <div class="dash-card-title">🌟 Top GCs — Direcionamentos</div>
-        <div id="dash_top_gcs"><div class="loading-msg">Carregando...</div></div>
       </div>
     </div>
 
@@ -585,7 +587,7 @@
   <!-- ═══ DASHBOARD GC ════════════════════════════════════════ -->
   <div class="tab-content" id="tab-dash_gc">
     <div class="page-header">
-      <div><h1 class="page-title">Gestão de GC</h1><p class="page-sub">Relatórios, frequência, multiplicação e genealogia dos Grupos de Crescimento</p></div>
+      <div><h1 class="page-title">Gestão de GC</h1><p class="page-sub">Centro de controle dos GCs: dados, supervisores, redes, multiplicação, genealogia, indicadores e acompanhamento de novos.</p></div>
       <div class="page-header-right">
         <a href="/relatorio-gc" target="_blank"><button class="btn-secondary">📋 Abrir Formulário</button></a>
         <button class="btn-excel" onclick="exportarFrequenciaExcel()">📥 Excel GC</button>
@@ -597,6 +599,33 @@
       <span style="font-size:13px">🔗 Link para líderes:</span>
       <strong id="linkRelatorioGC" style="color:#0A2463;font-size:13px;word-break:break-all"></strong>
       <button class="btn-sm blue" onclick="copiarLinkRelatorio()">📋 Copiar</button>
+    </div>
+
+    <!-- ═══ PESQUISA GLOBAL ═══ -->
+    <div style="margin-bottom:16px">
+      <div style="position:relative">
+        <input type="text" id="buscaGlobal" placeholder="🔍 Buscar GC, líder, supervisor, membro, visitante..."
+          oninput="buscarGlobal()" autocomplete="off"
+          style="width:100%;padding:11px 14px;border:1.5px solid #CBD5E1;border-radius:12px;font-size:14px;box-sizing:border-box">
+        <div id="buscaGlobalResultados" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:#fff;border:1px solid #E2E8F0;border-radius:12px;margin-top:4px;max-height:340px;overflow-y:auto;box-shadow:0 8px 24px rgba(10,20,40,.12)"></div>
+      </div>
+    </div>
+
+    <!-- ═══ ACOMPANHAMENTO DE VISITANTES (RETENÇÃO) ═══ -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <h2 style="font-size:16px;font-weight:800;color:#0A2463;margin:0">🤝 Acompanhamento de Novos</h2>
+    </div>
+    <div class="stats-grid" style="margin-bottom:12px">
+      <div class="stat-card blue"><div class="stat-icon">✨</div><div class="stat-value" id="vis_semana">—</div><div class="stat-label">Novos na Semana</div></div>
+      <div class="stat-card green"><div class="stat-icon">📅</div><div class="stat-value" id="vis_mes">—</div><div class="stat-label">Novos no Mês</div></div>
+      <div class="stat-card purple"><div class="stat-icon">🔄</div><div class="stat-value" id="vis_retornaram">—</div><div class="stat-label">Retornaram</div></div>
+      <div class="stat-card accent"><div class="stat-icon">📊</div><div class="stat-value" id="vis_taxa">—</div><div class="stat-label">Taxa de Retenção</div></div>
+    </div>
+    <div class="form-card" style="margin-bottom:20px">
+      <div class="form-section">
+        <div class="section-title">⏰ Acompanhamento Pendente <span style="font-size:11px;font-weight:400;color:#94A3B8">(não retornaram há 7+ dias)</span></div>
+        <div id="vis_pendentes"><div class="loading-msg">Carregando...</div></div>
+      </div>
     </div>
 
     <!-- ═══ MULTIPLICAÇÃO E GENEALOGIA ═══ -->
