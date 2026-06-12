@@ -439,3 +439,63 @@ select.field-input{background-image:url("data:image/svg+xml,%3Csvg xmlns='http:/
   .stat-card{padding:14px 10px;}
   .stat-value{font-size:26px;}
 }
+
+/* ═══════════════════════════════════════════════════════════ */
+/* TEMA ESCURO (opcional — ativado por body.dark)              */
+/* ═══════════════════════════════════════════════════════════ */
+body.dark{background:#0F172A;color:#E2E8F0;}
+body.dark .topbar{background:#1E293B;border-bottom-color:#334155;}
+body.dark .topbar-title{color:#F1F5F9;}
+body.dark .menu-toggle{color:#CBD5E1;}
+body.dark #breadcrumb{background:#1E293B!important;border-bottom-color:#334155!important;}
+body.dark .page-title{color:#F1F5F9;}
+body.dark .page-sub{color:#94A3B8;}
+body.dark .form-card,
+body.dark .dash-card,
+body.dark .checklist-cat,
+body.dark .stat-card{background:#1E293B!important;border-color:#334155!important;color:#E2E8F0;}
+body.dark .section-title{color:#E2E8F0;}
+body.dark .field-input,
+body.dark input,
+body.dark select,
+body.dark textarea{background:#0F172A!important;color:#E2E8F0!important;border-color:#334155!important;}
+body.dark .field-group label{color:#94A3B8;}
+body.dark .data-table thead th{background:#0F172A;color:#94A3B8;}
+body.dark .data-table tbody td{border-color:#334155;color:#E2E8F0;}
+body.dark .data-table tbody tr:hover{background:#0F172A;}
+body.dark .cat-hdr{background:#0F172A;}
+body.dark .check-item{border-color:#334155;}
+body.dark .check-item label{color:#E2E8F0;}
+body.dark .modal-box,
+body.dark .modal-content{background:#1E293B!important;color:#E2E8F0;}
+body.dark .btn-sm{background:#334155;color:#E2E8F0;}
+body.dark .empty-state{color:#94A3B8;}
+body.dark .loading-msg{color:#94A3B8;}
+/* Variáveis usadas inline nos cards recolhíveis */
+body.dark{--c-border:#334155;--c-bg-soft:#0F172A;}
+:root{--c-border:#E2E8F0;--c-bg-soft:#F8FAFF;}
+
+/* Botão de alternar tema (sol/lua) no topo */
+.theme-btn{background:none;border:none;font-size:20px;cursor:pointer;padding:4px 8px;
+  border-radius:8px;line-height:1;transition:var(--tr);margin-left:auto;}
+.theme-btn:hover{background:rgba(0,0,0,.06);transform:scale(1.1);}
+body.dark .theme-btn:hover{background:rgba(255,255,255,.12);}
+
+/* ═══════════════════════════════════════════════════════════ */
+/* POLIMENTO VISUAL — mais limpo, moderno e respirado          */
+/* ═══════════════════════════════════════════════════════════ */
+.stat-card{transition:transform .18s ease, box-shadow .18s ease;}
+.dash-card{transition:box-shadow .18s ease;}
+.dash-card:hover{box-shadow:var(--shl);}
+/* Cabeçalhos de seção mais elegantes */
+.section-title{letter-spacing:.2px;}
+/* Cards recolhíveis: chevron suave */
+.card-chevron,.cat-chevron{display:inline-block;}
+/* Botões com toque mais suave */
+.btn-sm{transition:var(--tr);}
+.btn-sm:hover{filter:brightness(1.05);}
+/* Tabelas mais limpas */
+.data-table tbody tr{transition:background .12s ease;}
+/* Espaçamento de respiro nos page-headers */
+.page-header{margin-bottom:18px;}
+.page-sub{line-height:1.5;}

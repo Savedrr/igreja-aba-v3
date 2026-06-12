@@ -19,6 +19,38 @@ function baixarArquivo(url, nomeArquivo){
 }
 
 
+// ── TEMA CLARO/ESCURO ─────────────────────────────────────────
+function aplicarTema(tema){
+  const escuro = tema === "dark";
+  document.body.classList.toggle("dark", escuro);
+  const btn = document.getElementById("themeBtn");
+  if(btn){
+    btn.textContent = escuro ? "☀️" : "🌙";
+    btn.title = escuro ? "Mudar para tema claro" : "Mudar para tema escuro";
+  }
+}
+function alternarTema(){
+  const novo = document.body.classList.contains("dark") ? "light" : "dark";
+  try{ localStorage.setItem("aba_tema", novo); }catch(e){}
+  aplicarTema(novo);
+}
+(function(){
+  try{
+    const salvo = localStorage.getItem("aba_tema") || "light";
+    document.addEventListener("DOMContentLoaded", ()=>aplicarTema(salvo));
+  }catch(e){}
+})();
+
+// ── RECOLHER/EXPANDIR cards ───────────────────────────────────
+function toggleCard(header){
+  const body = header.parentElement.querySelector(".card-body");
+  const chev = header.querySelector(".card-chevron");
+  if(!body) return;
+  const recolhido = body.style.display === "none";
+  body.style.display = recolhido ? "" : "none";
+  if(chev) chev.style.transform = recolhido ? "rotate(0deg)" : "rotate(-90deg)";
+}
+
 // ── INIT ──────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded",async()=>{
   await verificarAuth();
@@ -291,7 +323,8 @@ async function carregarChecklist(cultoId){
     div.innerHTML=`<div class="cat-hdr" onclick="toggleCat(this)">
       <div class="cat-hdr-left"><span>${cfg.emoji}</span><span>${cfg.label}</span></div>
       <div class="cat-prog-wrap"><span class="cat-prog-txt">${feitos}/${total}</span>
-        <div class="cat-prog-bg"><div class="cat-prog-bar" style="width:${pct}%"></div></div></div></div>
+        <div class="cat-prog-bg"><div class="cat-prog-bar" style="width:${pct}%"></div></div>
+        <span class="cat-chevron" style="margin-left:8px;font-size:12px;color:#94A3B8;transition:transform .2s">▼</span></div></div>
       <div class="cat-items"></div>`;
     const itemsDiv=div.querySelector(".cat-items");
     itens.forEach(item=>{
@@ -304,7 +337,7 @@ async function carregarChecklist(cultoId){
     c.appendChild(div);
   }
 }
-function toggleCat(h){const i=h.nextElementSibling;i.style.display=i.style.display==="none"?"":"none";}
+function toggleCat(h){const i=h.nextElementSibling;const recolhido=i.style.display==="none";i.style.display=recolhido?"":"none";const chev=h.querySelector(".cat-chevron");if(chev)chev.style.transform=recolhido?"rotate(0deg)":"rotate(-90deg)";}
 async function marcarItem(id,v,wrap,catDiv){
   wrap.classList.toggle("done",v);
   const done=catDiv.querySelectorAll(".check-item.done").length;
@@ -2469,31 +2502,32 @@ async function carregarFrequenciaGC(){
             ${_isAdmin?`<button onclick="excluirRelatorioGC(${dt.id})" title="Excluir" style="background:none;border:none;cursor:pointer;font-size:13px">🗑️</button>`:""}
           </td>
         </tr>`).join("");
-      html+=`<div style="border:1px solid #E2E8F0;border-radius:12px;margin-bottom:12px;overflow:hidden">
-        <div style="background:linear-gradient(135deg,#0A2463,#1B4FA8);padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
-          <span style="font-weight:800;color:#fff;font-size:13px">${idx+1}. ${g.gc_nome}</span>
-          <div style="display:flex;gap:8px">
+      html+=`<div style="border:1px solid var(--c-border,#E2E8F0);border-radius:12px;margin-bottom:12px;overflow:hidden">
+        <div onclick="toggleCard(this)" style="background:linear-gradient(135deg,#0A2463,#1B4FA8);padding:11px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none">
+          <span style="font-weight:700;color:#fff;font-size:13px">${idx+1}. ${g.gc_nome}</span>
+          <div style="display:flex;gap:8px;align-items:center">
             <span style="background:rgba(255,255,255,.2);color:#fff;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">${g.reunioes} reuniões</span>
             <span style="background:#22C55E;color:#fff;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">Méd: ${g.media_membros}</span>
+            <span class="card-chevron" style="color:#fff;font-size:14px;transition:transform .2s">▼</span>
           </div>
         </div>
-        <div style="padding:10px 14px">
-          <div style="display:flex;gap:16px;margin-bottom:8px;font-size:12px">
-            <span>👥 Total membros: <strong>${g.total_membros}</strong></span>
-            <span>🙋 Total visitantes: <strong style="color:#059669">${g.total_visitantes}</strong></span>
-            <span>📊 Média visitantes: <strong>${g.media_visitantes}</strong></span>
+        <div class="card-body" style="padding:12px 14px">
+          <div style="display:flex;gap:16px;margin-bottom:10px;font-size:12px;flex-wrap:wrap">
+            <span>👥 Membros: <strong>${g.total_membros}</strong></span>
+            <span>🙋 Visitantes: <strong style="color:#059669">${g.total_visitantes}</strong></span>
+            <span>📊 Média vis.: <strong>${g.media_visitantes}</strong></span>
           </div>
           ${g.datas.length?`<table style="width:100%;border-collapse:collapse">
-            <thead><tr style="background:#F8FAFF">
-              <th style="padding:5px 8px;text-align:left;font-size:10px;color:#4A6080">Data</th>
-              <th style="padding:5px 8px;text-align:center;font-size:10px;color:#4A6080">Membros</th>
-              <th style="padding:5px 8px;text-align:center;font-size:10px;color:#4A6080">Visitantes</th>
-              <th style="padding:5px 8px;text-align:left;font-size:10px;color:#4A6080">Anfitrião</th>
-              <th style="padding:5px 8px;text-align:right;font-size:10px;color:#4A6080">Ações</th>
+            <thead><tr style="background:var(--c-bg-soft,#F8FAFF)">
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#4A6080">Data</th>
+              <th style="padding:6px 8px;text-align:center;font-size:10px;color:#4A6080">Membros</th>
+              <th style="padding:6px 8px;text-align:center;font-size:10px;color:#4A6080">Visitantes</th>
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#4A6080">Anfitrião</th>
+              <th style="padding:6px 8px;text-align:right;font-size:10px;color:#4A6080">Ações</th>
             </tr></thead>
             <tbody>${datas_html}</tbody>
           </table>
-          ${g.datas.length>5?`<p style="font-size:10px;color:#94A3B8;text-align:center;margin-top:5px">Mostrando últimas 5 de ${g.datas.length} reuniões</p>`:""}
+          ${g.datas.length>5?`<p style="font-size:10px;color:#94A3B8;text-align:center;margin-top:6px">Mostrando últimas 5 de ${g.datas.length} reuniões</p>`:""}
           `:""}
         </div>
       </div>`;
