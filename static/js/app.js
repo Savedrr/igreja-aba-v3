@@ -457,14 +457,24 @@ function aoSelecionarVisitanteGC(){
   if(!opt||!opt.value) return;
   const end = opt.dataset.endereco||"";
   const nome = opt.dataset.nome||"";
-  // Preenche campo de endereço automaticamente
-  const qField = document.getElementById("gc_query");
-  if(qField && end){
-    qField.value = end;
-    qField.style.background = "#f0fff4";
-    setTimeout(()=>qField.style.background="",1500);
-    toast(`Endereço de ${nome} preenchido automaticamente!`,"success");
+  const rua = document.getElementById("gc_rua");
+  if(rua && end){
+    rua.value = end;
+    rua.style.background = "#f0fff4";
+    setTimeout(()=>rua.style.background="",1500);
   }
+  // tenta detectar o bairro do endereço e já selecionar na lista
+  const selB=document.getElementById("gc_bairro");
+  if(selB){
+    const norm=s=>(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+    const alvo=norm(end);
+    for(const o of selB.options){
+      const t=norm(o.textContent);
+      if(o.value && o.value!=="__outro__" && t && alvo.includes(t)){ selB.value=o.value; break; }
+    }
+    aoTrocarBairroGC();
+  }
+  toast(`Endereço de ${nome} preenchido automaticamente!`,"success");
 }
 async function deletarVisitante(id){
   if(!_isLider)return toast("Sem permissão para excluir.","error");
@@ -513,27 +523,32 @@ async function carregarGCs(){
 }
 
 async function calcularGC(){
-  const query=document.getElementById("gc_query").value.trim();
-  if(!query){
-    toast("Digite o endereço do visitante.","error");
-    document.getElementById("gc_query").focus();
+  const rua=(document.getElementById("gc_rua")?.value||"").trim();
+  const numero=(document.getElementById("gc_numero")?.value||"").trim();
+  let bairro=(document.getElementById("gc_bairro")?.value||"").trim();
+  if(bairro==="__outro__") bairro=(document.getElementById("gc_bairro_outro")?.value||"").trim();
+  const cidade=(document.getElementById("gc_cidade")?.value||"Alvorada").trim();
+  const cep=(document.getElementById("gc_cep")?.value||"").trim();
+  if(!bairro && !rua && !cep){
+    toast("Selecione o bairro do visitante.","error");
+    document.getElementById("gc_bairro")?.focus();
     return;
   }
   const btn=document.getElementById("btnCalcularGC");
   const orig=btn.innerHTML;
   btn.innerHTML='<span class="spinner"></span> Buscando...'; btn.disabled=true;
-  document.getElementById("gc_resultado").innerHTML='<div class="loading-msg">🔍 Localizando endereço e calculando distâncias...</div>';
+  document.getElementById("gc_resultado").innerHTML='<div class="loading-msg">🔍 Localizando e calculando distâncias...</div>';
   try{
     const r=await fetch("/api/gcs/calcular_proximo",{
       method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({query,cidade:"Alvorada"})
+      body:JSON.stringify({endereco:rua,numero,bairro,cidade,cep})
     });
     const d=await r.json();
     if(!r.ok){
       document.getElementById("gc_resultado").innerHTML=
         `<div class="permission-alert" style="border-radius:10px;padding:14px 16px">
-          <div style="font-size:15px;margin-bottom:6px">❌ Endereço não encontrado</div>
-          <div style="font-size:13px;opacity:.8">${d.dica||"Tente escrever: Rua das Flores 123 Jardim Algarve"}</div>
+          <div style="font-size:15px;margin-bottom:6px">❌ ${d.erro||"Endereço não encontrado"}</div>
+          <div style="font-size:13px;opacity:.85">${d.dica||"Selecione o bairro do visitante na lista."}</div>
         </div>`;
     } else {
       renderizarResultadoGC(d);
@@ -542,6 +557,12 @@ async function calcularGC(){
     document.getElementById("gc_resultado").innerHTML='<div class="permission-alert" style="border-radius:10px;padding:14px">❌ Erro de conexão. Verifique a internet.</div>';
   }
   btn.innerHTML=orig; btn.disabled=false;
+}
+
+function aoTrocarBairroGC(){
+  const v=document.getElementById("gc_bairro")?.value;
+  const wrap=document.getElementById("gc_bairro_outro_wrap");
+  if(wrap) wrap.style.display = (v==="__outro__") ? "block" : "none";
 }
 
 function renderizarResultadoGC(data){
@@ -596,9 +617,7 @@ async function geocodificarTodosGCs(btn){
       if(d.sem_local&&d.sem_local.length) msg+=`. Sem bairro reconhecível: ${d.sem_local.join(", ")}`;
       toast(msg,"success");
       if(typeof carregarGCs==="function") carregarGCs();
-    }else{
-      toast(d.erro||"Não foi possível geocodificar.","error");
-    }
+    }else{ toast(d.erro||"Não foi possível geocodificar.","error"); }
   }catch{ toast("Erro de conexão.","error"); }
   if(btn){btn.innerHTML=orig;btn.disabled=false;}
 }

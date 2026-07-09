@@ -2145,12 +2145,15 @@ def calcular_gc():
     d   = request.get_json(force=True) or {}
     q   = (d.get("query") or "").strip()
     end = (d.get("endereco") or "").strip()
+    num = (str(d.get("numero") or "")).strip()
     bai = (d.get("bairro") or "").strip()
     cid = (d.get("cidade") or "Alvorada").strip()
-    if not q and not end and not bai:
-        return jsonify({"erro": "Digite o bairro ou endereco do visitante."}), 400
+    cep = (str(d.get("cep") or "")).strip()
+    if not q and not end and not bai and not cep:
+        return jsonify({"erro": "Informe pelo menos o bairro do visitante."}), 400
 
-    busca = q or ", ".join([x for x in (end, bai, cid) if x])
+    rua_num = (end + (", " + num if num else "")).strip(", ")
+    busca = q or ", ".join([x for x in (rua_num, bai, cid, cep) if x])
     texto_bairro = " ".join([q, end, bai])
 
     # bairro do visitante (sinal forte, funciona offline)
