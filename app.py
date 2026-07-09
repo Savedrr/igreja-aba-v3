@@ -341,6 +341,7 @@ def init_db():
         _init_pg()
     else:
         _init_sqlite()
+    _migrate_gc_coords()
 
 
 def _pg_migrations(conn):
@@ -2005,90 +2006,242 @@ def del_integrante(iid):
 
 
 # ── Coordenadas dos bairros de Alvorada/RS (offline, sem API) ─────────────
+# ── Bairros de Alvorada (centroides) para matching robusto ────
+# Os 4 primeiros sao onde existem GCs (alinhados as coordenadas reais dos GCs).
+# Os demais servem para localizar o visitante quando o Google falha.
 _BAIRROS = {
-    "jardim algarve":(-30.0240,-51.0808),"algarve":(-30.0240,-51.0808),
-    "porto verde":(-30.0330,-51.0760),"intersul":(-30.0195,-51.0720),
-    "jardim porto alegre":(-30.0280,-51.0742),"centro":(-30.0220,-51.0780),
-    "grajaú":(-30.0180,-51.0760),"grajau":(-30.0180,-51.0760),
-    "jardim presidente":(-30.0260,-51.0820),"bom princípio":(-30.0300,-51.0790),
-    "bom principio":(-30.0300,-51.0790),"são paulo":(-30.0250,-51.0835),
-    "sao paulo":(-30.0250,-51.0835),"niterói":(-30.0210,-51.0800),
-    "niteroi":(-30.0210,-51.0800),"nova alvorada":(-30.0350,-51.0800),
-    "parque amador":(-30.0370,-51.0780),"santa fé":(-30.0290,-51.0760),
-    "santa fe":(-30.0290,-51.0760),"morada do vale":(-30.0310,-51.0820),
-    "sete de setembro":(-30.0200,-51.0740),"universitário":(-30.0270,-51.0850),
-    "universitario":(-30.0270,-51.0850),"residencial":(-30.0320,-51.0790),
-    "são luís":(-30.0265,-51.0770),"sao luis":(-30.0265,-51.0770),
-    "jardim nova alvorada":(-30.0360,-51.0810),"nova":(-30.0350,-51.0800),
+    "jardim algarve": (-30.0310, -51.0835),
+    "porto verde":    (-30.0400, -51.0755),
+    "intersul":       (-30.0197, -51.0720),
+    "jardim porto alegre": (-30.0243, -51.0766),
+    # demais bairros de Alvorada (aproximados) + aliases
+    "algarve":        (-30.0310, -51.0835),
+    "centro":         (-29.9905, -51.0810),
+    "bela vista":     (-29.9840, -51.0930),
+    "sumare":         (-29.9950, -51.0700),
+    "americana":      (-29.9880, -51.0640),
+    "boa saude":      (-29.9760, -51.0870),
+    "bom sucesso":    (-29.9700, -51.0800),
+    "espirito santo": (-29.9820, -51.0760),
+    "formiga":        (-29.9930, -51.0560),
+    "maria regina":   (-29.9680, -51.0930),
+    "piratini":       (-29.9770, -51.0680),
+    "portao":         (-29.9990, -51.0730),
+    "salgado filho":  (-29.9880, -51.0980),
+    "santa teresa":   (-29.9820, -51.0890),
+    "sao jose":       (-29.9930, -51.0880),
+    "tijuca":         (-30.0050, -51.0770),
+    "umbu":           (-29.9760, -51.0620),
+    "vera cruz":      (-29.9700, -51.0700),
+    "aparecida":      (-30.0080, -51.0700),
+    "nova alvorada":  (-30.0350, -51.0800),
+    "jardim presidente": (-30.0260, -51.0820),
+    "grajau":         (-30.0180, -51.0760),
+    "santa fe":       (-30.0290, -51.0760),
+    "sao luis":       (-30.0265, -51.0770),
+    "parque amador":  (-30.0370, -51.0780),
+    "morada do vale": (-30.0310, -51.0820),
+    "sete de setembro": (-30.0200, -51.0740),
 }
 
-def geocode_por_bairro(texto):
-    """Retorna (lat, lng, bairro_nome) baseado no bairro detectado no texto."""
-    t = texto.lower().strip()
-    # Remove acentos para matching mais tolerante
+
+def _norm_txt(s):
     import unicodedata
-    t_norm = ''.join(c for c in unicodedata.normalize('NFD',t) if unicodedata.category(c) != 'Mn')
-    for bairro, coords in _BAIRROS.items():
-        b_norm = ''.join(c for c in unicodedata.normalize('NFD',bairro) if unicodedata.category(c) != 'Mn')
-        if b_norm in t_norm:
-            return coords[0], coords[1], bairro.title()
-    # Tenta por palavras
-    words = t_norm.replace(","," ").replace("-"," ").split()
-    for bairro, coords in _BAIRROS.items():
-        b_norm = ''.join(c for c in unicodedata.normalize('NFD',bairro) if unicodedata.category(c) != 'Mn')
-        for w in words:
-            if len(w) >= 5 and w in b_norm:
-                return coords[0], coords[1], bairro.title()
+    s = (s or "").lower().strip()
+    s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+    return ' '.join(s.split())
+
+
+def _coord_do_bairro(texto):
+    """Detecta um bairro conhecido dentro do texto e devolve (lat,lng,bairro)."""
+    t = _norm_txt(texto)
+    if not t:
+        return None, None, ""
+    # bairros com nome mais longo primeiro (evita 'porto' casar antes de 'jardim porto alegre')
+    for bairro in sorted(_BAIRROS, key=len, reverse=True):
+        if _norm_txt(bairro) in t:
+            lat, lng = _BAIRROS[bairro]
+            return lat, lng, bairro.title()
     return None, None, ""
+
+
+# compatibilidade com chamadas antigas
+def geocode_por_bairro(texto):
+    return _coord_do_bairro(texto)
+
+
+def _gc_coordenada(gc):
+    """Coordenada de um GC: usa o GPS salvo; se faltar, deriva do bairro do GC."""
+    g = dict(gc)
+    lat, lng = g.get("lat"), g.get("lng")
+    if lat not in (None, 0, 0.0, "") and lng not in (None, 0, 0.0, ""):
+        try:
+            return float(lat), float(lng), "gps"
+        except Exception:
+            pass
+    bl, bg, _ = _coord_do_bairro(g.get("bairro") or "")
+    if bl is not None:
+        return bl, bg, "bairro"
+    return None, None, ""
+
+
+def _migrate_gc_coords():
+    """Backfill: garante que todo GC tenha coordenada (deriva do bairro se faltar)."""
+    try:
+        with get_db() as conn:
+            rows = [dict(r) for r in conn.execute(
+                "SELECT id,bairro,lat,lng FROM grupos_crescimento").fetchall()]
+            n = 0
+            for r in rows:
+                if r.get("lat") in (None, 0, 0.0, "") or r.get("lng") in (None, 0, 0.0, ""):
+                    bl, bg, _ = _coord_do_bairro(r.get("bairro") or "")
+                    if bl is not None:
+                        conn.execute(qmark("UPDATE grupos_crescimento SET lat=?,lng=? WHERE id=?"),
+                                     (bl, bg, r["id"]))
+                        n += 1
+            if n:
+                conn.commit()
+                logger.info(f"GCs geocodificados pelo bairro: {n}")
+    except Exception as e:
+        logger.warning(f"migrate gc coords: {e}")
+
+
+def _geocode_confiavel(query, cidade="Alvorada"):
+    """Geocode via Google exigindo precisao. Retorna (lat,lng,display,confiavel)."""
+    import urllib.request as _ur, json as _js
+    q = (query or "").strip()
+    if not q:
+        return None, None, "", False
+    full_q = f"{q}, {cidade}, RS, Brasil"
+    url = ("https://maps.googleapis.com/maps/api/geocode/json"
+           f"?address={urllib.parse.quote(full_q)}"
+           f"&key={GOOGLE_MAPS_KEY}&language=pt-BR&region=br&components=country:BR")
+    try:
+        with _ur.urlopen(_ur.Request(url), timeout=8) as resp:
+            data = _js.loads(resp.read())
+        if data.get("status") == "OK" and data.get("results"):
+            r = data["results"][0]
+            loc = r["geometry"]["location"]
+            tipos = set(r.get("types", []))
+            loctype = r["geometry"].get("location_type", "")
+            partial = r.get("partial_match", False)
+            so_cidade = (bool(tipos & {"locality", "administrative_area_level_2",
+                         "administrative_area_level_1", "political", "sublocality"})
+                         and not (tipos & {"route", "street_address", "premise",
+                                           "subpremise", "intersection"}))
+            confiavel = (not partial) and (loctype in ("ROOFTOP", "RANGE_INTERPOLATED",
+                         "GEOMETRIC_CENTER")) and not so_cidade
+            return float(loc["lat"]), float(loc["lng"]), r.get("formatted_address", ""), confiavel
+        else:
+            logger.warning(f"Google Geocode status: {data.get('status')} para: {full_q}")
+    except Exception as e:
+        logger.warning(f"geocode confiavel erro: {e}")
+    return None, None, "", False
+
 
 @app.route("/api/gcs/calcular_proximo", methods=["POST"])
 @login_required
 def calcular_gc():
     d   = request.get_json(force=True) or {}
-    q   = d.get("query","").strip()  # campo único de busca
-    end = d.get("endereco","").strip()
-    bai = d.get("bairro","").strip()
-    cid = d.get("cidade","Alvorada").strip()
-    if not q and not end:
-        return jsonify({"erro":"Digite um endereço"}),400
-    busca = q or f"{end}, {bai}, {cid}"
-    # 1. Tenta geocode externo (Nominatim)
-    lat_v, lng_v, display_v = geocode_smart(busca, "Alvorada")
+    q   = (d.get("query") or "").strip()
+    end = (d.get("endereco") or "").strip()
+    bai = (d.get("bairro") or "").strip()
+    cid = (d.get("cidade") or "Alvorada").strip()
+    if not q and not end and not bai:
+        return jsonify({"erro": "Digite o bairro ou endereco do visitante."}), 400
 
-    # 2. Se falhar, usa bairro detectado no texto (offline, sempre funciona)
-    if not lat_v:
-        lat_v, lng_v, bairro_det = geocode_por_bairro(busca)
-        if lat_v:
-            display_v = bairro_det
-            logger.info(f"Usando bairro detectado: {bairro_det}")
+    busca = q or ", ".join([x for x in (end, bai, cid) if x])
+    texto_bairro = " ".join([q, end, bai])
 
-    # 3. Se ainda falhar, retorna erro claro
-    if not lat_v:
+    # bairro do visitante (sinal forte, funciona offline)
+    vb_lat, vb_lng, visitante_bairro = _coord_do_bairro(texto_bairro)
+
+    # 1) tenta endereco preciso via Google (so usa se for confiavel)
+    g_lat, g_lng, g_disp, confiavel = _geocode_confiavel(busca, cid or "Alvorada")
+
+    if confiavel and g_lat is not None:
+        lat_v, lng_v, display_v, metodo = g_lat, g_lng, g_disp, "endereco_preciso"
+        if not visitante_bairro:
+            _bl, _bg, visitante_bairro = _coord_do_bairro(g_disp)
+    elif vb_lat is not None:
+        lat_v, lng_v, display_v, metodo = vb_lat, vb_lng, (visitante_bairro or busca), "bairro"
+    elif g_lat is not None:
+        lat_v, lng_v, display_v, metodo = g_lat, g_lng, g_disp, "aproximado"
+    else:
         return jsonify({
-            "erro": "Bairro não reconhecido.",
-            "dica": "Digite o nome do bairro. Ex: Jardim Algarve, Porto Verde, Intersul, Centro"
+            "erro": "Nao consegui localizar esse endereco.",
+            "dica": "Informe o BAIRRO do visitante. Ex: Jardim Algarve, Porto Verde, Intersul, Jardim Porto Alegre, Centro.",
+            "bairros_conhecidos": sorted({b.title() for b in _BAIRROS})
         }), 422
+
     with get_db() as conn:
-        gcs = conn.execute(
-            "SELECT * FROM grupos_crescimento WHERE ativo=1 AND lat IS NOT NULL AND lat!=0"
-        ).fetchall()
+        gcs = [dict(r) for r in conn.execute(
+            "SELECT * FROM grupos_crescimento WHERE ativo=1").fetchall()]
     if not gcs:
-        return jsonify({"erro":"GCs ainda sem coordenadas. Clique em 'Geocodificar GCs'."}),422
+        return jsonify({"erro": "Nenhum GC ativo cadastrado."}), 422
+
+    vb_norm = _norm_txt(visitante_bairro)
     results = []
     for gc in gcs:
-        dist = haversine(lat_v,lng_v,gc["lat"],gc["lng"])
+        gl, gg, fonte = _gc_coordenada(gc)
+        if gl is None:
+            continue
+        dist = haversine(lat_v, lng_v, gl, gg)
+        mesmo_bairro = bool(vb_norm) and _norm_txt(gc.get("bairro", "")) == vb_norm
         _o = urllib.parse.quote(display_v or busca)
-        gc_end = gc['endereco'] + ", " + gc['bairro'] + ", " + gc['cidade'] + ", RS"
-        _d = urllib.parse.quote(gc_end)
-        rota = "https://www.google.com/maps/dir/?api=1&origin=" + _o + "&destination=" + _d + "&travelmode=driving"
-        gc_nome_enc = urllib.parse.quote(gc['nome'])
-        msg_wa = "Rota para " + gc['nome'] + "%0A" + "Endereco: " + gc_end + "%0ADistancia: " + str(round(dist,2)) + " km%0A%0AMaps: " + rota
+        gc_end = gc.get("endereco", "") + ", " + gc.get("bairro", "") + ", " + gc.get("cidade", "") + ", RS"
+        _dd = urllib.parse.quote(gc_end)
+        rota = "https://www.google.com/maps/dir/?api=1&origin=" + _o + "&destination=" + _dd + "&travelmode=driving"
+        msg_wa = "Rota para " + gc.get("nome", "") + "%0A" + "Endereco: " + gc_end + "%0ADistancia: " + str(round(dist, 2)) + " km%0A%0AMaps: " + rota
         wa_rota = "https://wa.me/?text=" + msg_wa
-        results.append({**dict(gc),"distancia_km":round(dist,2),"rota_link":rota,"wa_rota":wa_rota})
-    results.sort(key=lambda x:x["distancia_km"])
-    return jsonify({"ok":True,
-                    "visitante":{"lat":lat_v,"lng":lng_v,"endereco":display_v or busca},
-                    "gcs":results,"mais_proximo":results[0]})
+        results.append({**gc, "distancia_km": round(dist, 2), "mesmo_bairro": mesmo_bairro,
+                        "coord_fonte": fonte, "rota_link": rota, "wa_rota": wa_rota})
+    if not results:
+        return jsonify({"erro": "Os GCs estao sem localizacao. Cadastre o bairro dos GCs ou clique em 'Geocodificar GCs'."}), 422
+
+    # mesmo bairro primeiro, depois menor distancia
+    results.sort(key=lambda x: (0 if x["mesmo_bairro"] else 1, x["distancia_km"]))
+    aviso = ""
+    if metodo == "aproximado":
+        aviso = "Endereco aproximado — confirme o bairro do visitante para maior precisao."
+    elif metodo == "bairro":
+        aviso = f"Localizado pelo bairro: {visitante_bairro}."
+    return jsonify({"ok": True, "metodo": metodo, "aviso": aviso,
+                    "visitante_bairro": visitante_bairro,
+                    "visitante": {"lat": lat_v, "lng": lng_v, "endereco": display_v or busca},
+                    "gcs": results, "mais_proximo": results[0]})
+
+
+@app.route("/api/gcs/geocodificar-todos", methods=["POST"])
+@role_required("admin", "lider")
+def geocodificar_gcs():
+    """Preenche a coordenada de todos os GCs (Google quando confiavel, senao pelo bairro)."""
+    atualizados = 0
+    por_bairro = 0
+    sem_local = []
+    with get_db() as conn:
+        gcs = [dict(r) for r in conn.execute("SELECT * FROM grupos_crescimento").fetchall()]
+        for gc in gcs:
+            lat = lng = None
+            gl, gg, _disp, ok = _geocode_confiavel(
+                f"{gc.get('endereco','')}, {gc.get('bairro','')}", gc.get("cidade") or "Alvorada")
+            if gl is not None and ok:
+                lat, lng = gl, gg
+            else:
+                bl, bg, _ = _coord_do_bairro(gc.get("bairro") or "")
+                if bl is not None:
+                    lat, lng = bl, bg
+                    por_bairro += 1
+            if lat is not None:
+                conn.execute(qmark("UPDATE grupos_crescimento SET lat=?,lng=? WHERE id=?"),
+                             (lat, lng, gc["id"]))
+                atualizados += 1
+            else:
+                sem_local.append(gc.get("nome", ""))
+        conn.commit()
+    return jsonify({"ok": True, "atualizados": atualizados,
+                    "por_bairro": por_bairro, "sem_local": sem_local})
+
 
 @app.route("/api/gcs/direcionar", methods=["POST"])
 @login_required

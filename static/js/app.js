@@ -546,7 +546,9 @@ async function calcularGC(){
 
 function renderizarResultadoGC(data){
   const mp=data.mais_proximo; const vidId=document.getElementById("gc_visitante_id")?.value;
-  let html=`<div class="gc-result-top" style="background:linear-gradient(135deg,#064E3B,#065F46);border-left:5px solid ${mp.cor_hex}">
+  let html="";
+  if(data.aviso){ html+=`<div style="background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF;border-radius:10px;padding:9px 12px;font-size:12px;margin-bottom:10px">ℹ️ ${data.aviso}</div>`; }
+  html+=`<div class="gc-result-top" style="background:linear-gradient(135deg,#064E3B,#065F46);border-left:5px solid ${mp.cor_hex}">
     <div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:1.5px">🏆 GC Mais Próximo</div>
     <div style="font-size:18px;font-weight:700;margin:3px 0">${mp.nome}</div>
     ${mp.lider?`<div style="font-size:12px;opacity:.8">👤 ${mp.lider}</div>`:""}
@@ -566,7 +568,7 @@ function renderizarResultadoGC(data){
       <div class="gc-rank${i===0?'gold':''}">${ i+1}°</div>
       <div class="gc-dot" style="background:${gc.cor_hex}"></div>
       <div class="gc-info">
-        <div class="gc-nome">${gc.nome}</div>
+        <div class="gc-nome">${gc.nome}${gc.mesmo_bairro?'<span style="font-size:9px;font-weight:800;background:#DCFCE7;color:#166534;padding:1px 6px;border-radius:5px;margin-left:5px">MESMO BAIRRO</span>':''}</div>
         ${gc.lider?`<div class="gc-lider">👤 ${gc.lider}</div>`:""}
         <div class="gc-end">📍 ${gc.endereco}, ${gc.bairro}</div>
       </div>
@@ -580,6 +582,25 @@ function renderizarResultadoGC(data){
   });
   document.getElementById("gc_resultado").innerHTML=html;
   document.getElementById("gc_resultado").scrollIntoView({behavior:"smooth"});
+}
+
+async function geocodificarTodosGCs(btn){
+  const orig=btn?btn.innerHTML:"";
+  if(btn){btn.innerHTML='<span class="spinner"></span> Localizando...';btn.disabled=true;}
+  try{
+    const r=await fetch("/api/gcs/geocodificar-todos",{method:"POST"});
+    const d=await r.json();
+    if(r.ok&&d.ok){
+      let msg=`✅ ${d.atualizados} GC(s) localizados`;
+      if(d.por_bairro) msg+=` (${d.por_bairro} pelo bairro)`;
+      if(d.sem_local&&d.sem_local.length) msg+=`. Sem bairro reconhecível: ${d.sem_local.join(", ")}`;
+      toast(msg,"success");
+      if(typeof carregarGCs==="function") carregarGCs();
+    }else{
+      toast(d.erro||"Não foi possível geocodificar.","error");
+    }
+  }catch{ toast("Erro de conexão.","error"); }
+  if(btn){btn.innerHTML=orig;btn.disabled=false;}
 }
 
 function copiarLink(url){
