@@ -458,43 +458,15 @@ function aoSelecionarVisitanteGC(){
   const sel=document.getElementById("gc_visitante_id");
   const opt=sel.options[sel.selectedIndex];
   if(!opt||!opt.value) return;
-  const nome  = opt.dataset.nome||"";
-  const rua   = (opt.dataset.rua||"").trim();
-  const bairro= (opt.dataset.bairro||"").trim();
-  const cidade= (opt.dataset.cidade||"Alvorada").trim();
-  const fRua=document.getElementById("gc_rua");
-  const fCidade=document.getElementById("gc_cidade");
-  const selB=document.getElementById("gc_bairro");
-  const norm=s=>(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
-
-  if(fRua){ fRua.value=rua; fRua.style.background="#f0fff4"; setTimeout(()=>fRua.style.background="",1500); }
-  if(fCidade && cidade) fCidade.value=cidade;
-
-  // Seleciona o bairro na lista; se não estiver, tenta detectar; senão usa "Outro"
-  if(selB){
-    let achou=false;
-    if(bairro){
-      for(const o of selB.options){
-        if(o.value!=="__outro__" && norm(o.textContent)===norm(bairro)){ selB.value=o.value; achou=true; break; }
-      }
-    }
-    if(!achou){
-      const alvo=norm([bairro,rua].join(" "));
-      for(const o of selB.options){
-        const t=norm(o.textContent);
-        if(o.value && o.value!=="__outro__" && t && alvo.includes(t)){ selB.value=o.value; achou=true; break; }
-      }
-    }
-    if(!achou && bairro){
-      selB.value="__outro__"; aoTrocarBairroGC();
-      const fOutro=document.getElementById("gc_bairro_outro"); if(fOutro) fOutro.value=bairro;
-    } else {
-      aoTrocarBairroGC();
-    }
+  const nome = opt.dataset.nome||"";
+  const end  = (opt.dataset.endereco||opt.dataset.rua||"").trim();
+  const q=document.getElementById("gc_query");
+  if(q && end){
+    q.value=end;
+    q.style.background="#f0fff4"; setTimeout(()=>q.style.background="",1500);
+    toast(`Endereço de ${nome} preenchido!`,"success");
+    calcularGC();   // calcula automaticamente
   }
-  toast(`Endereço de ${nome} preenchido!`,"success");
-  // Cálculo automático — não depende de clicar no botão
-  if(bairro || rua) calcularGC();
 }
 async function deletarVisitante(id){
   if(!_isLider)return toast("Sem permissão para excluir.","error");
@@ -543,15 +515,10 @@ async function carregarGCs(){
 }
 
 async function calcularGC(){
-  const rua=(document.getElementById("gc_rua")?.value||"").trim();
-  const numero=(document.getElementById("gc_numero")?.value||"").trim();
-  let bairro=(document.getElementById("gc_bairro")?.value||"").trim();
-  if(bairro==="__outro__") bairro=(document.getElementById("gc_bairro_outro")?.value||"").trim();
-  const cidade=(document.getElementById("gc_cidade")?.value||"Alvorada").trim();
-  const cep=(document.getElementById("gc_cep")?.value||"").trim();
-  if(!bairro && !rua && !cep){
-    toast("Selecione o bairro do visitante.","error");
-    document.getElementById("gc_bairro")?.focus();
+  const query=(document.getElementById("gc_query")?.value||"").trim();
+  if(!query){
+    toast("Digite o endereço ou o bairro do visitante.","error");
+    document.getElementById("gc_query")?.focus();
     return;
   }
   const btn=document.getElementById("btnCalcularGC");
@@ -561,14 +528,14 @@ async function calcularGC(){
   try{
     const r=await fetch("/api/gcs/calcular_proximo",{
       method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({endereco:rua,numero,bairro,cidade,cep})
+      body:JSON.stringify({query,cidade:"Alvorada"})
     });
     const d=await r.json();
     if(!r.ok){
       document.getElementById("gc_resultado").innerHTML=
         `<div class="permission-alert" style="border-radius:10px;padding:14px 16px">
           <div style="font-size:15px;margin-bottom:6px">❌ ${d.erro||"Endereço não encontrado"}</div>
-          <div style="font-size:13px;opacity:.85">${d.dica||"Selecione o bairro do visitante na lista."}</div>
+          <div style="font-size:13px;opacity:.85">${d.dica||"Tente incluir o bairro ou a cidade."}</div>
         </div>`;
     } else {
       renderizarResultadoGC(d);

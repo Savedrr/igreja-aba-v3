@@ -2106,8 +2106,35 @@ def _migrate_gc_coords():
         logger.warning(f"migrate gc coords: {e}")
 
 
-def _geocode_confiavel(query, cidade="Alvorada"):
-    """Geocode via Google exigindo precisao. Retorna (lat,lng,display,confiavel)."""
+def _geocode_osm(query, cidade="Alvorada"):
+    """Geocode gratuito via OpenStreetMap/Nominatim (sem key, sem faturamento).
+    Retorna (lat,lng,display,preciso)."""
+    import urllib.request as _ur, json as _js
+    q = (query or "").strip()
+    if not q:
+        return None, None, "", False
+    full_q = f"{q}, {cidade}, RS, Brasil"
+    params = urllib.parse.urlencode({"q": full_q, "format": "json", "limit": "1",
+                                     "countrycodes": "br", "addressdetails": "1"})
+    url = "https://nominatim.openstreetmap.org/search?" + params
+    try:
+        req = _ur.Request(url, headers={"User-Agent": "IgrejaABA/1.0 (contato@igreja-aba.app)"})
+        with _ur.urlopen(req, timeout=8) as resp:
+            data = _js.loads(resp.read())
+        if isinstance(data, list) and data:
+            r = data[0]
+            lat = float(r["lat"]); lng = float(r["lon"])
+            classe = r.get("class", ""); tipo = r.get("type", "")
+            preciso = (classe in ("highway", "building", "place", "amenity", "shop")
+                       and tipo not in ("city", "town", "state", "county", "administrative"))
+            return lat, lng, r.get("display_name", ""), preciso
+    except Exception as e:
+        logger.warning(f"OSM geocode erro: {e}")
+    return None, None, "", False
+
+
+def _geocode_google(query, cidade="Alvorada"):
+    """Geocode via Google (reserva, caso a key esteja ativa). Retorna (lat,lng,display,confiavel)."""
     import urllib.request as _ur, json as _js
     q = (query or "").strip()
     if not q:
@@ -2132,11 +2159,17 @@ def _geocode_confiavel(query, cidade="Alvorada"):
             confiavel = (not partial) and (loctype in ("ROOFTOP", "RANGE_INTERPOLATED",
                          "GEOMETRIC_CENTER")) and not so_cidade
             return float(loc["lat"]), float(loc["lng"]), r.get("formatted_address", ""), confiavel
-        else:
-            logger.warning(f"Google Geocode status: {data.get('status')} para: {full_q}")
     except Exception as e:
-        logger.warning(f"geocode confiavel erro: {e}")
+        logger.warning(f"Google geocode erro: {e}")
     return None, None, "", False
+
+
+def _geocode_confiavel(query, cidade="Alvorada"):
+    """Primeiro OSM (gratuito); se não achar, tenta Google. Retorna (lat,lng,display,confiavel)."""
+    lat, lng, disp, ok = _geocode_osm(query, cidade)
+    if lat is not None:
+        return lat, lng, disp, ok
+    return _geocode_google(query, cidade)
 
 
 @app.route("/api/gcs/calcular_proximo", methods=["POST"])
@@ -2150,7 +2183,7 @@ def calcular_gc():
     cid = (d.get("cidade") or "Alvorada").strip()
     cep = (str(d.get("cep") or "")).strip()
     if not q and not end and not bai and not cep:
-        return jsonify({"erro": "Informe pelo menos o bairro do visitante."}), 400
+        return jsonify({"erro": "Digite o endereço ou o bairro do visitante."}), 400
 
     rua_num = (end + (", " + num if num else "")).strip(", ")
     busca = q or ", ".join([x for x in (rua_num, bai, cid, cep) if x])
@@ -2172,8 +2205,8 @@ def calcular_gc():
         lat_v, lng_v, display_v, metodo = g_lat, g_lng, g_disp, "aproximado"
     else:
         return jsonify({
-            "erro": "Nao consegui localizar esse endereco.",
-            "dica": "Informe o BAIRRO do visitante. Ex: Jardim Algarve, Porto Verde, Intersul, Jardim Porto Alegre, Centro.",
+            "erro": "Não consegui localizar esse endereço no mapa.",
+            "dica": "Tente incluir o bairro ou a cidade. Ex: \"Rua das Flores, 123, Jardim Algarve\".",
             "bairros_conhecidos": sorted({b.title() for b in _BAIRROS})
         }), 422
 
