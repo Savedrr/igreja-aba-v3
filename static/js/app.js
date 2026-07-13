@@ -446,6 +446,9 @@ async function popularSelectVisitantes(){
     // Guarda endereço no data attribute
     o.dataset.endereco = [v.endereco_padronizado||v.endereco, v.bairro, v.cidade].filter(Boolean).join(", ");
     o.dataset.nome = v.nome;
+    o.dataset.rua = v.endereco_padronizado||v.endereco||"";
+    o.dataset.bairro = v.bairro||"";
+    o.dataset.cidade = v.cidade||"Alvorada";
     sel.appendChild(o);
   });
   if(prev)sel.value=prev;
@@ -455,26 +458,43 @@ function aoSelecionarVisitanteGC(){
   const sel=document.getElementById("gc_visitante_id");
   const opt=sel.options[sel.selectedIndex];
   if(!opt||!opt.value) return;
-  const end = opt.dataset.endereco||"";
-  const nome = opt.dataset.nome||"";
-  const rua = document.getElementById("gc_rua");
-  if(rua && end){
-    rua.value = end;
-    rua.style.background = "#f0fff4";
-    setTimeout(()=>rua.style.background="",1500);
-  }
-  // tenta detectar o bairro do endereço e já selecionar na lista
+  const nome  = opt.dataset.nome||"";
+  const rua   = (opt.dataset.rua||"").trim();
+  const bairro= (opt.dataset.bairro||"").trim();
+  const cidade= (opt.dataset.cidade||"Alvorada").trim();
+  const fRua=document.getElementById("gc_rua");
+  const fCidade=document.getElementById("gc_cidade");
   const selB=document.getElementById("gc_bairro");
+  const norm=s=>(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+
+  if(fRua){ fRua.value=rua; fRua.style.background="#f0fff4"; setTimeout(()=>fRua.style.background="",1500); }
+  if(fCidade && cidade) fCidade.value=cidade;
+
+  // Seleciona o bairro na lista; se não estiver, tenta detectar; senão usa "Outro"
   if(selB){
-    const norm=s=>(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
-    const alvo=norm(end);
-    for(const o of selB.options){
-      const t=norm(o.textContent);
-      if(o.value && o.value!=="__outro__" && t && alvo.includes(t)){ selB.value=o.value; break; }
+    let achou=false;
+    if(bairro){
+      for(const o of selB.options){
+        if(o.value!=="__outro__" && norm(o.textContent)===norm(bairro)){ selB.value=o.value; achou=true; break; }
+      }
     }
-    aoTrocarBairroGC();
+    if(!achou){
+      const alvo=norm([bairro,rua].join(" "));
+      for(const o of selB.options){
+        const t=norm(o.textContent);
+        if(o.value && o.value!=="__outro__" && t && alvo.includes(t)){ selB.value=o.value; achou=true; break; }
+      }
+    }
+    if(!achou && bairro){
+      selB.value="__outro__"; aoTrocarBairroGC();
+      const fOutro=document.getElementById("gc_bairro_outro"); if(fOutro) fOutro.value=bairro;
+    } else {
+      aoTrocarBairroGC();
+    }
   }
-  toast(`Endereço de ${nome} preenchido automaticamente!`,"success");
+  toast(`Endereço de ${nome} preenchido!`,"success");
+  // Cálculo automático — não depende de clicar no botão
+  if(bairro || rua) calcularGC();
 }
 async function deletarVisitante(id){
   if(!_isLider)return toast("Sem permissão para excluir.","error");
