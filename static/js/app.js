@@ -507,7 +507,7 @@ async function carregarGCs(){
         ${gc.lider?`<div style="font-size:11px;color:#8ca0c0">👤 ${gc.lider}</div>`:""}
         <div style="font-size:11px;color:#8ca0c0">📍 ${gc.endereco}, ${gc.bairro}</div>
       </div>
-      <span class="sector-badge" style="background:${gc.cor_hex}">${gc.setor}</span>
+      <span class="sector-badge" style="${badgeSetorStyle(gc.cor_hex,gc.setor)}">${gc.setor}</span>
       <span style="font-size:9px;font-weight:700;${gc.lat?"color:#38A169":"color:#E53E3E"}">${gc.lat?"✓ GPS":"Sem GPS"}</span>
       ${_isAdmin?`<button class="btn-sm blue" onclick="abrirEdicaoGC(${gc.id})">✏️</button>
         <button class="btn-sm red" onclick="desativarGC(${gc.id},'${esc(gc.nome)}')">🗑️</button>`:""}
@@ -563,7 +563,7 @@ function renderizarResultadoGC(data){
     <div style="font-size:12px;opacity:.8">📍 ${mp.endereco}, ${mp.bairro}</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
       <span style="background:rgba(255,255,255,.2);border-radius:12px;padding:3px 12px;font-size:12px;font-weight:700">📏 ${mp.distancia_km} km</span>
-      <span class="sector-badge" style="background:${mp.cor_hex}">${mp.setor}</span>
+      <span class="sector-badge" style="${badgeSetorStyle(mp.cor_hex,mp.setor)}">${mp.setor}</span>
     </div>
     <div style="display:flex;gap:7px;margin-top:12px;flex-wrap:wrap">
       <button class="btn-sm green" onclick="copiarLink('${mp.rota_link}')">📋 Copiar Rota</button>
@@ -670,7 +670,7 @@ function abrirEdicaoGC(id){
         <div class="field-group"><label>Bairro</label><input class="field-input" id="egc_bairro" value="${esc(gc.bairro||"")}"></div>
         <div class="field-group"><label>Rede / Setor</label>
           <select class="field-input" id="egc_setor">
-            ${["Verde","Laranja","Amarelo","Vermelho","Azul","Roxo"].map(s=>`<option${gc.setor===s?" selected":""}>${s}</option>`).join("")}
+            ${["Verde","Laranja","Amarelo","Vermelho","Azul","Roxo","Branco"].map(s=>`<option${gc.setor===s?" selected":""}>${s}</option>`).join("")}
           </select></div>
         <div class="field-group"><label>Status</label>
           <select class="field-input" id="egc_ativo">
@@ -2126,6 +2126,14 @@ document.addEventListener("click",(e)=>{
 });
 
 // ── INDICADORES DE VISITANTES (RETENÇÃO) ─────────────────────
+async function ignorarPendencia(id,btn){
+  if(btn){btn.disabled=true;btn.textContent="…";}
+  try{
+    const r=await fetch(`/api/visitantes/${id}/ignorar_pendencia`,{method:"POST"});
+    if(r.ok){ carregarIndicadoresVisitantes(); }
+    else { toast("Não foi possível remover.","error"); if(btn){btn.disabled=false;btn.textContent="✕";} }
+  }catch{ toast("Erro de conexão.","error"); if(btn){btn.disabled=false;btn.textContent="✕";} }
+}
 async function carregarIndicadoresVisitantes(){
   try{
     const r = await fetch("/api/visitantes/indicadores");
@@ -2150,7 +2158,10 @@ async function carregarIndicadoresVisitantes(){
               <div style="font-size:13px;font-weight:600;color:#0F2747">${esc(v.nome)}</div>
               <div style="font-size:11px;color:#94A3B8">Última visita: ${v.ultima_visita} · ${v.dias_sem} dias sem retornar</div>
             </div>
-            ${wa?`<a href="${wa}" target="_blank" style="background:#25D366;color:#fff;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap">📲 Chamar</a>`:""}
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              ${wa?`<a href="${wa}" target="_blank" style="background:#25D366;color:#fff;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap">📲 Chamar</a>`:""}
+              <button onclick="ignorarPendencia(${v.id},this)" title="Remover da lista de pendentes" style="background:#fff;border:1.5px solid #E2E8F0;color:#94A3B8;padding:5px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">✕</button>
+            </div>
           </div>`;
         }).join("");
       }
@@ -2251,7 +2262,7 @@ function renderNoArvore(no, prof){
         padding:9px 12px;background:${no.cor_hex}14;border-left:4px solid ${no.cor_hex};border-radius:8px">
       <div style="min-width:0">
         <div style="font-size:14px;font-weight:700;color:#0F2747">${no.nome}
-          <span style="background:${no.cor_hex};color:#fff;padding:1px 8px;border-radius:20px;font-size:9px;font-weight:700">${no.setor||""}</span>
+          <span style="${badgeSetorStyle(no.cor_hex,no.setor)};padding:1px 8px;border-radius:20px;font-size:9px;font-weight:700">${no.setor||""}</span>
           ${filhosCount}
         </div>
         <div style="font-size:11px;color:#64748B;margin-top:2px">${meta}</div>
@@ -2267,7 +2278,7 @@ function renderNoArvore(no, prof){
         <div style="min-width:0">
           <div style="font-size:13px;font-weight:700;color:#0F2747">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${no.cor_hex};margin-right:6px;vertical-align:1px"></span>${no.nome}
-            <span style="background:${no.cor_hex};color:#fff;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700">${no.setor||""}</span>
+            <span style="${badgeSetorStyle(no.cor_hex,no.setor)};padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700">${no.setor||""}</span>
             ${filhosCount}
           </div>
           <div style="font-size:11px;color:#64748B;margin-top:2px;padding-left:14px">${meta}</div>
@@ -2312,7 +2323,7 @@ async function gerenciarGC(id){
       </div>
       <div class="field-group"><label>🎨 Rede / Setor</label>
         <select class="field-input" id="ggc_setor">
-          ${["Verde","Laranja","Amarelo","Vermelho","Azul","Roxo"].map(s=>`<option${gc.setor===s?" selected":""}>${s}</option>`).join("")}
+          ${["Verde","Laranja","Amarelo","Vermelho","Azul","Roxo","Branco"].map(s=>`<option${gc.setor===s?" selected":""}>${s}</option>`).join("")}
         </select></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="field-group"><label>📅 Dia da semana</label>
@@ -2720,6 +2731,10 @@ async function delRelatorioGC(id){
 }
 // ── UTIL ──────────────────────────────────────────────────────
 function esc(s){return String(s||"").replace(/'/g,"&#39;").replace(/"/g,"&quot;");}
+function badgeSetorStyle(cor,setor){
+  if((setor||"").toLowerCase()==="branco") return `background:${cor};color:#334155;border:1.5px solid #CBD5E1`;
+  return `background:${cor};color:#fff`;
+}
 function toggleSidebar(force){
   const sb=document.getElementById("sidebar");
   if(typeof force==="boolean")sb.classList.toggle("open",force);

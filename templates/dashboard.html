@@ -626,8 +626,13 @@
     </div>
     <div class="form-card" style="margin-bottom:20px">
       <div class="form-section">
-        <div class="section-title">⏰ Acompanhamento Pendente <span style="font-size:11px;font-weight:400;color:#94A3B8">(não retornaram há 7+ dias)</span></div>
-        <div id="vis_pendentes"><div class="loading-msg">Carregando...</div></div>
+        <div class="section-title" onclick="toggleCard(this)" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+          <span>⏰ Acompanhamento Pendente <span style="font-size:11px;font-weight:400;color:#94A3B8">(não retornaram há 7+ dias)</span></span>
+          <span class="card-chevron" style="transition:transform .2s;transform:rotate(-90deg)">▾</span>
+        </div>
+        <div class="card-body" style="display:none">
+          <div id="vis_pendentes"><div class="loading-msg">Carregando...</div></div>
+        </div>
       </div>
     </div>
 

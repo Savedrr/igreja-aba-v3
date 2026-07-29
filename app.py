@@ -342,6 +342,18 @@ def init_db():
     else:
         _init_sqlite()
     _migrate_gc_coords()
+    _migrate_pendencia_ignorada()
+
+
+def _migrate_pendencia_ignorada():
+    """Coluna para permitir dispensar manualmente um visitante da lista de pendentes."""
+    try:
+        with get_db() as conn:
+            conn.execute("ALTER TABLE visitantes ADD COLUMN pendencia_ignorada INTEGER DEFAULT 0")
+            conn.commit()
+    except Exception:
+        try: conn.rollback()
+        except Exception: pass
 
 
 def _pg_migrations(conn):
@@ -1317,14 +1329,20 @@ def visitantes_indicadores():
             retornaram += 1
         else:
             nao_retornaram += 1
+            registro = visitas[0]
+            obs = (registro.get("observacao") or "").strip()
+            ja_direcionado = obs.lower().startswith("direcionado para")
+            ja_ignorado = bool(registro.get("pendencia_ignorada"))
+            if ja_direcionado or ja_ignorado:
+                continue  # já está sendo tratado — não polui a lista de pendentes
             # Dias sem participar
             try:
                 dias = (hoje - datetime.strptime(ultima,"%Y-%m-%d")).days
             except Exception:
                 dias = 0
             if dias >= 7:
-                pendentes.append({"nome":visitas[0].get("nome",""),
-                                  "telefone":visitas[0].get("telefone",""),
+                pendentes.append({"id":registro.get("id"),"nome":registro.get("nome",""),
+                                  "telefone":registro.get("telefone",""),
                                   "ultima_visita":br(ultima),"dias_sem":dias})
     total_pessoas = max(len(pessoas),1)
     taxa_retencao = round(retornaram/total_pessoas*100,1)
@@ -1338,6 +1356,19 @@ def visitantes_indicadores():
         "total_visitantes": len(pessoas),
         "acompanhamento_pendente": pendentes[:50]
     })
+
+@app.route("/api/visitantes/<int:vid>/ignorar_pendencia", methods=["POST"])
+@role_required("admin","lider")
+def ignorar_pendencia_visitante(vid):
+    """Remove um visitante da lista de 'Acompanhamento Pendente' sem apagar o cadastro."""
+    with get_db() as conn:
+        r = conn.execute(qmark("SELECT id FROM visitantes WHERE id=?"), (vid,)).fetchone()
+        if not r:
+            return jsonify({"erro":"Visitante não encontrado"}), 404
+        conn.execute(qmark("UPDATE visitantes SET pendencia_ignorada=1 WHERE id=?"), (vid,))
+        conn.commit()
+    return jsonify({"ok": True})
+
 
 @app.route("/api/busca_global", methods=["GET"])
 @role_required("admin","lider")
@@ -1610,7 +1641,7 @@ def criar_gc():
     # Geocodifica automaticamente
     lat, lng, _ = geocode_smart(f"{end}, {bairro}, {cidade}")
     cor_map = {"Verde":"#22C55E","Laranja":"#F97316","Amarelo":"#EAB308",
-               "Vermelho":"#EF4444","Azul":"#3B82F6","Roxo":"#A855F7"}
+               "Vermelho":"#EF4444","Azul":"#3B82F6","Roxo":"#A855F7","Branco":"#F8FAFC"}
     setor = d.get("setor","Verde")
     gc_pai = d.get("gc_pai_id") or None
     supervisor = d.get("supervisor","").strip()
@@ -2106,6 +2137,26 @@ def _migrate_gc_coords():
         logger.warning(f"migrate gc coords: {e}")
 
 
+_STOPWORDS_RUA = {"rua","av","avenida","tv","travessa","al","alameda","r","estrada",
+                   "rodovia","rod","praca","praça","vila","numero","n","nº"}
+
+
+def _palavras_significativas(txt):
+    t = _norm_txt(txt)
+    t = re.sub(r"[^a-z0-9\s]", " ", t)  # remove vírgulas, pontos etc.
+    return {w for w in t.split() if len(w) >= 4 and w not in _STOPWORDS_RUA}
+
+
+def _endereco_bate(digitado, achado):
+    """Confere se a rua/local encontrado tem relação real com o que foi digitado.
+    Evita aceitar um resultado do geocoder que 'chutou' uma rua totalmente diferente."""
+    p_dig = _palavras_significativas(digitado)
+    p_ach = _palavras_significativas(achado)
+    if not p_dig or not p_ach:
+        return True  # sem palavras fortes o suficiente para comparar — não bloqueia
+    return bool(p_dig & p_ach)  # ao menos uma palavra relevante em comum
+
+
 def _geocode_osm(query, cidade="Alvorada"):
     """Geocode gratuito via OpenStreetMap/Nominatim (sem key, sem faturamento).
     Retorna (lat,lng,display,preciso)."""
@@ -2125,8 +2176,15 @@ def _geocode_osm(query, cidade="Alvorada"):
             r = data[0]
             lat = float(r["lat"]); lng = float(r["lon"])
             classe = r.get("class", ""); tipo = r.get("type", "")
+            addr = r.get("address", {}) or {}
+            road_osm = addr.get("road") or addr.get("pedestrian") or addr.get("suburb") or ""
             preciso = (classe in ("highway", "building", "place", "amenity", "shop")
                        and tipo not in ("city", "town", "state", "county", "administrative"))
+            # Confere se a rua encontrada tem relação com o que foi digitado.
+            # Sem isso, o Nominatim pode "chutar" uma rua parecida/errada e o
+            # sistema aceitaria como se fosse precisa.
+            if preciso and road_osm and not _endereco_bate(q, road_osm):
+                preciso = False
             return lat, lng, r.get("display_name", ""), preciso
     except Exception as e:
         logger.warning(f"OSM geocode erro: {e}")
@@ -2228,8 +2286,14 @@ def calcular_gc():
         gc_end = gc.get("endereco", "") + ", " + gc.get("bairro", "") + ", " + gc.get("cidade", "") + ", RS"
         _dd = urllib.parse.quote(gc_end)
         rota = "https://www.google.com/maps/dir/?api=1&origin=" + _o + "&destination=" + _dd + "&travelmode=driving"
-        msg_wa = "Rota para " + gc.get("nome", "") + "%0A" + "Endereco: " + gc_end + "%0ADistancia: " + str(round(dist, 2)) + " km%0A%0AMaps: " + rota
-        wa_rota = "https://wa.me/?text=" + msg_wa
+        msg_wa_txt = (f"Rota para {gc.get('nome','')}\n"
+                      f"Endereco: {gc_end}\n"
+                      f"Distancia: {round(dist,2)} km\n\n"
+                      f"Maps: {rota}")
+        tel_lider = re.sub(r"\D", "", gc.get("telefone_lider", "") or "")
+        if tel_lider and not tel_lider.startswith("55"):
+            tel_lider = "55" + tel_lider
+        wa_rota = f"https://wa.me/{tel_lider}?text=" + urllib.parse.quote(msg_wa_txt, safe="")
         results.append({**gc, "distancia_km": round(dist, 2), "mesmo_bairro": mesmo_bairro,
                         "coord_fonte": fonte, "rota_link": rota, "wa_rota": wa_rota})
     if not results:
